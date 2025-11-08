@@ -1,0 +1,246 @@
+package io.fullerstack.substrates.valve;
+
+import java.util.concurrent.BlockingDeque;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingDeque;
+import java.util.concurrent.LinkedBlockingQueue;
+
+/**
+ * Valve - Controls the flow of tasks through a virtual thread processor.
+ * <p>
+ * < p >< b >Dual-Queue Architecture:</b >
+ * < ul >
+ * < li >< b >Ingress Queue (FIFO)</b >: Emissions from external threads (outside circuit)</li >
+ * < li >< b >Transit Deque (LIFO)</b >: Emissions from circuit thread (recursive, stack-like)</li >
+ * < li >< b >Priority</b >: Transit deque processed FIRST (true depth-first execution)</li >
+ * </ul >
+ * <p>
+ * < p >< b >Depth-First Execution Example:</b >
+ * < pre >
+ * External thread emits: [A, B, C] → Ingress queue
+ * Circuit processes A, which emits: [A1, A2] → Transit deque (pushed to front)
+ * Circuit processes A1, which emits: [A1a, A1b] → Transit deque (pushed to front)
+ * <p>
+ * Execution order: A, A1, A1a, A1b, A2, B, C (true depth-first)
+ * Transit uses LIFO (stack) so nested emissions are processed immediately.
+ * </pre >
+ * <p>
+ * < p >< b >Design Pattern:</b >
+ * < ul >
+ * < li >Valve = Dual BlockingQueue + Virtual Thread processor</li >
+ * < li >Emissions → Tasks (via submit, routed to appropriate queue)</li >
+ * < li >Virtual thread parks when both queues empty (BlockingQueue.take())</li >
+ * < li >Virtual thread unparks and executes when task arrives</li >
+ * < li >Transit queue has priority - fully drained before next ingress item</li >
+ * </ul >
+ * <p>
+ * < p >< b >Usage:</b >
+ * < pre >
+ * Valve valve = new Valve("circuit-main");
+ * valve.submit(() -> System.out.println("Task 1")); // External thread → Ingress
+ * valve.close(); // Shutdown when done
+ * </pre >
+ * <p>
+ * < p >This abstraction makes William's "valve" pattern explicit in the codebase,
+ * aligning terminology with the reference implementation.
+ */
+public class Valve implements AutoCloseable {
+
+  private final String name;
+
+  // Dual-Queue Architecture
+  private final BlockingQueue < Runnable > ingressQueue;  // External emissions (FIFO)
+  private final BlockingDeque < Runnable > transitDeque;  // Recursive emissions (LIFO for depth-first)
+
+  private final    Thread  processor;
+  private volatile boolean running   = true;
+  private volatile boolean executing = false;
+
+  // Synchronization for event-driven await() (eliminates polling)
+  private final Object idleLock = new Object ();
+
+  /**
+   * Creates a new Valve with a virtual thread processor and dual-queue architecture.
+   *
+   * @param name descriptive name for the valve (used in thread naming)
+   */
+  public Valve ( String name ) {
+    this.name = name;
+    this.ingressQueue = new LinkedBlockingQueue <> ();  // External emissions (FIFO)
+    this.transitDeque = new LinkedBlockingDeque <> ();  // Recursive emissions (LIFO stack)
+    this.processor = Thread.startVirtualThread ( this::processQueue );
+  }
+
+  /**
+   * Submits a task to the valve for execution.
+   * <p>
+   * < p >< b >Dual-Queue Routing:</b >
+   * < ul >
+   * < li >If called from circuit thread (recursive): < b >Pushes to front of Transit deque</b > (LIFO stack)</li >
+   * < li >If called from external thread: < b >Appends to Ingress queue</b > (FIFO)</li >
+   * </ul >
+   * <p>
+   * < p >This ensures true depth-first execution: nested recursive emissions are processed
+   * immediately (stack behavior), before siblings or external emissions.
+   *
+   * @param task the task to execute
+   * @return true if task was accepted, false if valve is closed
+   */
+  public boolean submit ( Runnable task ) {
+    if ( task != null && running ) {
+      //  Route to appropriate queue based on calling thread
+      if ( Thread.currentThread () == processor ) {
+        // Recursive emission from circuit thread → Append to Transit (FIFO within batch)
+        // Transit has priority, but siblings maintain emit order
+        return transitDeque.offerLast ( task );  // Append to back (preserves order)
+      } else {
+        // External emission → Append to Ingress queue (FIFO)
+        return ingressQueue.offer ( task );
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Blocks until all queued tasks are executed and the valve is idle.
+   * Cannot be called from the valve's own thread.
+   * <p>
+   * < p >< b >Event-Driven Design:</b >
+   * Uses wait/notify mechanism instead of polling. The valve processor notifies
+   * waiting threads immediately when it becomes idle, eliminating polling overhead
+   * and providing zero-latency wake-up.
+   *
+   * @param contextName name of the calling context (e.g., "Circuit", "Valve") for error messages (will be lowercased for possessive)
+   * @throws IllegalStateException if called from valve's thread
+   */
+  public void await ( String contextName ) {
+    // Cannot be called from valve's own thread
+    if ( Thread.currentThread () == processor ) {
+      throw new IllegalStateException (
+        "Cannot call " + contextName + "::await from within a " + contextName.toLowerCase () + "'s thread"
+      );
+    }
+
+    // Event-driven wait - no polling!
+    synchronized ( idleLock ) {
+      //  Check BOTH ingress queue and transit deque
+      while ( running && ( executing || !ingressQueue.isEmpty () || !transitDeque.isEmpty () ) ) {
+        try {
+          idleLock.wait ();  // Block until notified by processor
+        } catch ( InterruptedException e ) {
+          Thread.currentThread ().interrupt ();
+          throw new RuntimeException ( contextName + " await interrupted", e );
+        }
+      }
+    }
+  }
+
+  /**
+   * Checks if the valve is currently idle (no tasks executing or queued).
+   *
+   * @return true if idle, false if tasks are pending or executing
+   */
+  public boolean isIdle () {
+    //  Check BOTH ingress queue and transit deque
+    return !executing && ingressQueue.isEmpty () && transitDeque.isEmpty ();
+  }
+
+  /**
+   * Background processor that executes tasks using dual-queue depth-first execution.
+   * Runs in a virtual thread (parks when both queues empty, unparks when task arrives).
+   * <p>
+   * < p >< b >True Depth-First Algorithm:</b >
+   * < ol >
+   * < li >Check Transit deque first (pop from front - LIFO stack behavior)</li >
+   * < li >If Transit empty, take from Ingress queue (FIFO)</li >
+   * < li >Execute task (may push to front of Transit deque recursively)</li >
+   * < li >Repeat from step 1 (Transit deque gets priority, newest items first)</li >
+   * </ol >
+   * <p>
+   * < p >Using LIFO for Transit ensures nested recursive emissions are processed immediately:
+   * < pre >
+   * A emits [A1, A2] → Transit: [A1, A2]
+   * Process A1, emits [A1a, A1b] → Transit: [A1a, A1b, A2] (pushed to front)
+   * Next process A1a (from front) - true depth-first!
+   * </pre >
+   * <p>
+   * < p >Notifies waiting threads when the valve becomes idle (both queues empty and no task executing).
+   */
+  private void processQueue () {
+    while ( running && !Thread.interrupted () ) {
+      try {
+        Runnable task = null;
+
+        // Depth-First: Poll from front of Transit (FIFO, preserves sibling order)
+        // Transit has priority over Ingress (recursive before external)
+        task = transitDeque.pollFirst ();  // Take from front (oldest in Transit batch)
+
+        if ( task == null ) {
+          // Transit empty, take from Ingress (blocking - parks if both empty)
+          task = ingressQueue.take ();  // PARK when both queues empty
+        }
+
+        executing = true;
+        try {
+          task.run ();  // Execute (may push to FRONT of Transit deque recursively)
+        } finally {
+          executing = false;
+
+          // Notify awaiting threads if valve is now idle (BOTH queues empty)
+          if ( ingressQueue.isEmpty () && transitDeque.isEmpty () ) {
+            synchronized ( idleLock ) {
+              idleLock.notifyAll ();
+            }
+          }
+        }
+      } catch ( InterruptedException e ) {
+        Thread.currentThread ().interrupt ();
+        break;
+      } catch ( Exception e ) {
+        // Log error but continue processing
+        System.err.println ( "Error executing task in valve '" + name + "': " + e.getMessage () );
+        executing = false;
+
+        // Still notify on error in case both queues are empty
+        if ( ingressQueue.isEmpty () && transitDeque.isEmpty () ) {
+          synchronized ( idleLock ) {
+            idleLock.notifyAll ();
+          }
+        }
+      }
+    }
+  }
+
+  /**
+   * Closes the valve and stops the processor thread.
+   * Waits up to 1 second for graceful shutdown.
+   * Notifies any threads waiting in await().
+   */
+  @Override
+  public void close () {
+    if ( running ) {
+      running = false;
+      processor.interrupt ();
+
+      // Notify any threads waiting in await()
+      synchronized ( idleLock ) {
+        idleLock.notifyAll ();
+      }
+
+      try {
+        processor.join ( 1000 );
+      } catch ( InterruptedException e ) {
+        Thread.currentThread ().interrupt ();
+      }
+    }
+  }
+
+  /**
+   * Returns the valve name.
+   *
+   * @return the name provided at construction
+   */
+  public String getName () {
+    return name;
+  }
+}

@@ -1,0 +1,63 @@
+Fullerstack Substrates (Java)
+Copyright 2025 Fullerstack
+
+This product includes software developed by Fullerstack (https://fullerstack.io/).
+
+================================================================================
+
+This software is an implementation of the Humainary Substrates API, which was
+designed and created by William Louth and the Humainary project.
+
+Humainary Substrates API
+Copyright 2024 Humainary
+Licensed under the Apache License, Version 2.0
+https://github.com/humainary-io/substrates-api-java
+
+The Substrates API provides a foundational framework for seamless signal flow
+management across distributed systems, enabling structured, dynamic
+instrumentation for advanced observability, simulation, and adaptive control.
+
+Original API Design and Concepts: William Louth (https://humainary.io/)
+Implementation: Fullerstack
+
+================================================================================
+
+ATTRIBUTIONS
+
+The design principles, architectural patterns, and API concepts in this
+implementation are based on William Louth's work on semiotic observability
+and the Substrates framework.
+
+Key concepts implemented from the Humainary Substrates API include:
+- Circuit: Central processing engine with precise ordering guarantees
+- Conduit: Routing emissions from Channels to Pipes
+- Channel: Named entry points for producers
+- Pipe: Transport mechanism with emit() interface
+- Source: Observable event streams
+- Subscriber: Connects consumer Pipes to Sources
+- Registrar: Links Subjects to Pipes at registration time
+- Sequencer/Segment: Transformation pipelines
+- Queue/Script/Current: Execution coordination pattern
+- Subject/Name/Id: Identity and hierarchical naming
+- State/Slot/Scope: Immutable state management
+- Container: Collections of Conduits
+- Capture: Subject-emission pairing for observability
+
+For more information on the Substrates framework, please visit:
+- Humainary: https://humainary.io/
+- Substrates: https://substrates.io/
+- Observability X Blog Series: https://humainary.io/blog/category/observability-x/
+
+================================================================================
+
+This implementation follows the specifications documented in the Humainary
+Substrates blog posts and API documentation, including:
+- Substrates 101: Channel and Conduit behavior
+- Queue, Scripts, and Currents: Execution model
+- Sources and Subscribers: Observable stream patterns
+- Containers: Collection management
+- State and Slots: Immutable state handling
+- Hierarchical naming and Subject identity
+
+We are grateful to William Louth and the Humainary community for creating
+such an elegant and powerful framework for building observable systems.
