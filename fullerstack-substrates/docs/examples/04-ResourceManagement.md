@@ -31,13 +31,17 @@ public class ResourceManagementExample {
         System.out.println("=== Manual Lifecycle ===");
 
         Circuit circuit = cortex().circuit(cortex().name("manual"));
-        Clock clock = circuit.clock(cortex().name("timer"));
+        Conduit<Pipe<String>, String> conduit = circuit.conduit(
+            cortex().name("messages"),
+            Composer.pipe()
+        );
 
         // Use resources...
         System.out.println("Using resources...");
+        Pipe<String> pipe = conduit.get(cortex().name("producer"));
+        pipe.emit("test");
 
         // Manual cleanup
-        clock.close();
         circuit.close();
 
         System.out.println("Manually closed\n");
@@ -53,17 +57,19 @@ public class ResourceManagementExample {
             cortex().circuit(cortex().name("scoped"))
         );
 
-        Clock clock = scope.register(
-            circuit.clock(cortex().name("timer"))
+        Conduit<Pipe<String>, String> conduit = scope.register(
+            circuit.conduit(cortex().name("messages"), Composer.pipe())
         );
 
         // Use resources...
         System.out.println("Using scoped resources...");
+        Pipe<String> pipe = conduit.get(cortex().name("producer"));
+        pipe.emit("scoped message");
 
         // Close scope → closes all registered resources
         scope.close();
 
-        System.out.println("Scope closed (auto-closed circuit and clock)\n");
+        System.out.println("Scope closed (auto-closed circuit and conduit)\n");
     }
 
     static void closurePattern(Cortex cortex) {
@@ -125,7 +131,7 @@ Manually closed
 
 === Scope-based Lifecycle ===
 Using scoped resources...
-Scope closed (auto-closed circuit and clock)
+Scope closed (auto-closed circuit and conduit)
 
 === Closure Pattern (ARM) ===
 Using circuit in closure...
@@ -156,8 +162,10 @@ try {
 
 ```java
 Scope scope = cortex().scope();
-Circuit c1 = scope.register(cortex().circuit());
-Clock c2 = scope.register(c1.clock());
+Circuit circuit = scope.register(cortex().circuit());
+Conduit<Pipe<String>, String> conduit = scope.register(
+    circuit.conduit(cortex().name("messages"), Composer.pipe())
+);
 // ...
 scope.close();  // Closes all
 ```
@@ -225,5 +233,5 @@ boolean isChild = child.within(parent);  // true
 1. **Prefer try-with-resources** for automatic cleanup
 2. **Use Scope** when managing multiple related resources
 3. **Use Closure** for temporary resource usage
-4. **Always close** Circuit, Clock, Subscription, Sink
+4. **Always close** Circuit, Conduit, Subscription, Sink
 5. **Create hierarchies** with child scopes for complex lifecycles
