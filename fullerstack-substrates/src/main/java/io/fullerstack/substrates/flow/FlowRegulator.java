@@ -37,6 +37,9 @@ import java.util.function.*;
  * < ul >
  * < li >Adjacent skip() calls are fused: skip(3).skip(2) → skip(5)</li >
  * < li >Adjacent limit() calls are minimized: limit(10).limit(5) → limit(5)</li >
+ * < li >Adjacent guard() calls are combined: guard(x -> x > 0).guard(x -> x < 100) → guard(x -> x > 0 && x < 100)</li >
+ * < li >Adjacent replace() calls are composed: replace(x -> x * 2).replace(x -> x + 1) → replace(x -> (x * 2) + 1)</li >
+ * < li >Adjacent sample(int) calls use LCM: sample(2).sample(3) → sample(6)</li >
  * < li >Reduces transformation overhead in hot paths</li >
  * </ul >
  * <p>
@@ -59,13 +62,13 @@ public class FlowRegulator < E > implements Flow < E > {
   /**
    * Transformation operations that can be applied to emissions.
    */
-  private final List < Function < E, TransformResult < E > > > transformations = new ArrayList <> ();
+  final List < Function < E, TransformResult < E > > > transformations = new ArrayList <> ();
 
   /**
    * Metadata about transformations for optimization.
    */
   private enum TransformType {
-    SKIP, LIMIT, GUARD, REPLACE, OTHER
+    SKIP, LIMIT, GUARD, REPLACE, SAMPLE_INT, OTHER
   }
 
   private static class TransformMetadata {
@@ -131,9 +134,28 @@ public class FlowRegulator < E > implements Flow < E > {
   @Override
   public Flow < E > guard ( Predicate < ? super E > predicate ) {
     Objects.requireNonNull ( predicate, "Predicate cannot be null" );
-    return addTransformation ( value ->
+
+    // OPTIMIZATION: Fuse adjacent guard() calls - combine predicates with AND
+    // guard(x -> x > 0).guard(x -> x < 100) → guard(x -> x > 0 && x < 100)
+    if ( !metadata.isEmpty () && metadata.get ( metadata.size () - 1 ).type == TransformType.GUARD ) {
+      TransformMetadata lastMeta = metadata.get ( metadata.size () - 1 );
+      @SuppressWarnings("unchecked")
+      Predicate < E > existingPredicate = (Predicate < E >) lastMeta.metadata;
+      Predicate < E > fusedPredicate = value -> existingPredicate.test ( value ) && predicate.test ( value );
+
+      // Remove last transformation and metadata
+      transformations.remove ( transformations.size () - 1 );
+      metadata.remove ( metadata.size () - 1 );
+
+      // Re-add with fused predicate
+      return guard ( fusedPredicate );
+    }
+
+    addTransformation ( value ->
       predicate.test ( value ) ? TransformResult.pass ( value ) : TransformResult.filter ()
     );
+    metadata.add ( new TransformMetadata ( TransformType.GUARD, predicate ) );
+    return this;
   }
 
   @Override
@@ -243,7 +265,26 @@ public class FlowRegulator < E > implements Flow < E > {
   @Override
   public Flow < E > replace ( UnaryOperator < E > mapper ) {
     Objects.requireNonNull ( mapper, "Mapper cannot be null" );
-    return addTransformation ( value -> TransformResult.replace ( mapper.apply ( value ) ) );
+
+    // OPTIMIZATION: Fuse adjacent replace() calls - compose the mappers
+    // replace(x -> x * 2).replace(x -> x + 1) → replace(x -> (x * 2) + 1)
+    if ( !metadata.isEmpty () && metadata.get ( metadata.size () - 1 ).type == TransformType.REPLACE ) {
+      TransformMetadata lastMeta = metadata.get ( metadata.size () - 1 );
+      @SuppressWarnings("unchecked")
+      UnaryOperator < E > existingMapper = (UnaryOperator < E >) lastMeta.metadata;
+      UnaryOperator < E > fusedMapper = value -> mapper.apply ( existingMapper.apply ( value ) );
+
+      // Remove last transformation and metadata
+      transformations.remove ( transformations.size () - 1 );
+      metadata.remove ( metadata.size () - 1 );
+
+      // Re-add with fused mapper
+      return replace ( fusedMapper );
+    }
+
+    addTransformation ( value -> TransformResult.replace ( mapper.apply ( value ) ) );
+    metadata.add ( new TransformMetadata ( TransformType.REPLACE, mapper ) );
+    return this;
   }
 
   @Override
@@ -251,11 +292,29 @@ public class FlowRegulator < E > implements Flow < E > {
     if ( n <= 0 ) {
       throw new IllegalArgumentException ( "Sample rate must be positive" );
     }
+
+    // OPTIMIZATION: Fuse adjacent sample(int) calls - use LCM (Least Common Multiple)
+    // sample(2).sample(3) → sample(6) (emits every 6th item, which satisfies both)
+    if ( !metadata.isEmpty () && metadata.get ( metadata.size () - 1 ).type == TransformType.SAMPLE_INT ) {
+      TransformMetadata lastMeta = metadata.get ( metadata.size () - 1 );
+      int existingRate = (Integer) lastMeta.metadata;
+      int fusedRate = lcm ( existingRate, n );
+
+      // Remove last transformation and metadata
+      transformations.remove ( transformations.size () - 1 );
+      metadata.remove ( metadata.size () - 1 );
+
+      // Re-add with fused sample rate
+      return sample ( fusedRate );
+    }
+
     long[] counter = {0};
-    return addTransformation ( value -> {
+    addTransformation ( value -> {
       counter[0]++;
       return ( counter[0] % n == 0 ) ? TransformResult.pass ( value ) : TransformResult.filter ();
     } );
+    metadata.add ( new TransformMetadata ( TransformType.SAMPLE_INT, n ) );
+    return this;
   }
 
   @Override
@@ -303,6 +362,26 @@ public class FlowRegulator < E > implements Flow < E > {
     this.transformations.add ( transformation );
     this.metadata.add ( new TransformMetadata ( TransformType.OTHER, null ) );
     return this;
+  }
+
+  /**
+   * Calculate Greatest Common Divisor using Euclidean algorithm.
+   */
+  private static int gcd ( int a, int b ) {
+    while ( b != 0 ) {
+      int temp = b;
+      b = a % b;
+      a = temp;
+    }
+    return a;
+  }
+
+  /**
+   * Calculate Least Common Multiple.
+   * LCM(a, b) = (a * b) / GCD(a, b)
+   */
+  private static int lcm ( int a, int b ) {
+    return ( a * b ) / gcd ( a, b );
   }
 
   /**
