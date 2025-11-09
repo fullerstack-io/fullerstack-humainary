@@ -1,6 +1,6 @@
 # Fullerstack Humainary
 
-**Production-ready implementations of [Humainary](https://humainary.io/) frameworks and APIs.**
+**Implementations of [Humainary](https://humainary.io/) frameworks and APIs.**
 
 This repository provides concrete runtime implementations of Humainary's observable, event-driven system specifications, bringing William Louth's architectural vision to life with robust Java implementations.
 
