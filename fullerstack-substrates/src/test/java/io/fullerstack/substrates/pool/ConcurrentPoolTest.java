@@ -47,8 +47,8 @@ class ConcurrentPoolTest {
     Pool<Pipe<String>> pool = new ConcurrentPool<>( name -> new MockPipe<>("value-" + name.value()) );
 
     Name name = InternedName.of ( "test" );
-    Pipe<String> value1 = pool.get ( name );
-    Pipe<String> value2 = pool.get ( name );
+    Pipe<String> value1 = pool.percept ( name );
+    Pipe<String> value2 = pool.percept ( name );
 
     assertThat ( value1 ).isSameAs ( value2 );
   }
@@ -57,8 +57,8 @@ class ConcurrentPoolTest {
   void shouldReturnDifferentInstancesForDifferentNames () {
     Pool<Pipe<String>> pool = new ConcurrentPool<>( name -> new MockPipe<>("value-" + name.value()) );
 
-    Pipe<String> value1 = pool.get ( InternedName.of ( "test1" ) );
-    Pipe<String> value2 = pool.get ( InternedName.of ( "test2" ) );
+    Pipe<String> value1 = pool.percept ( InternedName.of ( "test1" ) );
+    Pipe<String> value2 = pool.percept ( InternedName.of ( "test2" ) );
 
     assertThat ( value1 ).isNotEqualTo ( value2 );
     assertThat ( value1.toString() ).isEqualTo ( "value-test1" );
@@ -74,11 +74,11 @@ class ConcurrentPoolTest {
     } );
 
     Name name = InternedName.of ( "test" );
-    pool.get ( name );
-    pool.get ( name );
-    pool.get ( name );
+    pool.percept ( name );
+    pool.percept ( name );
+    pool.percept ( name );
 
-    assertThat ( factoryCalls.get () ).isEqualTo ( 1 );
+    assertThat ( factoryCalls.percept () ).isEqualTo ( 1 );
   }
 
   @Test
@@ -87,7 +87,7 @@ class ConcurrentPoolTest {
     Pool<ComplexPipe> pool = new ConcurrentPool<>( name -> new ComplexPipe( name.path ().toString () ) );
 
     Name name = InternedName.of ( "kafka.broker.1" );
-    ComplexPipe obj = pool.get ( name );
+    ComplexPipe obj = pool.percept ( name );
 
     assertThat ( obj.value ).isEqualTo ( "kafka.broker.1" );
   }
@@ -96,7 +96,7 @@ class ConcurrentPoolTest {
   void shouldHandleNullFactory () {
     Pool<Pipe<String>> pool = new ConcurrentPool<>( name -> null );
 
-    Pipe<String> value = pool.get ( InternedName.of ( "test" ) );
+    Pipe<String> value = pool.percept ( InternedName.of ( "test" ) );
 
     assertThat ( value ).isNull ();
   }
@@ -112,7 +112,7 @@ class ConcurrentPoolTest {
     for ( int i = 0; i < threads.length; i++ ) {
       final int index = i;
       threads[i] = new Thread ( () -> {
-        results[index] = pool.get ( name );
+        results[index] = pool.percept ( name );
       } );
       threads[i].start ();
     }

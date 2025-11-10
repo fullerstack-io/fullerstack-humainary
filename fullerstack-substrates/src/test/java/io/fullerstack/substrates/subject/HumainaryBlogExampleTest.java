@@ -56,7 +56,7 @@ class HumainaryBlogExampleTest {
 
     counters.subscribe ( (Subscriber) subscriber );
 
-    var hits = counters.get ( cortex.name ( "cache.hit" ) );
+    var hits = counters.percept ( cortex.name ( "cache.hit" ) );
     hits.emit ( 1 );
 
     // Wait for emission to be processed
@@ -74,12 +74,12 @@ class HumainaryBlogExampleTest {
 
     // Channel → Conduit → Circuit hierarchy
     assertThat ( channelSubject.enclosure () ).as ( "Channel should have Conduit as parent" ).isPresent ();
-    Subject < ? > conduitSubject = channelSubject.enclosure ().get ();
+    Subject < ? > conduitSubject = channelSubject.enclosure ().percept ();
     System.out.println ( "Conduit Subject: " + conduitSubject.part () );
     assertThat ( conduitSubject.type () ).isEqualTo ( Conduit.class );
 
     assertThat ( conduitSubject.enclosure () ).as ( "Conduit should have Circuit as parent" ).isPresent ();
-    Subject < ? > circuitSubject = conduitSubject.enclosure ().get ();
+    Subject < ? > circuitSubject = conduitSubject.enclosure ().percept ();
     System.out.println ( "Circuit Subject: " + circuitSubject.part () );
     assertThat ( circuitSubject.type () ).isEqualTo ( Circuit.class );
 
@@ -92,7 +92,7 @@ class HumainaryBlogExampleTest {
    * <p>
    * var circuit = cortex.circuit(cortex.name("network.5g"));
    * var conduit = circuit.conduit(cortex.name("region.eu-nl"), Valve::new);
-   * var valve = conduit.get(cortex.name("pop.ams"));
+   * var valve = conduit.percept(cortex.name("pop.ams"));
    * <p>
    * Output: network/5g/region/eu-nl/pop/ams
    */
@@ -122,7 +122,7 @@ class HumainaryBlogExampleTest {
 
     conduit.subscribe ( (Subscriber) subscriber );
 
-    var valve = conduit.get ( cortex.name ( "pop.ams" ) );
+    var valve = conduit.percept ( cortex.name ( "pop.ams" ) );
     valve.emit ( 42 );
 
     // Wait for emission
@@ -174,7 +174,7 @@ class HumainaryBlogExampleTest {
     // Verify hierarchy
     assertThat ( extendedName.enclosure () )
       .isPresent ()
-      .get ()
+      .percept ()
       .isEqualTo ( baseName );
 
     // Verify part() returns just the leaf

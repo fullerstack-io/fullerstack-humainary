@@ -56,8 +56,8 @@ class PipeCachingTest {
     );
 
     // Get the same channel twice - should be same instance (cached by Conduit)
-    Pipe < Integer > pipe1 = conduit.get ( InternedName.of ( "channel-1" ) );
-    Pipe < Integer > pipe2 = conduit.get ( InternedName.of ( "channel-1" ) );
+    Pipe < Integer > pipe1 = conduit.percept ( InternedName.of ( "channel-1" ) );
+    Pipe < Integer > pipe2 = conduit.percept ( InternedName.of ( "channel-1" ) );
 
     // Should return the SAME Pipe instance (cached by Conduit)
     assertThat ( pipe1 ).isSameAs ( pipe2 );
@@ -79,8 +79,8 @@ class PipeCachingTest {
     conduit.subscribe ( subscriber ( InternedName.of ( "subscriber" ), received, latch ) );
 
     // Get pipe and verify it's the same instance on multiple calls
-    Pipe < Integer > pipe1 = conduit.get ( InternedName.of ( "channel-1" ) );
-    Pipe < Integer > pipe2 = conduit.get ( InternedName.of ( "channel-1" ) );
+    Pipe < Integer > pipe1 = conduit.percept ( InternedName.of ( "channel-1" ) );
+    Pipe < Integer > pipe2 = conduit.percept ( InternedName.of ( "channel-1" ) );
 
     assertThat ( pipe1 ).isSameAs ( pipe2 );
 
@@ -111,8 +111,8 @@ class PipeCachingTest {
     conduit.subscribe ( subscriber ( InternedName.of ( "subscriber" ), received, latch ) );
 
     // Get pipe twice - should be same instance
-    Pipe < Integer > pipe1 = conduit.get ( InternedName.of ( "accumulator" ) );
-    Pipe < Integer > pipe2 = conduit.get ( InternedName.of ( "accumulator" ) );
+    Pipe < Integer > pipe1 = conduit.percept ( InternedName.of ( "accumulator" ) );
+    Pipe < Integer > pipe2 = conduit.percept ( InternedName.of ( "accumulator" ) );
 
     assertThat ( pipe1 ).isSameAs ( pipe2 );
 

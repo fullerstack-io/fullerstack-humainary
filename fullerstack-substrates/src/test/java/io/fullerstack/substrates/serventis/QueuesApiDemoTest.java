@@ -57,7 +57,7 @@ class QueuesApiDemoTest {
     @Test
     @DisplayName("Basic queue operations: ENQUEUE → DEQUEUE")
     void basicQueueOperations() {
-        Queue queue = queues.get(cortex().name("message-queue"));
+        Queue queue = queues.percept(cortex().name("message-queue"));
 
         List<Sign> operations = new ArrayList<>();
         queues.subscribe(cortex().subscriber(
@@ -87,7 +87,7 @@ class QueuesApiDemoTest {
     @Test
     @DisplayName("Queue overflow: ENQUEUE → OVERFLOW")
     void queueOverflow() {
-        Queue producerBuffer = queues.get(cortex().name("producer.buffer"));
+        Queue producerBuffer = queues.percept(cortex().name("producer.buffer"));
 
         List<Sign> events = new ArrayList<>();
         queues.subscribe(cortex().subscriber(
@@ -112,7 +112,7 @@ class QueuesApiDemoTest {
     @Test
     @DisplayName("Queue underflow: DEQUEUE → UNDERFLOW")
     void queueUnderflow() {
-        Queue consumerQueue = queues.get(cortex().name("consumer.queue"));
+        Queue consumerQueue = queues.percept(cortex().name("consumer.queue"));
 
         List<Sign> events = new ArrayList<>();
         queues.subscribe(cortex().subscriber(
@@ -138,7 +138,7 @@ class QueuesApiDemoTest {
     @Test
     @DisplayName("Kafka producer buffer pattern")
     void kafkaProducerBuffer() {
-        Queue producerBuffer = queues.get(cortex().name("producer-1.buffer"));
+        Queue producerBuffer = queues.percept(cortex().name("producer-1.buffer"));
 
         List<Sign> bufferFlow = new ArrayList<>();
         queues.subscribe(cortex().subscriber(
@@ -169,7 +169,7 @@ class QueuesApiDemoTest {
     @Test
     @DisplayName("Kafka consumer fetch queue pattern")
     void kafkaConsumerFetchQueue() {
-        Queue fetchQueue = queues.get(cortex().name("consumer-1.fetch-queue"));
+        Queue fetchQueue = queues.percept(cortex().name("consumer-1.fetch-queue"));
 
         List<Sign> fetchFlow = new ArrayList<>();
         queues.subscribe(cortex().subscriber(
@@ -199,8 +199,8 @@ class QueuesApiDemoTest {
     @Test
     @DisplayName("Multiple queues tracking")
     void multipleQueuesTracking() {
-        Queue queue1 = queues.get(cortex().name("producer-1.buffer"));
-        Queue queue2 = queues.get(cortex().name("producer-2.buffer"));
+        Queue queue1 = queues.percept(cortex().name("producer-1.buffer"));
+        Queue queue2 = queues.percept(cortex().name("producer-2.buffer"));
 
         List<String> queueEvents = new ArrayList<>();
         queues.subscribe(cortex().subscriber(
@@ -232,7 +232,7 @@ class QueuesApiDemoTest {
     @Test
     @DisplayName("All 4 signs available")
     void allSignsAvailable() {
-        Queue queue = queues.get(cortex().name("test-queue"));
+        Queue queue = queues.percept(cortex().name("test-queue"));
 
         // ACT
         queue.enqueue();

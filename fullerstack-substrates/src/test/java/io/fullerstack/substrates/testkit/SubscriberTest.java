@@ -52,7 +52,7 @@ final class SubscriberTest
     final var counter = new AtomicInteger ( 0 );
 
     final var pipe =
-      conduit.get (
+      conduit.percept (
         cortex.name ( "test" )
       );
 
@@ -109,7 +109,7 @@ final class SubscriberTest
       );
 
     final var pipe =
-      conduit.get (
+      conduit.percept (
         cortex.name ( "test" )
       );
 
@@ -161,7 +161,7 @@ final class SubscriberTest
       );
 
     final var pipe =
-      conduit.get (
+      conduit.percept (
         cortex.name ( "test" )
       );
 
@@ -187,7 +187,7 @@ final class SubscriberTest
       );
 
     final var pipe =
-      conduit.get (
+      conduit.percept (
         cortex.name ( "test" )
       );
 
@@ -234,7 +234,7 @@ final class SubscriberTest
     );
 
     final var pipe =
-      conduit.get (
+      conduit.percept (
         cortex.name ( "test" )
       );
 

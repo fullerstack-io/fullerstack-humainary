@@ -58,7 +58,7 @@ final class CircuitTest
         circuit.conduit ( pipe () );
 
       final Pipe < String > pipe =
-        conduit.get ( cortex.name ( "valve.fastpath.channel" ) );
+        conduit.percept ( cortex.name ( "valve.fastpath.channel" ) );
 
       pipe.emit ( "first" );
       pipe.emit ( "second" );
@@ -101,7 +101,7 @@ final class CircuitTest
       final Conduit < Pipe < Integer >, Integer > conduit =
         circuit.conduit ( pipe () );
 
-      conduit.get ( cortex.name ( "test.channel" ) )
+      conduit.percept ( cortex.name ( "test.channel" ) )
         .emit ( 42 );
 
       // Should complete when queue is drained
@@ -131,7 +131,7 @@ final class CircuitTest
         try {
 
           final Pipe < Integer > pipe =
-            conduit.get ( cortex.name ( "async.channel" ) );
+            conduit.percept ( cortex.name ( "async.channel" ) );
 
           pipe.emit ( 100 );
 
@@ -196,7 +196,7 @@ final class CircuitTest
         conduit.subscribe ( subscriber );
 
       final Pipe < Integer > pipe =
-        conduit.get ( cortex.name ( "valve.await.channel" ) );
+        conduit.percept ( cortex.name ( "valve.await.channel" ) );
 
       pipe.emit ( 1 );
 
@@ -212,7 +212,7 @@ final class CircuitTest
         "Cannot call Circuit::await from within a circuit's thread",
         thrown.getMessage ()
       );
-      assertNotNull ( workerThread.get (), "Subscriber should execute on circuit worker thread" );
+      assertNotNull ( workerThread.percept (), "Subscriber should execute on circuit worker thread" );
 
     } finally {
 
@@ -237,7 +237,7 @@ final class CircuitTest
         circuit.conduit ( pipe () );
 
       final Pipe < String > pipe =
-        conduit.get ( cortex.name ( "multi.emit.channel" ) );
+        conduit.percept ( cortex.name ( "multi.emit.channel" ) );
 
       pipe.emit ( "first" );
       pipe.emit ( "second" );
@@ -349,7 +349,7 @@ final class CircuitTest
       conduit.subscribe ( subscriber );
 
       final Pipe < Integer > pipe =
-        conduit.get ( cortex.name ( "ordering.channel" ) );
+        conduit.percept ( cortex.name ( "ordering.channel" ) );
 
       pipe.emit ( 1 );
       pipe.emit ( 2 );
@@ -476,7 +476,7 @@ final class CircuitTest
       final Sink < Integer > sink = cortex.sink ( conduit );
 
       final Pipe < Integer > pipe =
-        conduit.get ( cortex.name ( "integration.channel" ) );
+        conduit.percept ( cortex.name ( "integration.channel" ) );
 
       pipe.emit ( 10 );
       pipe.emit ( 20 );
@@ -488,9 +488,9 @@ final class CircuitTest
         sink.drain ().toList ();
 
       assertEquals ( 3, captures.size () );
-      assertEquals ( 10, captures.get ( 0 ).emission () );
-      assertEquals ( 20, captures.get ( 1 ).emission () );
-      assertEquals ( 30, captures.get ( 2 ).emission () );
+      assertEquals ( 10, captures.percept ( 0 ).emission () );
+      assertEquals ( 20, captures.percept ( 1 ).emission () );
+      assertEquals ( 30, captures.percept ( 2 ).emission () );
 
       sink.close ();
 
@@ -523,7 +523,7 @@ final class CircuitTest
       final Sink < Integer > sink = cortex.sink ( conduit );
 
       final Pipe < Integer > pipe =
-        conduit.get ( cortex.name ( "flow.channel" ) );
+        conduit.percept ( cortex.name ( "flow.channel" ) );
 
       pipe.emit ( 1 );
       pipe.emit ( 2 );
@@ -564,10 +564,10 @@ final class CircuitTest
       final Sink < Integer > sink2 = cortex.sink ( conduit2 );
 
       final Pipe < String > pipe1 =
-        conduit1.get ( cortex.name ( "channel.alpha" ) );
+        conduit1.percept ( cortex.name ( "channel.alpha" ) );
 
       final Pipe < Integer > pipe2 =
-        conduit2.get ( cortex.name ( "channel.beta" ) );
+        conduit2.percept ( cortex.name ( "channel.beta" ) );
 
       pipe1.emit ( "hello" );
       pipe2.emit ( 42 );
@@ -888,8 +888,8 @@ final class CircuitTest
         );
 
       // In PREVIEW, Cell extends Pipe directly
-      // cell.get() returns a Cell which IS a Pipe
-      final Pipe < String > pipe = cell.get (
+      // cell.percept() returns a Cell which IS a Pipe
+      final Pipe < String > pipe = cell.percept (
         cortex.name ( "cell.channel" )
       );
 

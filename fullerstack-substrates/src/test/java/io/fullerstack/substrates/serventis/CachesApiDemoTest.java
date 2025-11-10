@@ -60,7 +60,7 @@ class CachesApiDemoTest {
     @Test
     @DisplayName("Cache hit: LOOKUP → HIT")
     void cacheHit() {
-        Cache metadataCache = caches.get(cortex().name("topic.metadata"));
+        Cache metadataCache = caches.percept(cortex().name("topic.metadata"));
 
         List<Sign> events = new ArrayList<>();
         caches.subscribe(cortex().subscriber(
@@ -86,7 +86,7 @@ class CachesApiDemoTest {
     @Test
     @DisplayName("Cache miss and store: LOOKUP → MISS → STORE")
     void cacheMissAndStore() {
-        Cache cache = caches.get(cortex().name("partition.leader"));
+        Cache cache = caches.percept(cortex().name("partition.leader"));
 
         List<Sign> events = new ArrayList<>();
         caches.subscribe(cortex().subscriber(
@@ -114,7 +114,7 @@ class CachesApiDemoTest {
     @Test
     @DisplayName("Cache eviction")
     void cacheEviction() {
-        Cache cache = caches.get(cortex().name("connection.cache"));
+        Cache cache = caches.percept(cortex().name("connection.cache"));
 
         List<Sign> events = new ArrayList<>();
         caches.subscribe(cortex().subscriber(
@@ -140,7 +140,7 @@ class CachesApiDemoTest {
     @Test
     @DisplayName("Cache expiration")
     void cacheExpiration() {
-        Cache cache = caches.get(cortex().name("session.cache"));
+        Cache cache = caches.percept(cortex().name("session.cache"));
 
         List<Sign> events = new ArrayList<>();
         caches.subscribe(cortex().subscriber(
@@ -164,7 +164,7 @@ class CachesApiDemoTest {
     @Test
     @DisplayName("Cache invalidation")
     void cacheInvalidation() {
-        Cache cache = caches.get(cortex().name("config.cache"));
+        Cache cache = caches.percept(cortex().name("config.cache"));
 
         List<Sign> events = new ArrayList<>();
         caches.subscribe(cortex().subscriber(
@@ -190,7 +190,7 @@ class CachesApiDemoTest {
     @Test
     @DisplayName("All 7 signs available")
     void allSignsAvailable() {
-        Cache cache = caches.get(cortex().name("test-cache"));
+        Cache cache = caches.percept(cortex().name("test-cache"));
 
         // ACT
         cache.lookup();

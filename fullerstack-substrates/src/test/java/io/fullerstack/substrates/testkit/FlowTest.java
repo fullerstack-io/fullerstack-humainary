@@ -61,7 +61,7 @@ final class FlowTest
       final Sink < Integer > sink = cortex.sink ( conduit );
 
       final Pipe < Integer > pipe =
-        conduit.get ( cortex.name ( "flow.diff.channel" ) );
+        conduit.percept ( cortex.name ( "flow.diff.channel" ) );
 
       pipe.emit ( 2 );
       pipe.emit ( 2 ); // filtered by diff()
@@ -143,7 +143,7 @@ final class FlowTest
       final Sink < Integer > sink = cortex.sink ( conduit );
 
       final Pipe < Integer > pipe =
-        conduit.get ( cortex.name ( "flow.limit.channel" ) );
+        conduit.percept ( cortex.name ( "flow.limit.channel" ) );
 
       for ( int i = 1; i <= 200; i++ ) {
         pipe.emit ( i );
@@ -246,7 +246,7 @@ final class FlowTest
       final Sink < Integer > sink = cortex.sink ( conduit );
 
       final Pipe < Integer > pipe =
-        conduit.get ( cortex.name ( "flow.sift.channel" ) );
+        conduit.percept ( cortex.name ( "flow.sift.channel" ) );
 
       final int[] emissions = {1, 2, 2, 3, 4, 5, 6, 7, 8, 9};
 
@@ -315,7 +315,7 @@ final class FlowTest
       final Sink < Integer > sink = cortex.sink ( conduit );
 
       final Pipe < Integer > pipe =
-        conduit.get ( cortex.name ( "flow.skip.channel" ) );
+        conduit.percept ( cortex.name ( "flow.skip.channel" ) );
 
       for ( int i = 1; i <= 10; i++ ) {
         pipe.emit ( i );
@@ -380,7 +380,7 @@ final class FlowTest
         );
 
       final Pipe < Integer > pipe =
-        conduit.get ( cortex.name ( "flow.skip.zero.channel" ) );
+        conduit.percept ( cortex.name ( "flow.skip.zero.channel" ) );
 
       for ( int i = 1; i <= 5; i++ ) {
         pipe.emit ( i );

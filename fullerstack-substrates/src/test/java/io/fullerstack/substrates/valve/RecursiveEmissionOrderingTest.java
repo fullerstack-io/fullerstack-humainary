@@ -62,7 +62,7 @@ class RecursiveEmissionOrderingTest {
 
           // Recursive emissions when processing "A"
           if ( value.equals ( "A" ) ) {
-            Pipe < String > pipe = conduit.get ( subject.name () );
+            Pipe < String > pipe = conduit.percept ( subject.name () );
             pipe.emit ( "A1" );
             pipe.emit ( "A2" );
           }
@@ -71,7 +71,7 @@ class RecursiveEmissionOrderingTest {
     ) );
 
     // Get pipe for emissions
-    Pipe < String > pipe = conduit.get ( cortex().name ( "events" ) );
+    Pipe < String > pipe = conduit.percept ( cortex().name ( "events" ) );
 
     // Emit A, B, C from external thread
     pipe.emit ( "A" );
@@ -109,7 +109,7 @@ class RecursiveEmissionOrderingTest {
         registrar.register ( value -> {
           executionOrder.add ( value );
 
-          Pipe < String > pipe = conduit.get ( subject.name () );
+          Pipe < String > pipe = conduit.percept ( subject.name () );
 
           // A → A1, A2
           if ( value.equals ( "A" ) ) {
@@ -125,7 +125,7 @@ class RecursiveEmissionOrderingTest {
       }
     ) );
 
-    Pipe < String > pipe = conduit.get ( cortex().name ( "events" ) );
+    Pipe < String > pipe = conduit.percept ( cortex().name ( "events" ) );
 
     // Emit A, B
     pipe.emit ( "A" );
@@ -159,7 +159,7 @@ class RecursiveEmissionOrderingTest {
           executionOrder.add ( value );
 
           if ( value.equals ( "A" ) ) {
-            Pipe < String > pipe = conduit.get ( subject.name () );
+            Pipe < String > pipe = conduit.percept ( subject.name () );
             pipe.emit ( "A1" );
             pipe.emit ( "A2" );
           }
@@ -167,7 +167,7 @@ class RecursiveEmissionOrderingTest {
       }
     ) );
 
-    Pipe < String > pipe = conduit.get ( cortex().name ( "events" ) );
+    Pipe < String > pipe = conduit.percept ( cortex().name ( "events" ) );
 
     // Emit from multiple threads simultaneously
     Thread t1 = new Thread ( () -> pipe.emit ( "A" ) );

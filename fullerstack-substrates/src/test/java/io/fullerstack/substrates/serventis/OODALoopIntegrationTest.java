@@ -81,11 +81,11 @@ class OODALoopIntegrationTest {
         // Scenario: Consumer falling behind, system detects and escalates
 
         // Get instruments for Kafka consumer scenario
-        Probes.Probe consumerProbe = probes.get(cortex().name("consumer-1.fetch"));
-        Services.Service consumerService = services.get(cortex().name("consumer-1.processing"));
-        Queues.Queue consumerQueue = queues.get(cortex().name("consumer-1.buffer"));
-        Monitors.Monitor consumerHealth = monitors.get(cortex().name("consumer-1.health"));
-        Reporters.Reporter lagReporter = reporters.get(cortex().name("consumer-1.lag"));
+        Probes.Probe consumerProbe = probes.percept(cortex().name("consumer-1.fetch"));
+        Services.Service consumerService = services.percept(cortex().name("consumer-1.processing"));
+        Queues.Queue consumerQueue = queues.percept(cortex().name("consumer-1.buffer"));
+        Monitors.Monitor consumerHealth = monitors.percept(cortex().name("consumer-1.health"));
+        Reporters.Reporter lagReporter = reporters.percept(cortex().name("consumer-1.lag"));
 
         List<String> oodaFlow = new ArrayList<>();
 
@@ -226,8 +226,8 @@ class OODALoopIntegrationTest {
     @Test
     @DisplayName("OBSERVE → ORIENT flow: Queue overflow triggers condition assessment")
     void observeToOrientFlow() {
-        Queues.Queue queue = queues.get(cortex().name("buffer"));
-        Monitors.Monitor monitor = monitors.get(cortex().name("buffer.health"));
+        Queues.Queue queue = queues.percept(cortex().name("buffer"));
+        Monitors.Monitor monitor = monitors.percept(cortex().name("buffer.health"));
 
         List<String> flow = new ArrayList<>();
 
@@ -262,8 +262,8 @@ class OODALoopIntegrationTest {
     @Test
     @DisplayName("ORIENT → DECIDE flow: Degraded condition triggers urgency assessment")
     void orientToDecideFlow() {
-        Monitors.Monitor monitor = monitors.get(cortex().name("system.health"));
-        Reporters.Reporter reporter = reporters.get(cortex().name("system.status"));
+        Monitors.Monitor monitor = monitors.percept(cortex().name("system.health"));
+        Reporters.Reporter reporter = reporters.percept(cortex().name("system.status"));
 
         List<String> flow = new ArrayList<>();
 
@@ -305,10 +305,10 @@ class OODALoopIntegrationTest {
     @DisplayName("Multi-layer OODA: Multiple instruments coordinating")
     void multiLayerOODA() {
         // Multiple consumers being monitored
-        Queues.Queue consumer1Queue = queues.get(cortex().name("consumer-1.queue"));
-        Queues.Queue consumer2Queue = queues.get(cortex().name("consumer-2.queue"));
-        Monitors.Monitor groupHealth = monitors.get(cortex().name("consumer-group.health"));
-        Reporters.Reporter groupStatus = reporters.get(cortex().name("consumer-group.status"));
+        Queues.Queue consumer1Queue = queues.percept(cortex().name("consumer-1.queue"));
+        Queues.Queue consumer2Queue = queues.percept(cortex().name("consumer-2.queue"));
+        Monitors.Monitor groupHealth = monitors.percept(cortex().name("consumer-group.health"));
+        Reporters.Reporter groupStatus = reporters.percept(cortex().name("consumer-group.status"));
 
         List<String> events = new ArrayList<>();
 

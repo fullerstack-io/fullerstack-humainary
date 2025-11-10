@@ -69,7 +69,7 @@ class ProbesApiDemoTest {
     void basicRPCFlow() {
         // Scenario: Successful RPC call from client perspective (RELEASE)
 
-        Probe rpcClient = probes.get(cortex().name("rpc.client"));
+        Probe rpcClient = probes.percept(cortex().name("rpc.client"));
 
         List<Signal> clientOps = new ArrayList<>();
         probes.subscribe(cortex().subscriber(
@@ -105,8 +105,8 @@ class ProbesApiDemoTest {
         // RELEASE = self-perspective (present tense: "I am doing")
         // RECEIPT = observed-perspective (past tense: "It did")
 
-        Probe clientProbe = probes.get(cortex().name("client"));
-        Probe serverProbe = probes.get(cortex().name("server"));
+        Probe clientProbe = probes.percept(cortex().name("client"));
+        Probe serverProbe = probes.percept(cortex().name("server"));
 
         List<String> timeline = new ArrayList<>();
         probes.subscribe(cortex().subscriber(
@@ -149,8 +149,8 @@ class ProbesApiDemoTest {
     void failureTracking() {
         // Scenario: Client detects failure vs observing server failure
 
-        Probe client = probes.get(cortex().name("client"));
-        Probe server = probes.get(cortex().name("server"));
+        Probe client = probes.percept(cortex().name("client"));
+        Probe server = probes.percept(cortex().name("server"));
 
         List<Signal> failures = new ArrayList<>();
         probes.subscribe(cortex().subscriber(
@@ -182,8 +182,8 @@ class ProbesApiDemoTest {
     void kafkaProducerSend() {
         // Scenario: Producer sends message to broker
 
-        Probe producer = probes.get(cortex().name("producer-1"));
-        Probe broker = probes.get(cortex().name("broker-1"));
+        Probe producer = probes.percept(cortex().name("producer-1"));
+        Probe broker = probes.percept(cortex().name("broker-1"));
 
         List<String> sendFlow = new ArrayList<>();
         probes.subscribe(cortex().subscriber(
@@ -225,8 +225,8 @@ class ProbesApiDemoTest {
     void kafkaConsumerFetch() {
         // Scenario: Consumer fetches messages from broker
 
-        Probe consumer = probes.get(cortex().name("consumer-1"));
-        Probe broker = probes.get(cortex().name("broker-1"));
+        Probe consumer = probes.percept(cortex().name("consumer-1"));
+        Probe broker = probes.percept(cortex().name("broker-1"));
 
         List<Sign> consumerOps = new ArrayList<>();
         probes.subscribe(cortex().subscriber(
@@ -265,7 +265,7 @@ class ProbesApiDemoTest {
     void connectionFailure() {
         // Scenario: Client fails to connect to server
 
-        Probe client = probes.get(cortex().name("client"));
+        Probe client = probes.percept(cortex().name("client"));
 
         AtomicReference<Signal> lastSignal = new AtomicReference<>();
         probes.subscribe(cortex().subscriber(
@@ -292,7 +292,7 @@ class ProbesApiDemoTest {
     void processingPipeline() {
         // Scenario: Message processing pipeline
 
-        Probe processor = probes.get(cortex().name("message.processor"));
+        Probe processor = probes.percept(cortex().name("message.processor"));
 
         List<Signal> pipeline = new ArrayList<>();
         probes.subscribe(cortex().subscriber(
@@ -323,7 +323,7 @@ class ProbesApiDemoTest {
     void observedServerOperations() {
         // Scenario: Monitoring server from external observer
 
-        Probe serverMonitor = probes.get(cortex().name("server.monitor"));
+        Probe serverMonitor = probes.percept(cortex().name("server.monitor"));
 
         List<Signal> observations = new ArrayList<>();
         probes.subscribe(cortex().subscriber(
@@ -353,8 +353,8 @@ class ProbesApiDemoTest {
     void bidirectionalCommunication() {
         // Scenario: Request-response with both sides transmitting
 
-        Probe client = probes.get(cortex().name("client"));
-        Probe server = probes.get(cortex().name("server"));
+        Probe client = probes.percept(cortex().name("client"));
+        Probe server = probes.percept(cortex().name("server"));
 
         List<String> communication = new ArrayList<>();
         probes.subscribe(cortex().subscriber(
@@ -393,7 +393,7 @@ class ProbesApiDemoTest {
     void allSignsAndPolaritysAvailable() {
         // Verify complete API surface
 
-        Probe probe = probes.get(cortex().name("test-probe"));
+        Probe probe = probes.percept(cortex().name("test-probe"));
 
         // ACT: Emit all signs in both orientations
 
@@ -448,7 +448,7 @@ class ProbesApiDemoTest {
     void signalProperties() {
         // Verify Signal enum provides access to constituent parts
 
-        Probe probe = probes.get(cortex().name("test-probe"));
+        Probe probe = probes.percept(cortex().name("test-probe"));
 
         AtomicReference<Signal> capturedSignal = new AtomicReference<>();
         probes.subscribe(cortex().subscriber(

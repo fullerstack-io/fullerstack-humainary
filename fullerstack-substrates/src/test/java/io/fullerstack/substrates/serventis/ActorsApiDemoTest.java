@@ -67,8 +67,8 @@ class ActorsApiDemoTest {
     void questionAnswerPattern() {
         // Scenario: Operator asks about consumer lag
 
-        Actor operator = actors.get(cortex().name("operator.alice"));
-        Actor system = actors.get(cortex().name("kafka-ops-bot"));
+        Actor operator = actors.percept(cortex().name("operator.alice"));
+        Actor system = actors.percept(cortex().name("kafka-ops-bot"));
 
         List<Sign> operatorActs = new ArrayList<>();
         List<Sign> systemActs = new ArrayList<>();
@@ -115,8 +115,8 @@ class ActorsApiDemoTest {
     void requestDeliveryWorkflow() {
         // Scenario: Operator requests action, system delivers
 
-        Actor operator = actors.get(cortex().name("operator.bob"));
-        Actor system = actors.get(cortex().name("auto-scaler"));
+        Actor operator = actors.percept(cortex().name("operator.bob"));
+        Actor system = actors.percept(cortex().name("auto-scaler"));
 
         List<Sign> timeline = new ArrayList<>();
 
@@ -163,8 +163,8 @@ class ActorsApiDemoTest {
     void correctionClarificationPattern() {
         // Scenario: Misunderstanding requiring clarification
 
-        Actor human = actors.get(cortex().name("user.charlie"));
-        Actor ai = actors.get(cortex().name("assistant.claude"));
+        Actor human = actors.percept(cortex().name("user.charlie"));
+        Actor ai = actors.percept(cortex().name("assistant.claude"));
 
         List<String> dialogue = new ArrayList<>();
 
@@ -208,8 +208,8 @@ class ActorsApiDemoTest {
         // REQUEST = peer-level, no authority
         // COMMAND = hierarchical, presumed authority
 
-        Actor peer = actors.get(cortex().name("peer-service"));
-        Actor subordinate = actors.get(cortex().name("managed-process"));
+        Actor peer = actors.percept(cortex().name("peer-service"));
+        Actor subordinate = actors.percept(cortex().name("managed-process"));
 
         List<Sign> acts = new ArrayList<>();
         actors.subscribe(cortex().subscriber(
@@ -243,7 +243,7 @@ class ActorsApiDemoTest {
         // EXPLAIN = reasoning/elaboration
         // ASSERT = confident claims/judgments
 
-        Actor actor = actors.get(cortex().name("test-actor"));
+        Actor actor = actors.percept(cortex().name("test-actor"));
 
         List<Sign> acts = new ArrayList<>();
         actors.subscribe(cortex().subscriber(
@@ -274,8 +274,8 @@ class ActorsApiDemoTest {
     void humanAIDialogue() {
         // Realistic operator-AI assistant interaction
 
-        Actor human = actors.get(cortex().name("operator.diana"));
-        Actor ai = actors.get(cortex().name("claude-ops"));
+        Actor human = actors.percept(cortex().name("operator.diana"));
+        Actor ai = actors.percept(cortex().name("claude-ops"));
 
         List<String> conversation = new ArrayList<>();
 
@@ -316,9 +316,9 @@ class ActorsApiDemoTest {
     void collaborativeRefinement() {
         // Multiple agents refining a solution together
 
-        Actor alice = actors.get(cortex().name("engineer.alice"));
-        Actor bob = actors.get(cortex().name("engineer.bob"));
-        Actor system = actors.get(cortex().name("deployment-bot"));
+        Actor alice = actors.percept(cortex().name("engineer.alice"));
+        Actor bob = actors.percept(cortex().name("engineer.bob"));
+        Actor system = actors.percept(cortex().name("deployment-bot"));
 
         List<String> collaboration = new ArrayList<>();
 
@@ -362,7 +362,7 @@ class ActorsApiDemoTest {
     void commitmentTracking() {
         // Track commitments from promise to delivery
 
-        Actor actor = actors.get(cortex().name("service-agent"));
+        Actor actor = actors.percept(cortex().name("service-agent"));
 
         List<Sign> timeline = new ArrayList<>();
         actors.subscribe(cortex().subscriber(
@@ -392,7 +392,7 @@ class ActorsApiDemoTest {
     void allSpeechActsAvailable() {
         // Verify complete API surface
 
-        Actor actor = actors.get(cortex().name("test-actor"));
+        Actor actor = actors.percept(cortex().name("test-actor"));
 
         // ACT: Emit all 11 signs
 
@@ -442,7 +442,7 @@ class ActorsApiDemoTest {
     void assertMethodNaming() {
         // Java "assert" is a keyword, so API uses "assert_()"
 
-        Actor actor = actors.get(cortex().name("test-actor"));
+        Actor actor = actors.percept(cortex().name("test-actor"));
 
         AtomicReference<Sign> captured = new AtomicReference<>();
         actors.subscribe(cortex().subscriber(

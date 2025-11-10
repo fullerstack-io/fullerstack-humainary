@@ -58,7 +58,7 @@ class GaugesApiDemoTest {
     @Test
     @DisplayName("Basic gauge operations: INCREMENT → DECREMENT")
     void basicGaugeOperations() {
-        Gauge gauge = gauges.get(cortex().name("connection-pool"));
+        Gauge gauge = gauges.percept(cortex().name("connection-pool"));
 
         List<Sign> changes = new ArrayList<>();
         gauges.subscribe(cortex().subscriber(
@@ -88,7 +88,7 @@ class GaugesApiDemoTest {
     @Test
     @DisplayName("Consumer lag overflow")
     void consumerLagOverflow() {
-        Gauge consumerLag = gauges.get(cortex().name("consumer-1.lag"));
+        Gauge consumerLag = gauges.percept(cortex().name("consumer-1.lag"));
 
         List<Sign> lagEvents = new ArrayList<>();
         gauges.subscribe(cortex().subscriber(
@@ -112,7 +112,7 @@ class GaugesApiDemoTest {
     @Test
     @DisplayName("In-flight requests tracking")
     void inflightRequestsTracking() {
-        Gauge inflightRequests = gauges.get(cortex().name("producer-1.inflight"));
+        Gauge inflightRequests = gauges.percept(cortex().name("producer-1.inflight"));
 
         List<Sign> requestFlow = new ArrayList<>();
         gauges.subscribe(cortex().subscriber(
@@ -142,7 +142,7 @@ class GaugesApiDemoTest {
     @Test
     @DisplayName("Gauge underflow: value below minimum")
     void gaugeUnderflow() {
-        Gauge gauge = gauges.get(cortex().name("buffer-level"));
+        Gauge gauge = gauges.percept(cortex().name("buffer-level"));
 
         List<Sign> events = new ArrayList<>();
         gauges.subscribe(cortex().subscriber(
@@ -168,7 +168,7 @@ class GaugesApiDemoTest {
     @Test
     @DisplayName("All 5 signs available")
     void allSignsAvailable() {
-        Gauge gauge = gauges.get(cortex().name("test-gauge"));
+        Gauge gauge = gauges.percept(cortex().name("test-gauge"));
 
         // ACT
         gauge.increment();

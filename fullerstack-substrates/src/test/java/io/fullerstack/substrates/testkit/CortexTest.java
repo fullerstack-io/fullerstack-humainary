@@ -75,7 +75,7 @@ final class CortexTest
       final Conduit < Pipe < Integer >, Integer > conduit =
         circuit.conduit ( pipe () );
 
-      conduit.get ( cortex.name ( "test.channel" ) )
+      conduit.percept ( cortex.name ( "test.channel" ) )
         .emit ( 42 );
 
       // Await should complete when queue is drained
@@ -121,7 +121,7 @@ final class CortexTest
       final Sink < String > sink = cortex.sink ( conduit );
 
       final Pipe < String > pipe =
-        conduit.get ( cortex.name ( "integration.channel" ) );
+        conduit.percept ( cortex.name ( "integration.channel" ) );
 
       pipe.emit ( "integration-test" );
 
@@ -274,7 +274,7 @@ final class CortexTest
     try {
 
       final Subject < ? > subject = circuit.subject ();
-      MockPipe<Integer> pipe = (MockPipe<Integer>) pool.get ( subject );
+      MockPipe<Integer> pipe = (MockPipe<Integer>) pool.percept ( subject );
       assertEquals ( singleton, pipe.getValue() );
 
     } finally {
@@ -299,7 +299,7 @@ final class CortexTest
 
     try {
 
-      MockPipe<Double> pipe = (MockPipe<Double>) pool.get ( circuit );
+      MockPipe<Double> pipe = (MockPipe<Double>) pool.percept ( circuit );
       assertEquals ( singleton, pipe.getValue() );
 
     } finally {
@@ -320,9 +320,9 @@ final class CortexTest
     final var name2 = cortex.name ( "pool.test.second" );
 
     // Pool returns DIFFERENT Pipe instances for different names (each cached)
-    Pipe<String> pipe1a = pool.get ( name1 );
-    Pipe<String> pipe2a = pool.get ( name2 );
-    Pipe<String> pipe1b = pool.get ( name1 );
+    Pipe<String> pipe1a = pool.percept ( name1 );
+    Pipe<String> pipe2a = pool.percept ( name2 );
+    Pipe<String> pipe1b = pool.percept ( name1 );
 
     // Same name should return same Pipe instance (cached)
     assertSame ( pipe1a, pipe1b );
@@ -599,7 +599,7 @@ final class CortexTest
       final Sink < Integer > sink = cortex.sink ( conduit );
 
       final Pipe < Integer > pipe =
-        conduit.get ( cortex.name ( "test.channel" ) );
+        conduit.percept ( cortex.name ( "test.channel" ) );
 
       pipe.emit ( 10 );
       pipe.emit ( 20 );
@@ -713,7 +713,7 @@ final class CortexTest
       final Sink < String > sink = cortex.sink ( conduit );
 
       final Pipe < String > pipe =
-        conduit.get ( cortex.name ( "test.channel" ) );
+        conduit.percept ( cortex.name ( "test.channel" ) );
 
       pipe.emit ( "first" );
 
@@ -884,9 +884,9 @@ final class CortexTest
       conduit.subscribe ( subscriber );
 
       // Create channels which should trigger subscriber
-      final Pipe < String > pipe1 = conduit.get ( cortex.name ( "channel.one" ) );
-      final Pipe < String > pipe2 = conduit.get ( cortex.name ( "channel.two" ) );
-      final Pipe < String > pipe3 = conduit.get ( cortex.name ( "channel.three" ) );
+      final Pipe < String > pipe1 = conduit.percept ( cortex.name ( "channel.one" ) );
+      final Pipe < String > pipe2 = conduit.percept ( cortex.name ( "channel.two" ) );
+      final Pipe < String > pipe3 = conduit.percept ( cortex.name ( "channel.three" ) );
 
       // Emit values to ensure channels are actually created and subscribed
       pipe1.emit ( "test1" );
@@ -951,10 +951,10 @@ final class CortexTest
       conduit.subscribe ( subscriber );
 
       final Pipe < Integer > pipe1 =
-        conduit.get ( cortex.name ( "channel.alpha" ) );
+        conduit.percept ( cortex.name ( "channel.alpha" ) );
 
       final Pipe < Integer > pipe2 =
-        conduit.get ( cortex.name ( "channel.beta" ) );
+        conduit.percept ( cortex.name ( "channel.beta" ) );
 
       pipe1.emit ( 100 );
       pipe2.emit ( 200 );

@@ -56,7 +56,7 @@ class CountersApiDemoTest {
     @Test
     @DisplayName("Basic counter: INCREMENT → INCREMENT → RESET")
     void basicCounter() {
-        Counter counter = counters.get(cortex().name("messages.sent"));
+        Counter counter = counters.percept(cortex().name("messages.sent"));
 
         List<Sign> events = new ArrayList<>();
         counters.subscribe(cortex().subscriber(
@@ -86,7 +86,7 @@ class CountersApiDemoTest {
     @Test
     @DisplayName("Counter overflow")
     void counterOverflow() {
-        Counter errorCount = counters.get(cortex().name("errors"));
+        Counter errorCount = counters.percept(cortex().name("errors"));
 
         List<Sign> errors = new ArrayList<>();
         counters.subscribe(cortex().subscriber(
@@ -111,7 +111,7 @@ class CountersApiDemoTest {
     @Test
     @DisplayName("Kafka message send counter")
     void kafkaMessageSendCounter() {
-        Counter messagesSent = counters.get(cortex().name("producer-1.messages-sent"));
+        Counter messagesSent = counters.percept(cortex().name("producer-1.messages-sent"));
 
         List<Sign> sendEvents = new ArrayList<>();
         counters.subscribe(cortex().subscriber(
@@ -136,7 +136,7 @@ class CountersApiDemoTest {
     @Test
     @DisplayName("All 3 signs available")
     void allSignsAvailable() {
-        Counter counter = counters.get(cortex().name("test-counter"));
+        Counter counter = counters.percept(cortex().name("test-counter"));
 
         // ACT
         counter.increment();

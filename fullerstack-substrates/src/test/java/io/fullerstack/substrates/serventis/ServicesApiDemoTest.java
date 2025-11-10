@@ -60,7 +60,7 @@ class ServicesApiDemoTest {
     @Test
     @DisplayName("Basic service call: CALL → START → SUCCESS → STOP")
     void basicServiceCall() {
-        Service service = services.get(cortex().name("user-api"));
+        Service service = services.percept(cortex().name("user-api"));
 
         List<Sign> lifecycle = new ArrayList<>();
         services.subscribe(cortex().subscriber(
@@ -90,7 +90,7 @@ class ServicesApiDemoTest {
     @Test
     @DisplayName("Service failure with retry: CALL → FAIL → RETRY → SUCCESS")
     void serviceFailureWithRetry() {
-        Service service = services.get(cortex().name("payment-api"));
+        Service service = services.percept(cortex().name("payment-api"));
 
         List<Sign> retryFlow = new ArrayList<>();
         services.subscribe(cortex().subscriber(
@@ -120,7 +120,7 @@ class ServicesApiDemoTest {
     @Test
     @DisplayName("Circuit breaker recourse: FAIL → RECOURSE")
     void circuitBreakerRecourse() {
-        Service service = services.get(cortex().name("recommendations"));
+        Service service = services.percept(cortex().name("recommendations"));
 
         List<Sign> degradedFlow = new ArrayList<>();
         services.subscribe(cortex().subscriber(
@@ -148,8 +148,8 @@ class ServicesApiDemoTest {
     @Test
     @DisplayName("Load balancer redirect: CALL → REDIRECT → SUCCESS")
     void loadBalancerRedirect() {
-        Service primaryService = services.get(cortex().name("api.primary"));
-        Service fallbackService = services.get(cortex().name("api.fallback"));
+        Service primaryService = services.percept(cortex().name("api.primary"));
+        Service fallbackService = services.percept(cortex().name("api.fallback"));
 
         List<String> redirectFlow = new ArrayList<>();
         services.subscribe(cortex().subscriber(
@@ -181,7 +181,7 @@ class ServicesApiDemoTest {
     @Test
     @DisplayName("Rate limiting: CALL → REJECT")
     void rateLimiting() {
-        Service service = services.get(cortex().name("rate-limited-api"));
+        Service service = services.percept(cortex().name("rate-limited-api"));
 
         List<Sign> rejected = new ArrayList<>();
         services.subscribe(cortex().subscriber(
@@ -206,7 +206,7 @@ class ServicesApiDemoTest {
     @Test
     @DisplayName("Work scheduling: SCHEDULE → DELAY → START")
     void workScheduling() {
-        Service batchJob = services.get(cortex().name("nightly-batch"));
+        Service batchJob = services.percept(cortex().name("nightly-batch"));
 
         List<Sign> scheduled = new ArrayList<>();
         services.subscribe(cortex().subscriber(
@@ -234,7 +234,7 @@ class ServicesApiDemoTest {
     @Test
     @DisplayName("Long-running workflow: START → SUSPEND → RESUME → STOP")
     void longRunningWorkflow() {
-        Service workflow = services.get(cortex().name("order-saga"));
+        Service workflow = services.percept(cortex().name("order-saga"));
 
         List<Sign> sagaFlow = new ArrayList<>();
         services.subscribe(cortex().subscriber(
@@ -264,7 +264,7 @@ class ServicesApiDemoTest {
     @Test
     @DisplayName("Service disconnect: CALL → DISCONNECT")
     void serviceDisconnect() {
-        Service service = services.get(cortex().name("remote-service"));
+        Service service = services.percept(cortex().name("remote-service"));
 
         List<Sign> connectionIssues = new ArrayList<>();
         services.subscribe(cortex().subscriber(
@@ -290,8 +290,8 @@ class ServicesApiDemoTest {
     @Test
     @DisplayName("Dual orientation: RELEASE vs RECEIPT")
     void dualPolarity() {
-        Service client = services.get(cortex().name("client"));
-        Service server = services.get(cortex().name("server"));
+        Service client = services.percept(cortex().name("client"));
+        Service server = services.percept(cortex().name("server"));
 
         List<String> orientations = new ArrayList<>();
         services.subscribe(cortex().subscriber(
@@ -324,7 +324,7 @@ class ServicesApiDemoTest {
     @Test
     @DisplayName("All 16 signs available")
     void allSignsAvailable() {
-        Service service = services.get(cortex().name("test-service"));
+        Service service = services.percept(cortex().name("test-service"));
 
         // ACT - Emit all signs
         service.start();

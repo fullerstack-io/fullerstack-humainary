@@ -180,7 +180,7 @@ public class RoutingConduit < P extends Percept, E > implements Conduit < P, E >
   }
 
   @Override
-  public P get ( Name subject ) {
+  public P percept ( Name subject ) {
     // Fast path: return cached percept if exists
     P existingPercept = percepts.get ( subject );
     if ( existingPercept != null ) {
@@ -198,7 +198,7 @@ public class RoutingConduit < P extends Percept, E > implements Conduit < P, E >
 
     if ( cachedPercept == null ) {
       // We created it - notify subscribers AFTER caching
-      // Subscribers receive Subject with simple name, so conduit.get(subject.name()) works
+      // Subscribers receive Subject with simple name, so conduit.percept(subject.name()) works
       notifySubscribersOfNewSubject ( channel.subject () );
       return newPercept;
     } else {
@@ -208,13 +208,13 @@ public class RoutingConduit < P extends Percept, E > implements Conduit < P, E >
   }
 
   @Override
-  public P get ( Subject < ? > subject ) {
-    return get ( subject.name () );
+  public P percept ( Subject < ? > subject ) {
+    return percept ( subject.name () );
   }
 
   @Override
-  public P get ( Substrate < ? > substrate ) {
-    return get ( substrate.subject ().name () );
+  public P percept ( Substrate < ? > substrate ) {
+    return percept ( substrate.subject ().name () );
   }
 
   /**

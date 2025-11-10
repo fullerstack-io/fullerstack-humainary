@@ -41,8 +41,8 @@ class ConduitBehaviorComplianceTest {
    * <p>
    * From {@snippet}:
    * <pre>
-   *   Pipe sensor1 = conduit.get("sensor-1");
-   *   Pipe sensor2 = conduit.get("sensor-2");
+   *   Pipe sensor1 = conduit.percept("sensor-1");
+   *   Pipe sensor2 = conduit.percept("sensor-2");
    *   sensor1.emit(100);  // → subscribers receive 100 from sensor-1
    *   sensor2.emit(200);  // → subscribers receive 200 from sensor-2
    * </pre>
@@ -72,8 +72,8 @@ class ConduitBehaviorComplianceTest {
     ));
 
     // Create dynamic channels
-    Pipe<Integer> sensor1 = conduit.get(cortex().name("sensor-1"));
-    Pipe<Integer> sensor2 = conduit.get(cortex().name("sensor-2"));
+    Pipe<Integer> sensor1 = conduit.percept(cortex().name("sensor-1"));
+    Pipe<Integer> sensor2 = conduit.percept(cortex().name("sensor-2"));
 
     sensor1.emit(100);
     sensor2.emit(200);
@@ -119,8 +119,8 @@ class ConduitBehaviorComplianceTest {
       }
     ));
 
-    Pipe<Integer> cpu = conduit.get(cortex().name("cpu"));
-    Pipe<Integer> memory = conduit.get(cortex().name("memory"));
+    Pipe<Integer> cpu = conduit.percept(cortex().name("cpu"));
+    Pipe<Integer> memory = conduit.percept(cortex().name("memory"));
 
     cpu.emit(50);
     memory.emit(25);
@@ -175,7 +175,7 @@ class ConduitBehaviorComplianceTest {
       }
     ));
 
-    Pipe<String> loginPipe = conduit.get(cortex().name("login"));
+    Pipe<String> loginPipe = conduit.percept(cortex().name("login"));
     loginPipe.emit("user-123");
 
     circuit.await();
@@ -191,8 +191,8 @@ class ConduitBehaviorComplianceTest {
    * <p>
    * From {@snippet}:
    * <pre>
-   *   Pipe sensor = conduit.get("temp-1");
-   *   Pipe same = conduit.get("temp-1");
+   *   Pipe sensor = conduit.percept("temp-1");
+   *   Pipe same = conduit.percept("temp-1");
    *   // sensor == same
    * </pre>
    */
@@ -205,8 +205,8 @@ class ConduitBehaviorComplianceTest {
       Composer.pipe()
     );
 
-    Pipe<Integer> sensor1 = conduit.get(cortex().name("temp-1"));
-    Pipe<Integer> sensor2 = conduit.get(cortex().name("temp-1"));
+    Pipe<Integer> sensor1 = conduit.percept(cortex().name("temp-1"));
+    Pipe<Integer> sensor2 = conduit.percept(cortex().name("temp-1"));
 
     // Verify: Same instance
     assertThat(sensor1).isSameAs(sensor2);
@@ -246,7 +246,7 @@ class ConduitBehaviorComplianceTest {
       }
     ));
 
-    Pipe<Integer> pipe = conduit.get(cortex().name("source"));
+    Pipe<Integer> pipe = conduit.percept(cortex().name("source"));
     pipe.emit(-5);   // Filtered by guard
     pipe.emit(100);  // Passes (1/2)
     pipe.emit(200);  // Passes (2/2)

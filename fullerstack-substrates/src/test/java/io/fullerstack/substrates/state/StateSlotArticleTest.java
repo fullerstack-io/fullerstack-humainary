@@ -230,17 +230,17 @@ class StateSlotArticleTest {
     assertThat ( allSlots ).hasSize ( 3 );
 
     // Verify slot details - returned in reverse chronological order
-    Slot < ? > slot1 = allSlots.get ( 0 );
+    Slot < ? > slot1 = allSlots.percept ( 0 );
     assertThat ( (Object) slot1.name () ).isEqualTo ( XYZ );
     assertThat ( (Object) slot1.type () ).isEqualTo ( boolean.class );  // Primitive type from literal
     assertThat ( (Object) slot1.value () ).isEqualTo ( true );
 
-    Slot < ? > slot2 = allSlots.get ( 1 );
+    Slot < ? > slot2 = allSlots.percept ( 1 );
     assertThat ( (Object) slot2.name () ).isEqualTo ( ABC );
     assertThat ( (Object) slot2.type () ).isEqualTo ( String.class );
     assertThat ( (Object) slot2.value () ).isEqualTo ( "hello" );
 
-    Slot < ? > slot3 = allSlots.get ( 2 );
+    Slot < ? > slot3 = allSlots.percept ( 2 );
     assertThat ( (Object) slot3.name () ).isEqualTo ( XYZ );
     assertThat ( (Object) slot3.type () ).isEqualTo ( int.class );  // Primitive type from literal
     assertThat ( (Object) slot3.value () ).isEqualTo ( 42 );

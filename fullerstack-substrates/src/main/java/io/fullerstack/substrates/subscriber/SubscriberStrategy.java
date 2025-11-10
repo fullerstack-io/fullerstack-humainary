@@ -88,7 +88,7 @@ record PoolStrategy < E >( Pool < ? extends Pipe < E > > pool )
 
   @Override
   public void apply ( Subject < Channel < E > > subject, Registrar < E > registrar ) {
-    Pipe < E > pipe = pool.get ( subject.name () );
+    Pipe < E > pipe = pool.percept ( subject.name () );
     if ( pipe != null ) {
       registrar.register ( pipe );
     }

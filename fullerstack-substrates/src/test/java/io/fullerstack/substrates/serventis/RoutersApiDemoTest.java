@@ -71,7 +71,7 @@ class RoutersApiDemoTest {
     void basicPacketFlow() {
         // Scenario: Router receives packet, makes routing decision, forwards
 
-        Router router = routers.get(cortex().name("router-1"));
+        Router router = routers.percept(cortex().name("router-1"));
 
         List<Sign> packetFlow = new ArrayList<>();
         routers.subscribe(cortex().subscriber(
@@ -103,8 +103,8 @@ class RoutersApiDemoTest {
         // SEND = packet originated here (source node)
         // FORWARD = packet passing through (intermediary)
 
-        Router sourceRouter = routers.get(cortex().name("source-router"));
-        Router intermediateRouter = routers.get(cortex().name("intermediate-router"));
+        Router sourceRouter = routers.percept(cortex().name("source-router"));
+        Router intermediateRouter = routers.percept(cortex().name("intermediate-router"));
 
         List<String> timeline = new ArrayList<>();
         routers.subscribe(cortex().subscriber(
@@ -142,7 +142,7 @@ class RoutersApiDemoTest {
     void packetDrop() {
         // Scenario: Router drops packet (TTL expired, policy, congestion)
 
-        Router router = routers.get(cortex().name("congested-router"));
+        Router router = routers.percept(cortex().name("congested-router"));
 
         AtomicReference<Sign> lastSign = new AtomicReference<>();
         routers.subscribe(cortex().subscriber(
@@ -169,8 +169,8 @@ class RoutersApiDemoTest {
     void fragmentationReassembly() {
         // Scenario: Large packet fragmented due to MTU, then reassembled
 
-        Router sendingRouter = routers.get(cortex().name("sender"));
-        Router receivingRouter = routers.get(cortex().name("receiver"));
+        Router sendingRouter = routers.percept(cortex().name("sender"));
+        Router receivingRouter = routers.percept(cortex().name("receiver"));
 
         List<String> packetLifecycle = new ArrayList<>();
         routers.subscribe(cortex().subscriber(
@@ -209,7 +209,7 @@ class RoutersApiDemoTest {
     void corruptionDetection() {
         // Scenario: Router detects corrupted packet (checksum failure)
 
-        Router router = routers.get(cortex().name("router-1"));
+        Router router = routers.percept(cortex().name("router-1"));
 
         AtomicReference<Sign> lastSign = new AtomicReference<>();
         routers.subscribe(cortex().subscriber(
@@ -236,7 +236,7 @@ class RoutersApiDemoTest {
     void outOfOrderDetection() {
         // Scenario: Packets arrive out of sequence
 
-        Router router = routers.get(cortex().name("router-1"));
+        Router router = routers.percept(cortex().name("router-1"));
 
         List<Sign> events = new ArrayList<>();
         routers.subscribe(cortex().subscriber(
@@ -267,9 +267,9 @@ class RoutersApiDemoTest {
         // Kafka ISR = In-Sync Replicas routing pattern
         // Leader routes writes to followers
 
-        Router partitionLeader = routers.get(cortex().name("partition-0.leader"));
-        Router follower1 = routers.get(cortex().name("partition-0.follower-1"));
-        Router follower2 = routers.get(cortex().name("partition-0.follower-2"));
+        Router partitionLeader = routers.percept(cortex().name("partition-0.leader"));
+        Router follower1 = routers.percept(cortex().name("partition-0.follower-1"));
+        Router follower2 = routers.percept(cortex().name("partition-0.follower-2"));
 
         List<String> replicationFlow = new ArrayList<>();
         routers.subscribe(cortex().subscriber(
@@ -312,8 +312,8 @@ class RoutersApiDemoTest {
     void kafkaPartitionReassignment() {
         // Scenario: Partition moves from broker-1 to broker-2
 
-        Router oldBroker = routers.get(cortex().name("broker-1.partition-5"));
-        Router newBroker = routers.get(cortex().name("broker-2.partition-5"));
+        Router oldBroker = routers.percept(cortex().name("broker-1.partition-5"));
+        Router newBroker = routers.percept(cortex().name("broker-2.partition-5"));
 
         List<String> reassignment = new ArrayList<>();
         routers.subscribe(cortex().subscriber(
@@ -349,8 +349,8 @@ class RoutersApiDemoTest {
     void kafkaISRShrink() {
         // Scenario: Slow follower dropped from ISR
 
-        Router leader = routers.get(cortex().name("partition-leader"));
-        Router slowFollower = routers.get(cortex().name("slow-follower"));
+        Router leader = routers.percept(cortex().name("partition-leader"));
+        Router slowFollower = routers.percept(cortex().name("slow-follower"));
 
         List<String> events = new ArrayList<>();
         routers.subscribe(cortex().subscriber(
@@ -377,7 +377,7 @@ class RoutersApiDemoTest {
     void allRoutingSignsAvailable() {
         // Verify complete API surface
 
-        Router router = routers.get(cortex().name("test-router"));
+        Router router = routers.percept(cortex().name("test-router"));
 
         // ACT: Emit all 9 signs
 
@@ -414,7 +414,7 @@ class RoutersApiDemoTest {
     void highFrequencyPattern() {
         // For high packet rates (>1M pps), use sampling
 
-        Router router = routers.get(cortex().name("high-traffic-router"));
+        Router router = routers.percept(cortex().name("high-traffic-router"));
 
         List<Sign> sampledEvents = new ArrayList<>();
         routers.subscribe(cortex().subscriber(

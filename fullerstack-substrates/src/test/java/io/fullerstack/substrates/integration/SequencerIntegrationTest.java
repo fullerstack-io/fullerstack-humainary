@@ -64,7 +64,7 @@ class SequencerIntegrationTest {
     conduit.subscribe ( subscriber ( InternedName.of ( "subscriber" ), received, latch ) );
 
     // Get pipe and emit values
-    Pipe < Integer > pipe = conduit.get ( InternedName.of ( "sensor-1" ) );
+    Pipe < Integer > pipe = conduit.percept ( InternedName.of ( "sensor-1" ) );
     pipe.emit ( -5 );   // Filtered by guard
     pipe.emit ( 10 );   // Passes
     pipe.emit ( 0 );    // Filtered by guard
@@ -95,7 +95,7 @@ class SequencerIntegrationTest {
 
     conduit.subscribe ( subscriber ( InternedName.of ( "subscriber" ), received, latch ) );
 
-    Pipe < Integer > pipe = conduit.get ( InternedName.of ( "accumulator-1" ) );
+    Pipe < Integer > pipe = conduit.percept ( InternedName.of ( "accumulator-1" ) );
     pipe.emit ( 1 );  // 0 + 1 = 1
     pipe.emit ( 2 );  // 1 + 2 = 3
     pipe.emit ( 3 );  // 3 + 3 = 6
@@ -123,7 +123,7 @@ class SequencerIntegrationTest {
 
     conduit.subscribe ( subscriber ( InternedName.of ( "subscriber" ), received, latch ) );
 
-    Pipe < Integer > pipe = conduit.get ( InternedName.of ( "mapper-1" ) );
+    Pipe < Integer > pipe = conduit.percept ( InternedName.of ( "mapper-1" ) );
     pipe.emit ( 1 );
     pipe.emit ( 5 );
     pipe.emit ( 10 );
@@ -150,7 +150,7 @@ class SequencerIntegrationTest {
 
     conduit.subscribe ( subscriber ( InternedName.of ( "subscriber" ), received, latch ) );
 
-    Pipe < Integer > pipe = conduit.get ( InternedName.of ( "differ-1" ) );
+    Pipe < Integer > pipe = conduit.percept ( InternedName.of ( "differ-1" ) );
     pipe.emit ( 1 );  // First value - passes
     pipe.emit ( 1 );  // Duplicate - filtered
     pipe.emit ( 2 );  // Changed - passes
@@ -179,7 +179,7 @@ class SequencerIntegrationTest {
 
     conduit.subscribe ( subscriber ( InternedName.of ( "subscriber" ), received, latch ) );
 
-    Pipe < Integer > pipe = conduit.get ( InternedName.of ( "sampler-1" ) );
+    Pipe < Integer > pipe = conduit.percept ( InternedName.of ( "sampler-1" ) );
     pipe.emit ( 1 );  // 1st - filtered
     pipe.emit ( 2 );  // 2nd - filtered
     pipe.emit ( 3 );  // 3rd - passes
@@ -209,7 +209,7 @@ class SequencerIntegrationTest {
 
     conduit.subscribe ( subscriber ( InternedName.of ( "subscriber" ), received, latch ) );
 
-    Pipe < Integer > pipe = conduit.get ( InternedName.of ( "sifter-1" ) );
+    Pipe < Integer > pipe = conduit.percept ( InternedName.of ( "sifter-1" ) );
     pipe.emit ( 3 );   // Below 5 - filtered
     pipe.emit ( 5 );   // Equal to 5 - filtered
     pipe.emit ( 6 );   // Above 5 - passes
@@ -243,7 +243,7 @@ class SequencerIntegrationTest {
 
     conduit.subscribe ( subscriber ( InternedName.of ( "subscriber" ), received, latch ) );
 
-    Pipe < Integer > pipe = conduit.get ( InternedName.of ( "complex-1" ) );
+    Pipe < Integer > pipe = conduit.percept ( InternedName.of ( "complex-1" ) );
     pipe.emit ( -1 );  // Filtered by first guard
     pipe.emit ( 1 );   // 1 * 2 = 2, passes
     pipe.emit ( 5 );   // 5 * 2 = 10, passes
@@ -274,8 +274,8 @@ class SequencerIntegrationTest {
     conduit.subscribe ( subscriber ( InternedName.of ( "subscriber" ), received, latch ) );
 
     // Multiple pipes from same conduit, each with own Segment instance
-    Pipe < Integer > pipe1 = conduit.get ( InternedName.of ( "pipe-1" ) );
-    Pipe < Integer > pipe2 = conduit.get ( InternedName.of ( "pipe-2" ) );
+    Pipe < Integer > pipe1 = conduit.percept ( InternedName.of ( "pipe-1" ) );
+    Pipe < Integer > pipe2 = conduit.percept ( InternedName.of ( "pipe-2" ) );
 
     pipe1.emit ( 10 );
     pipe2.emit ( 20 );
@@ -307,9 +307,9 @@ class SequencerIntegrationTest {
     conduit.subscribe ( subscriber ( InternedName.of ( "subscriber" ), received, latch ) );
 
     // Create multiple channels - all should apply the same transformations
-    Pipe < Integer > channel1 = conduit.get ( InternedName.of ( "channel-1" ) );
-    Pipe < Integer > channel2 = conduit.get ( InternedName.of ( "channel-2" ) );
-    Pipe < Integer > channel3 = conduit.get ( InternedName.of ( "channel-3" ) );
+    Pipe < Integer > channel1 = conduit.percept ( InternedName.of ( "channel-1" ) );
+    Pipe < Integer > channel2 = conduit.percept ( InternedName.of ( "channel-2" ) );
+    Pipe < Integer > channel3 = conduit.percept ( InternedName.of ( "channel-3" ) );
 
     // Emit from channel 1
     channel1.emit ( -5 );  // Filtered by guard

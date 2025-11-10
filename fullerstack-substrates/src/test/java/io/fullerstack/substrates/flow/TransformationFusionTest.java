@@ -264,7 +264,7 @@ class TransformationFusionTest {
 
     // First 1750 skipped, then 250 values pass (1750-1999)
     assertEquals ( 250, results.size (), "Should skip 1750 values" );
-    assertEquals ( 1750, results.get ( 0 ), "First value should be 1750" );
-    assertEquals ( 1999, results.get ( results.size () - 1 ), "Last value should be 1999" );
+    assertEquals ( 1750, results.percept ( 0 ), "First value should be 1750" );
+    assertEquals ( 1999, results.percept ( results.size () - 1 ), "Last value should be 1999" );
   }
 }

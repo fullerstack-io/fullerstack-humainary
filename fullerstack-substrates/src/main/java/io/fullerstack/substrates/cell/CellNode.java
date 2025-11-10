@@ -123,10 +123,10 @@ public class CellNode < I, E > implements Cell < I, E > {
   }
 
   @Override
-  public Cell < I, E > get ( Name name ) {
+  public Cell < I, E > percept ( Name name ) {
     return children.computeIfAbsent ( name, n -> {
       // RC7 Pattern: Create Channel directly like Circuit.cell() does
-      // Conduit.get() returns Percept (Pipe), not Channel
+      // Conduit.percept() returns Percept (Pipe), not Channel
       // We need to create Channel and pass it to composers
       @SuppressWarnings ( "unchecked" )
       RoutingConduit < ?, E > transformingConduit =
@@ -145,13 +145,13 @@ public class CellNode < I, E > implements Cell < I, E > {
   }
 
   @Override
-  public Cell < I, E > get ( Subject < ? > subject ) {
-    return get ( subject.name () );
+  public Cell < I, E > percept ( Subject < ? > subject ) {
+    return percept ( subject.name () );
   }
 
   @Override
-  public Cell < I, E > get ( Substrate < ? > substrate ) {
-    return get ( substrate.subject ().name () );
+  public Cell < I, E > percept ( Substrate < ? > substrate ) {
+    return percept ( substrate.subject ().name () );
   }
 
   // ========== Container implementation ==========

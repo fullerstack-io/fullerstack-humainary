@@ -59,7 +59,7 @@ class ResourcesApiDemoTest {
     @Test
     @DisplayName("Successful acquisition: ATTEMPT → ACQUIRE → GRANT → RELEASE")
     void successfulAcquisition() {
-        Resources.Resource connectionPool = resources.get(cortex().name("connection-pool"));
+        Resources.Resource connectionPool = resources.percept(cortex().name("connection-pool"));
 
         List<Sign> lifecycle = new ArrayList<>();
         resources.subscribe(cortex().subscriber(
@@ -89,7 +89,7 @@ class ResourcesApiDemoTest {
     @Test
     @DisplayName("Resources.Resource denial: ATTEMPT → ACQUIRE → DENY")
     void resourceDenial() {
-        Resources.Resource threadPool = resources.get(cortex().name("worker-threads"));
+        Resources.Resource threadPool = resources.percept(cortex().name("worker-threads"));
 
         List<Sign> events = new ArrayList<>();
         resources.subscribe(cortex().subscriber(
@@ -117,7 +117,7 @@ class ResourcesApiDemoTest {
     @Test
     @DisplayName("Resources.Resource timeout: ATTEMPT → ACQUIRE → TIMEOUT")
     void resourceTimeout() {
-        Resources.Resource resource = resources.get(cortex().name("lock"));
+        Resources.Resource resource = resources.percept(cortex().name("lock"));
 
         List<Sign> events = new ArrayList<>();
         resources.subscribe(cortex().subscriber(
@@ -141,8 +141,8 @@ class ResourcesApiDemoTest {
     @Test
     @DisplayName("Multiple resource tracking")
     void multipleResourceTracking() {
-        Resources.Resource conn1 = resources.get(cortex().name("connection-1"));
-        Resources.Resource conn2 = resources.get(cortex().name("connection-2"));
+        Resources.Resource conn1 = resources.percept(cortex().name("connection-1"));
+        Resources.Resource conn2 = resources.percept(cortex().name("connection-2"));
 
         List<String> events = new ArrayList<>();
         resources.subscribe(cortex().subscriber(
@@ -172,7 +172,7 @@ class ResourcesApiDemoTest {
     @Test
     @DisplayName("All 6 signs available")
     void allSignsAvailable() {
-        Resources.Resource resource = resources.get(cortex().name("test-resource"));
+        Resources.Resource resource = resources.percept(cortex().name("test-resource"));
 
         // ACT
         resource.attempt();

@@ -45,7 +45,7 @@ class SubjectHierarchyTest {
     counters.subscribe ( subscriber );
 
     // Create Channel (triggers subscriber)
-    Pipe < Integer > cacheHit = counters.get ( cortex.name ( "cache.hit" ) );
+    Pipe < Integer > cacheHit = counters.percept ( cortex.name ( "cache.hit" ) );
 
     Subject < ? > channelSubject = channelSubjectHolder[0];
     assertThat ( (Object) channelSubject ).isNotNull ();
@@ -57,14 +57,14 @@ class SubjectHierarchyTest {
     // Verify hierarchy via enclosure()
     // Channel's parent should be Conduit
     assertThat ( channelSubject.enclosure () ).isPresent ();
-    Subject < ? > conduitSubject = channelSubject.enclosure ().get ();
+    Subject < ? > conduitSubject = channelSubject.enclosure ().percept ();
     // Conduit's name is hierarchical: "Redis.Counters"
     assertThat ( conduitSubject.name ().path ().toString () ).contains ( "Counters" );
     assertThat ( conduitSubject.type () ).isEqualTo ( Conduit.class );
 
     // Conduit's parent should be Circuit
     assertThat ( conduitSubject.enclosure () ).isPresent ();
-    Subject < ? > circuitSubject = conduitSubject.enclosure ().get ();
+    Subject < ? > circuitSubject = conduitSubject.enclosure ().percept ();
     assertThat ( circuitSubject.name ().path () ).hasToString ( "Redis" );
     assertThat ( circuitSubject.type () ).isEqualTo ( Circuit.class );
 
@@ -96,7 +96,7 @@ class SubjectHierarchyTest {
 
     counters.subscribe ( subscriber );
 
-    counters.get ( cortex.name ( "cache.hit" ) );
+    counters.percept ( cortex.name ( "cache.hit" ) );
 
     Subject < ? > channelSubject = channelSubjectHolder[0];
 

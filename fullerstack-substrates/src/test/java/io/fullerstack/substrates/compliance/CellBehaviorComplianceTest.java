@@ -68,8 +68,8 @@ class CellBehaviorComplianceTest {
     );
 
     // Create child cells
-    Cell<Integer, Integer> child1 = root.get(cortex().name("child1"));
-    Cell<Integer, Integer> child2 = root.get(cortex().name("child2"));
+    Cell<Integer, Integer> child1 = root.percept(cortex().name("child1"));
+    Cell<Integer, Integer> child2 = root.percept(cortex().name("child2"));
 
     // Emit from children (RC5 API: cell.emit())
     System.out.println("Emitting 100 from child1...");
@@ -93,7 +93,7 @@ class CellBehaviorComplianceTest {
    * <p>
    * From {@snippet}:
    * <pre>
-   *   Cell level2 = level1.get("level2");
+   *   Cell level2 = level1.percept("level2");
    *   level2.emit(100);  // → flows up through level1 to root
    * </pre>
    */
@@ -116,10 +116,10 @@ class CellBehaviorComplianceTest {
     );
 
     // Create level 1 child
-    Cell<Integer, Integer> level1 = root.get(cortex().name("level1"));
+    Cell<Integer, Integer> level1 = root.percept(cortex().name("level1"));
 
     // Create level 2 grandchild
-    Cell<Integer, Integer> level2 = level1.get(cortex().name("level2"));
+    Cell<Integer, Integer> level2 = level1.percept(cortex().name("level2"));
 
     // Emit from deepest level
     level2.emit(100);
@@ -160,8 +160,8 @@ class CellBehaviorComplianceTest {
     );
 
     // Get two children - each gets its own Channel with independent state
-    Cell<Integer, Integer> child1 = root.get(cortex().name("child1"));
-    Cell<Integer, Integer> child2 = root.get(cortex().name("child2"));
+    Cell<Integer, Integer> child1 = root.percept(cortex().name("child1"));
+    Cell<Integer, Integer> child2 = root.percept(cortex().name("child2"));
 
     // Emit same value from both children
     child1.emit(10);
@@ -196,8 +196,8 @@ class CellBehaviorComplianceTest {
     );
 
     // Get child twice with same name
-    Cell<Integer, Integer> child1 = root.get(cortex().name("child"));
-    Cell<Integer, Integer> child2 = root.get(cortex().name("child"));
+    Cell<Integer, Integer> child1 = root.percept(cortex().name("child"));
+    Cell<Integer, Integer> child2 = root.percept(cortex().name("child"));
 
     // Verify: Same instance returned (cached)
     assertThat((Object) child1).isSameAs(child2);
@@ -223,7 +223,7 @@ class CellBehaviorComplianceTest {
       cortex().pipe()
     );
 
-    Cell<Integer, Integer> child = root.get(cortex().name("child"));
+    Cell<Integer, Integer> child = root.percept(cortex().name("child"));
 
     // Verify: Subject hierarchy
     assertThat(child.subject().name().toString()).isEqualTo("child");
@@ -254,7 +254,7 @@ class CellBehaviorComplianceTest {
       cortex().pipe()
     );
 
-    Cell<Integer, Integer> child = root.get(cortex().name("child"));
+    Cell<Integer, Integer> child = root.percept(cortex().name("child"));
 
     // Verify: Child's enclosure is parent
     assertThat(child.enclosure()).isPresent();

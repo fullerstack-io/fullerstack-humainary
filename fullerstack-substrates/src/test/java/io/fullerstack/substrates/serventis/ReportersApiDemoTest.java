@@ -56,7 +56,7 @@ class ReportersApiDemoTest {
     @Test
     @DisplayName("Normal operation")
     void normalOperation() {
-        Reporter systemStatus = reporters.get(cortex().name("cluster.status"));
+        Reporter systemStatus = reporters.percept(cortex().name("cluster.status"));
 
         List<Sign> situations = new ArrayList<>();
         reporters.subscribe(cortex().subscriber(
@@ -78,7 +78,7 @@ class ReportersApiDemoTest {
     @Test
     @DisplayName("Escalation path: NORMAL → WARNING → CRITICAL")
     void escalationPath() {
-        Reporter consumerLagStatus = reporters.get(cortex().name("consumer.lag.status"));
+        Reporter consumerLagStatus = reporters.percept(cortex().name("consumer.lag.status"));
 
         List<Sign> escalation = new ArrayList<>();
         reporters.subscribe(cortex().subscriber(
@@ -106,7 +106,7 @@ class ReportersApiDemoTest {
     @Test
     @DisplayName("De-escalation: CRITICAL → WARNING → NORMAL")
     void deEscalation() {
-        Reporter incidentStatus = reporters.get(cortex().name("incident.status"));
+        Reporter incidentStatus = reporters.percept(cortex().name("incident.status"));
 
         List<Sign> recovery = new ArrayList<>();
         reporters.subscribe(cortex().subscriber(
@@ -134,7 +134,7 @@ class ReportersApiDemoTest {
     @Test
     @DisplayName("Direct critical alert")
     void directCriticalAlert() {
-        Reporter brokerStatus = reporters.get(cortex().name("broker.down"));
+        Reporter brokerStatus = reporters.percept(cortex().name("broker.down"));
 
         List<Sign> alert = new ArrayList<>();
         reporters.subscribe(cortex().subscriber(
@@ -156,8 +156,8 @@ class ReportersApiDemoTest {
     @Test
     @DisplayName("Multiple situation tracking")
     void multipleSituationTracking() {
-        Reporter lagStatus = reporters.get(cortex().name("lag.status"));
-        Reporter errorStatus = reporters.get(cortex().name("error.status"));
+        Reporter lagStatus = reporters.percept(cortex().name("lag.status"));
+        Reporter errorStatus = reporters.percept(cortex().name("error.status"));
 
         List<String> situations = new ArrayList<>();
         reporters.subscribe(cortex().subscriber(
@@ -185,7 +185,7 @@ class ReportersApiDemoTest {
     @Test
     @DisplayName("All 3 urgency signs available")
     void allUrgencySignsAvailable() {
-        Reporter reporter = reporters.get(cortex().name("test-reporter"));
+        Reporter reporter = reporters.percept(cortex().name("test-reporter"));
 
         // ACT
         reporter.normal();

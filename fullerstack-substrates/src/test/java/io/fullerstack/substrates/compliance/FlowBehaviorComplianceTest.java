@@ -74,7 +74,7 @@ class FlowBehaviorComplianceTest {
       }
     ));
 
-    Pipe<Integer> pipe = conduit.get(cortex().name("source"));
+    Pipe<Integer> pipe = conduit.percept(cortex().name("source"));
     pipe.emit(-5);
     pipe.emit(10);
     pipe.emit(-3);
@@ -119,7 +119,7 @@ class FlowBehaviorComplianceTest {
       }
     ));
 
-    Pipe<Integer> pipe = conduit.get(cortex().name("source"));
+    Pipe<Integer> pipe = conduit.percept(cortex().name("source"));
     pipe.emit(1);
     pipe.emit(2);
     pipe.emit(3);
@@ -162,7 +162,7 @@ class FlowBehaviorComplianceTest {
       }
     ));
 
-    Pipe<Integer> pipe = conduit.get(cortex().name("source"));
+    Pipe<Integer> pipe = conduit.percept(cortex().name("source"));
     pipe.emit(5);
     pipe.emit(10);
 
@@ -204,7 +204,7 @@ class FlowBehaviorComplianceTest {
       }
     ));
 
-    Pipe<Integer> pipe = conduit.get(cortex().name("accumulator"));
+    Pipe<Integer> pipe = conduit.percept(cortex().name("accumulator"));
     pipe.emit(1);
     pipe.emit(2);
     pipe.emit(3);
@@ -247,7 +247,7 @@ class FlowBehaviorComplianceTest {
       }
     ));
 
-    Pipe<Integer> pipe = conduit.get(cortex().name("source"));
+    Pipe<Integer> pipe = conduit.percept(cortex().name("source"));
     pipe.emit(1);
     pipe.emit(1);
     pipe.emit(2);
@@ -292,7 +292,7 @@ class FlowBehaviorComplianceTest {
       }
     ));
 
-    Pipe<Integer> pipe = conduit.get(cortex().name("source"));
+    Pipe<Integer> pipe = conduit.percept(cortex().name("source"));
     pipe.emit(1);
     pipe.emit(2);
     pipe.emit(3);
@@ -338,7 +338,7 @@ class FlowBehaviorComplianceTest {
       }
     ));
 
-    Pipe<Integer> pipe = conduit.get(cortex().name("source"));
+    Pipe<Integer> pipe = conduit.percept(cortex().name("source"));
     pipe.emit(1);
     pipe.emit(2);
     pipe.emit(3);
@@ -381,7 +381,7 @@ class FlowBehaviorComplianceTest {
       }
     ));
 
-    Pipe<Integer> pipe = conduit.get(cortex().name("source"));
+    Pipe<Integer> pipe = conduit.percept(cortex().name("source"));
     pipe.emit(3);
     pipe.emit(5);
     pipe.emit(10);
@@ -429,7 +429,7 @@ class FlowBehaviorComplianceTest {
       }
     ));
 
-    Pipe<Integer> pipe = conduit.get(cortex().name("source"));
+    Pipe<Integer> pipe = conduit.percept(cortex().name("source"));
     pipe.emit(-5);
     pipe.emit(1);
     pipe.emit(5);

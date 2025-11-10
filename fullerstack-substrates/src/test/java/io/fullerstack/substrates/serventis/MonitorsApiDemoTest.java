@@ -44,7 +44,7 @@ class MonitorsApiDemoTest {
     @Test
     @DisplayName("Basic condition assessment")
     void basicConditionAssessment() {
-        Monitor monitor = monitors.get(cortex().name("broker-health"));
+        Monitor monitor = monitors.percept(cortex().name("broker-health"));
 
         List<Signal> signals = new ArrayList<>();
         monitors.subscribe(cortex().subscriber(
@@ -68,7 +68,7 @@ class MonitorsApiDemoTest {
     @Test
     @DisplayName("All 7 condition signs available")
     void allConditionsAvailable() {
-        Monitor monitor = monitors.get(cortex().name("test-monitor"));
+        Monitor monitor = monitors.percept(cortex().name("test-monitor"));
 
         // ACT
         monitor.converging(CONFIRMED);

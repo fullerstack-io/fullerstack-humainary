@@ -62,8 +62,8 @@ class AgentsApiDemoTest {
     void promiseLifecycle() {
         // Scenario: Auto-scaler promises to scale consumer group
 
-        Agent scaler = agents.get(cortex().name("auto-scaler"));
-        Agent monitor = agents.get(cortex().name("lag-monitor"));
+        Agent scaler = agents.percept(cortex().name("auto-scaler"));
+        Agent monitor = agents.percept(cortex().name("lag-monitor"));
 
         List<Signal> scalerSignals = new ArrayList<>();
         List<Signal> monitorSignals = new ArrayList<>();
@@ -125,8 +125,8 @@ class AgentsApiDemoTest {
     void promiseBreach() {
         // Scenario: Consumer promises to join rebalance but times out
 
-        Agent consumer = agents.get(cortex().name("consumer-1"));
-        Agent coordinator = agents.get(cortex().name("group-coordinator"));
+        Agent consumer = agents.percept(cortex().name("consumer-1"));
+        Agent coordinator = agents.percept(cortex().name("group-coordinator"));
 
         AtomicReference<Signal> lastSignal = new AtomicReference<>();
         agents.subscribe(cortex().subscriber(
@@ -154,7 +154,7 @@ class AgentsApiDemoTest {
     void promiseRetraction() {
         // Scenario: Broker promises capacity but must retract
 
-        Agent broker = agents.get(cortex().name("broker-1"));
+        Agent broker = agents.percept(cortex().name("broker-1"));
 
         AtomicReference<Signal> lastSignal = new AtomicReference<>();
         agents.subscribe(cortex().subscriber(
@@ -179,9 +179,9 @@ class AgentsApiDemoTest {
     void dependencyManagement() {
         // Scenario: Leader depends on followers for replication
 
-        Agent leader = agents.get(cortex().name("partition-leader"));
-        Agent follower1 = agents.get(cortex().name("follower-1"));
-        Agent follower2 = agents.get(cortex().name("follower-2"));
+        Agent leader = agents.percept(cortex().name("partition-leader"));
+        Agent follower1 = agents.percept(cortex().name("follower-1"));
+        Agent follower2 = agents.percept(cortex().name("follower-2"));
 
         List<Signal> leaderSignals = new ArrayList<>();
 
@@ -225,9 +225,9 @@ class AgentsApiDemoTest {
         // Scenario: Multiple agents coordinate via promises
         // Controller coordinates partition reassignment across brokers
 
-        Agent controller = agents.get(cortex().name("controller"));
-        Agent broker1 = agents.get(cortex().name("broker-1"));
-        Agent broker2 = agents.get(cortex().name("broker-2"));
+        Agent controller = agents.percept(cortex().name("controller"));
+        Agent broker1 = agents.percept(cortex().name("broker-1"));
+        Agent broker2 = agents.percept(cortex().name("broker-2"));
 
         List<String> timeline = new ArrayList<>();
 
@@ -285,7 +285,7 @@ class AgentsApiDemoTest {
     void perspectiveDistinction() {
         // Demonstrates the dual-direction signal model
 
-        Agent agent = agents.get(cortex().name("test-agent"));
+        Agent agent = agents.percept(cortex().name("test-agent"));
 
         List<Signal> signals = new ArrayList<>();
         agents.subscribe(cortex().subscriber(
@@ -331,7 +331,7 @@ class AgentsApiDemoTest {
     void allSignalsAvailable() {
         // Verify complete API surface
 
-        Agent agent = agents.get(cortex().name("test-agent"));
+        Agent agent = agents.percept(cortex().name("test-agent"));
 
         // ACT: Emit all 20 signals
 

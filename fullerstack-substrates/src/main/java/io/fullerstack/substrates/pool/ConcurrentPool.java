@@ -34,21 +34,21 @@ public class ConcurrentPool < P extends Percept > implements Pool < P > {
   }
 
   @Override
-  public P get ( Name name ) {
+  public P percept ( Name name ) {
     Objects.requireNonNull ( name, "Name cannot be null" );
     return percepts.computeIfAbsent ( name, factory::apply );
   }
 
   @Override
-  public P get ( Substrate < ? > substrate ) {
+  public P percept ( Substrate < ? > substrate ) {
     Objects.requireNonNull ( substrate, "Substrate cannot be null" );
-    return get ( substrate.subject ().name () );
+    return percept ( substrate.subject ().name () );
   }
 
   @Override
-  public P get ( Subject < ? > subject ) {
+  public P percept ( Subject < ? > subject ) {
     Objects.requireNonNull ( subject, "Subject cannot be null" );
-    return get ( subject.name () );
+    return percept ( subject.name () );
   }
 
   /**
