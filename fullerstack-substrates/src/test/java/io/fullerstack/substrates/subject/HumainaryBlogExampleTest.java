@@ -74,12 +74,12 @@ class HumainaryBlogExampleTest {
 
     // Channel → Conduit → Circuit hierarchy
     assertThat ( channelSubject.enclosure () ).as ( "Channel should have Conduit as parent" ).isPresent ();
-    Subject < ? > conduitSubject = channelSubject.enclosure ().percept ();
+    Subject < ? > conduitSubject = channelSubject.enclosure ().get ();
     System.out.println ( "Conduit Subject: " + conduitSubject.part () );
     assertThat ( conduitSubject.type () ).isEqualTo ( Conduit.class );
 
     assertThat ( conduitSubject.enclosure () ).as ( "Conduit should have Circuit as parent" ).isPresent ();
-    Subject < ? > circuitSubject = conduitSubject.enclosure ().percept ();
+    Subject < ? > circuitSubject = conduitSubject.enclosure ().get ();
     System.out.println ( "Circuit Subject: " + circuitSubject.part () );
     assertThat ( circuitSubject.type () ).isEqualTo ( Circuit.class );
 
@@ -174,7 +174,7 @@ class HumainaryBlogExampleTest {
     // Verify hierarchy
     assertThat ( extendedName.enclosure () )
       .isPresent ()
-      .percept ()
+      .get ()
       .isEqualTo ( baseName );
 
     // Verify part() returns just the leaf

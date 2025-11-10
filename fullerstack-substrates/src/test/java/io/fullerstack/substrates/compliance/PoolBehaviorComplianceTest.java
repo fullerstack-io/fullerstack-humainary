@@ -83,9 +83,9 @@ class PoolBehaviorComplianceTest {
     Pool<Pipe<String>> pool = new ConcurrentPool<>(name -> new MockPipe("instance-" + name.part()));
 
     Name name = cortex().name("entity");
-    Pipe<String> first = pool.get(name);
-    Pipe<String> second = pool.get(name);
-    Pipe<String> third = pool.get(name);
+    Pipe<String> first = pool.percept(name);
+    Pipe<String> second = pool.percept(name);
+    Pipe<String> third = pool.percept(name);
 
     // Verify: Same object reference (identity, not just equality)
     assertThat(first).isSameAs(second);
@@ -114,9 +114,9 @@ class PoolBehaviorComplianceTest {
     Name name = cortex().name("entity");
 
     // Access same name multiple times
-    pool.get(name);
-    pool.get(name);
-    pool.get(name);
+    pool.percept(name);
+    pool.percept(name);
+    pool.percept(name);
 
     // Verify: Factory called exactly once
     assertThat(factoryCalls.get()).isEqualTo(1);
@@ -157,7 +157,7 @@ class PoolBehaviorComplianceTest {
       new Thread(() -> {
         try {
           startLatch.await(); // Wait for all threads to be ready
-          results[index] = pool.get(name);
+          results[index] = pool.percept(name);
         } catch (InterruptedException e) {
           Thread.currentThread().interrupt();
         } finally {
@@ -201,10 +201,10 @@ class PoolBehaviorComplianceTest {
       );
 
       // Access via Subject
-      Pipe<String> viaSubject = pool.get(conduit.subject());
+      Pipe<String> viaSubject = pool.percept(conduit.subject());
 
       // Access via Name directly
-      Pipe<String> viaName = pool.get(cortex().name("entity"));
+      Pipe<String> viaName = pool.percept(cortex().name("entity"));
 
       // Verify: Both return the same instance
       assertThat(viaSubject).isSameAs(viaName);
@@ -235,10 +235,10 @@ class PoolBehaviorComplianceTest {
       );
 
       // Access via Substrate
-      Pipe<String> viaSubstrate = pool.get((Substrate<?>) conduit);
+      Pipe<String> viaSubstrate = pool.percept((Substrate<?>) conduit);
 
       // Access via Name directly
-      Pipe<String> viaName = pool.get(cortex().name("entity"));
+      Pipe<String> viaName = pool.percept(cortex().name("entity"));
 
       // Verify: Both return the same instance
       assertThat(viaSubstrate).isSameAs(viaName);
@@ -267,9 +267,9 @@ class PoolBehaviorComplianceTest {
       Conduit<Pipe<Integer>, Integer> conduit = circuit.conduit(entityName, Composer.pipe());
 
       // Access via all three methods
-      Pipe<String> viaName = pool.get(entityName);
-      Pipe<String> viaSubject = pool.get(conduit.subject());
-      Pipe<String> viaSubstrate = pool.get((Substrate<?>) conduit);
+      Pipe<String> viaName = pool.percept(entityName);
+      Pipe<String> viaSubject = pool.percept(conduit.subject());
+      Pipe<String> viaSubstrate = pool.percept((Substrate<?>) conduit);
 
       // Verify: All return the same instance
       assertThat(viaName).isSameAs(viaSubject);
@@ -291,9 +291,9 @@ class PoolBehaviorComplianceTest {
   void testCaching_DifferentNamesReturnDifferentInstances() {
     Pool<Pipe<String>> pool = new ConcurrentPool<>(name -> new MockPipe("instance-" + name.part()));
 
-    Pipe<String> entity1 = pool.get(cortex().name("entity1"));
-    Pipe<String> entity2 = pool.get(cortex().name("entity2"));
-    Pipe<String> entity3 = pool.get(cortex().name("entity3"));
+    Pipe<String> entity1 = pool.percept(cortex().name("entity1"));
+    Pipe<String> entity2 = pool.percept(cortex().name("entity2"));
+    Pipe<String> entity3 = pool.percept(cortex().name("entity3"));
 
     // Verify: Different instances for different names
     assertThat(entity1).isNotSameAs(entity2);
@@ -322,7 +322,7 @@ class PoolBehaviorComplianceTest {
   void testReturnValue_NeverNull() {
     Pool<Pipe<String>> pool = new ConcurrentPool<>(name -> new MockPipe("non-null-" + name.part()));
 
-    Pipe<String> result = pool.get(cortex().name("entity"));
+    Pipe<String> result = pool.percept(cortex().name("entity"));
 
     // Verify: Result is not null (API contract)
     assertThat(result).isNotNull();

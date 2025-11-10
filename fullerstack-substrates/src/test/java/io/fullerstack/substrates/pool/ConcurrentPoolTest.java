@@ -78,7 +78,7 @@ class ConcurrentPoolTest {
     pool.percept ( name );
     pool.percept ( name );
 
-    assertThat ( factoryCalls.percept () ).isEqualTo ( 1 );
+    assertThat ( factoryCalls.get () ).isEqualTo ( 1 );
   }
 
   @Test

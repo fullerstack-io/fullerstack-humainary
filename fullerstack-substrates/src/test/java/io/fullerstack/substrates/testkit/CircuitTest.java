@@ -212,7 +212,7 @@ final class CircuitTest
         "Cannot call Circuit::await from within a circuit's thread",
         thrown.getMessage ()
       );
-      assertNotNull ( workerThread.percept (), "Subscriber should execute on circuit worker thread" );
+      assertNotNull ( workerThread.get (), "Subscriber should execute on circuit worker thread" );
 
     } finally {
 
@@ -488,9 +488,9 @@ final class CircuitTest
         sink.drain ().toList ();
 
       assertEquals ( 3, captures.size () );
-      assertEquals ( 10, captures.percept ( 0 ).emission () );
-      assertEquals ( 20, captures.percept ( 1 ).emission () );
-      assertEquals ( 30, captures.percept ( 2 ).emission () );
+      assertEquals ( 10, captures.get ( 0 ).emission () );
+      assertEquals ( 20, captures.get ( 1 ).emission () );
+      assertEquals ( 30, captures.get ( 2 ).emission () );
 
       sink.close ();
 

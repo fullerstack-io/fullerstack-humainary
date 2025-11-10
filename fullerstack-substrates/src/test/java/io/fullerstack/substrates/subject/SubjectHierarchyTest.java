@@ -57,14 +57,14 @@ class SubjectHierarchyTest {
     // Verify hierarchy via enclosure()
     // Channel's parent should be Conduit
     assertThat ( channelSubject.enclosure () ).isPresent ();
-    Subject < ? > conduitSubject = channelSubject.enclosure ().percept ();
+    Subject < ? > conduitSubject = channelSubject.enclosure ().get ();
     // Conduit's name is hierarchical: "Redis.Counters"
     assertThat ( conduitSubject.name ().path ().toString () ).contains ( "Counters" );
     assertThat ( conduitSubject.type () ).isEqualTo ( Conduit.class );
 
     // Conduit's parent should be Circuit
     assertThat ( conduitSubject.enclosure () ).isPresent ();
-    Subject < ? > circuitSubject = conduitSubject.enclosure ().percept ();
+    Subject < ? > circuitSubject = conduitSubject.enclosure ().get ();
     assertThat ( circuitSubject.name ().path () ).hasToString ( "Redis" );
     assertThat ( circuitSubject.type () ).isEqualTo ( Circuit.class );
 
