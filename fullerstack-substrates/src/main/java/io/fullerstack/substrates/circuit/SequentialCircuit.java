@@ -316,6 +316,7 @@ public class SequentialCircuit implements Circuit, Scheduler {
   @Override
   public < P extends Percept, E > Conduit < P, E > conduit ( Composer < E, ? extends P > composer ) {
     // Generate unique name for unnamed conduits to avoid caching collisions
+    // Each call creates a new conduit (TCK requirement: different composer instances → different conduits)
     return conduit ( InternedName.of ( "conduit-" + UuidIdentifier.generate ().toString () ), composer );
   }
 
