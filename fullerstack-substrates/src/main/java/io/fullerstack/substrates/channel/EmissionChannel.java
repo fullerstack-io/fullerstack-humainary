@@ -1,7 +1,7 @@
 package io.fullerstack.substrates.channel;
 
 import io.humainary.substrates.api.Substrates.*;
-import io.fullerstack.substrates.id.UuidIdentifier;
+import io.fullerstack.substrates.id.SequentialIdentifier;
 import io.fullerstack.substrates.pipe.ProducerPipe;
 import io.fullerstack.substrates.flow.FlowRegulator;
 import io.fullerstack.substrates.state.LinkedState;
@@ -73,7 +73,7 @@ public class EmissionChannel < E > implements Channel < E > {
   public EmissionChannel ( Name channelName, RoutingConduit < ?, E > conduit, Consumer < Flow < E > > flowConfigurer ) {
     this.conduit = Objects.requireNonNull ( conduit, "Conduit cannot be null" );
     this.channelSubject = new ContextualSubject <> (
-      UuidIdentifier.generate (),
+      SequentialIdentifier.generate (),
       channelName,  // Simple name - hierarchy implicit through Extent.enclosure()
       LinkedState.empty (),
       Channel.class,

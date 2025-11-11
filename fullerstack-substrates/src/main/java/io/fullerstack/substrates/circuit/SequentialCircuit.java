@@ -5,6 +5,7 @@ import static io.humainary.substrates.api.Substrates.cortex;
 import io.fullerstack.substrates.cell.CellNode;
 import io.fullerstack.substrates.channel.EmissionChannel;
 import io.fullerstack.substrates.conduit.RoutingConduit;
+import io.fullerstack.substrates.id.SequentialIdentifier;
 import io.fullerstack.substrates.id.UuidIdentifier;
 import io.fullerstack.substrates.pool.ConcurrentPool;
 import io.fullerstack.substrates.state.LinkedState;
@@ -122,7 +123,7 @@ public class SequentialCircuit implements Circuit, Scheduler {
   public SequentialCircuit ( Name name ) {
     Objects.requireNonNull ( name, "Circuit name cannot be null" );
     this.conduits = new ConcurrentHashMap <> ();
-    Id id = UuidIdentifier.generate ();
+    Id id = SequentialIdentifier.generate ();
     this.circuitSubject = new ContextualSubject <> (
       id,
       name,
@@ -317,7 +318,7 @@ public class SequentialCircuit implements Circuit, Scheduler {
   public < P extends Percept, E > Conduit < P, E > conduit ( Composer < E, ? extends P > composer ) {
     // Generate unique name for unnamed conduits to avoid caching collisions
     // Each call creates a new conduit (TCK requirement: different composer instances → different conduits)
-    return conduit ( InternedName.of ( "conduit-" + UuidIdentifier.generate ().toString () ), composer );
+    return conduit ( InternedName.of ( "conduit-" + SequentialIdentifier.generate ().toString () ), composer );
   }
 
   @Override
