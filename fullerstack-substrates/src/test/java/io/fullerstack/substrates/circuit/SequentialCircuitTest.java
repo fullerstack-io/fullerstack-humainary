@@ -88,17 +88,8 @@ class SequentialCircuitTest {
     assertThat ( (Object) conduit1 ).isNotSameAs ( conduit2 );
   }
 
-  @Test
-  void shouldCacheConduitsWithSameNameAndComposer () {
-    circuit = new SequentialCircuit ( InternedName.of ( "test" ) );
-
-    Composer < String, Pipe < String > > composer = pipe ();
-
-    Conduit < Pipe < String >, String > conduit1 = circuit.conduit ( InternedName.of ( "cached" ), composer );
-    Conduit < Pipe < String >, String > conduit2 = circuit.conduit ( InternedName.of ( "cached" ), composer );
-
-    assertThat ( (Object) conduit1 ).isSameAs ( conduit2 );
-  }
+  // Caching removed - conduits are created fresh every time (matches reference implementation)
+  // This aligns with TCK requirement that circuit.conduit(composer) creates new instance each time
 
   @Test
   void shouldProvideAccessToSubject () {

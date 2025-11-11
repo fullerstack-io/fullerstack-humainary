@@ -40,7 +40,7 @@ import java.util.function.Function;
  * <p>
  * < p >< b >Component Management:</b >
  * < ul >
- * < li >Conduit caching by (name, composer type) - different composers create different conduits</li >
+ * < li >Conduit creation via direct construction (no caching - matches reference implementation)</li >
  * < li >Cell creation with hierarchical structure</li >
  * < li >State subscriber management (Circuit IS-A Source&lt;State&gt;)</li >
  * </ul >
@@ -57,55 +57,10 @@ public class SequentialCircuit implements Circuit, Scheduler {
 
   private final Valve valve;
 
-  private final    Map < Name, ConduitSlot > conduits;
-  private volatile boolean                   closed = false;
+  private volatile boolean closed = false;
 
   // Direct subscriber management for State (Circuit IS-A Source< State >)
   private final List < Subscriber < State > > stateSubscribers = new CopyOnWriteArrayList <> ();
-
-  /**
-   * Optimized storage for Conduits with single-slot fast path + overflow map.
-   * <p>
-   * Performance: 95% of names have 1 composer (5ns lookup), 5% have multiple composers (13ns).
-   * This is 15× faster than composite key approach for common case.
-   * <p>
-   * Pattern: Primary slot holds the first composer (usually Composer.pipe()), overflow map
-   * holds additional composers (rare but fully supported for custom domain types).
-   */
-  private static class ConduitSlot {
-    final    Class < ? >                           primaryClass;
-    final    Conduit < ?, ? >                      primaryConduit;
-    volatile Map < Class < ? >, Conduit < ?, ? > > overflow;
-
-    ConduitSlot ( Class < ? > primaryClass, Conduit < ?, ? > primaryConduit ) {
-      this.primaryClass = primaryClass;
-      this.primaryConduit = primaryConduit;
-      this.overflow = null;
-    }
-
-    Conduit < ?, ? > get ( Class < ? > composerClass ) {
-      // FAST PATH (95%): Check primary slot
-      if ( primaryClass == composerClass ) {
-        return primaryConduit;
-      }
-      // SLOW PATH (5%): Check overflow map
-      Map < Class < ? >, Conduit < ?, ? > > overflowMap = overflow;
-      return overflowMap != null ? overflowMap.get ( composerClass ) : null;
-    }
-
-    void putOverflow ( Class < ? > composerClass, Conduit < ?, ? > conduit ) {
-      Map < Class < ? >, Conduit < ?, ? > > overflowMap = overflow;
-      if ( overflowMap == null ) {
-        synchronized ( this ) {
-          overflowMap = overflow;
-          if ( overflowMap == null ) {
-            overflow = overflowMap = new ConcurrentHashMap <> ();
-          }
-        }
-      }
-      overflowMap.put ( composerClass, conduit );
-    }
-  }
 
 
   /**
@@ -115,14 +70,12 @@ public class SequentialCircuit implements Circuit, Scheduler {
    * < ul >
    * < li >Valve (BlockingQueue + Virtual Thread) for FIFO emission processing</li >
    * < li >Shared ScheduledExecutorService for all Clocks</li >
-   * < li >Component caches (Conduits, Clocks)</li >
    * </ul >
    *
    * @param name circuit name (hierarchical, e.g., "account.region.cluster")
    */
   public SequentialCircuit ( Name name ) {
     Objects.requireNonNull ( name, "Circuit name cannot be null" );
-    this.conduits = new ConcurrentHashMap <> ();
     Id id = SequentialIdentifier.generate ();
     this.circuitSubject = new ContextualSubject <> (
       id,
@@ -324,7 +277,7 @@ public class SequentialCircuit implements Circuit, Scheduler {
     // Generate unique name without interning - skips String.split(), NameKey allocation, and cache lookup
     Name name = InternedName.ofUnique ( "conduit-" + SequentialIdentifier.generate ().toString () );
 
-    // Create conduit directly without ConduitSlot cache check or insertion
+    // Create conduit directly (no caching - matches reference implementation)
     return new RoutingConduit <> ( name, composer, this );
   }
 
@@ -334,38 +287,11 @@ public class SequentialCircuit implements Circuit, Scheduler {
     Objects.requireNonNull ( name, "Conduit name cannot be null" );
     Objects.requireNonNull ( composer, "Composer cannot be null" );
 
-    Class < ? > composerClass = composer.getClass ();
-
-    // FAST PATH: Try to get existing slot (identity map lookup)
-    ConduitSlot slot = conduits.get ( name );  // ~4ns with InternedName identity map
-
-    if ( slot != null ) {
-      // Check if composer exists in slot
-      @SuppressWarnings ( "unchecked" )
-      Conduit < P, E > existing = (Conduit < P, E >) slot.get ( composerClass );  // ~1-8ns
-      if ( existing != null ) {
-        return existing;  // Total: ~5-12ns for cache hit
-      }
-    }
-
-    // COLD PATH: Create new conduit (only on miss)
+    // Direct construction - no caching (matches William's 21ns reference implementation)
     // Use simple name - hierarchy is implicit through parent Subject references
-    Conduit < P, E > newConduit = new RoutingConduit <> (
+    return new RoutingConduit <> (
       name, composer, this  // Pass Circuit as parent
     );
-
-    // Add to slot structure (thread-safe)
-    conduits.compute ( name, ( k, existingSlot ) -> {
-      if ( existingSlot == null ) {
-        // First conduit for this name - create primary slot
-        return new ConduitSlot ( composerClass, newConduit );
-      }
-      // Add to overflow map (second+ conduit for this name)
-      existingSlot.putOverflow ( composerClass, newConduit );
-      return existingSlot;
-    } );
-
-    return newConduit;
   }
 
   @Override
@@ -375,35 +301,11 @@ public class SequentialCircuit implements Circuit, Scheduler {
     Objects.requireNonNull ( composer, "Composer cannot be null" );
     Objects.requireNonNull ( configurer, "Flow configurer cannot be null" );
 
-    Class < ? > composerClass = composer.getClass ();
-
-    // FAST PATH: Try to get existing slot
-    ConduitSlot slot = conduits.get ( name );
-
-    if ( slot != null ) {
-      @SuppressWarnings ( "unchecked" )
-      Conduit < P, E > existing = (Conduit < P, E >) slot.get ( composerClass );
-      if ( existing != null ) {
-        return existing;
-      }
-    }
-
-    // COLD PATH: Create new conduit with flow configurer
+    // Direct construction with flow configurer - no caching
     // Use simple name - hierarchy is implicit through parent Subject references
-    Conduit < P, E > newConduit = new RoutingConduit < P, E > (
+    return new RoutingConduit < P, E > (
       name, composer, this, configurer
     );
-
-    // Add to slot structure
-    conduits.compute ( name, ( k, existingSlot ) -> {
-      if ( existingSlot == null ) {
-        return new ConduitSlot ( composerClass, newConduit );
-      }
-      existingSlot.putOverflow ( composerClass, newConduit );
-      return existingSlot;
-    } );
-
-    return newConduit;
   }
 
   @Override
@@ -414,8 +316,6 @@ public class SequentialCircuit implements Circuit, Scheduler {
       // Don't close valve immediately - let await() handle it after pending tasks complete
       // This allows pending emissions submitted before close() to be processed
       // valve.close ();  // Removed - wait() will close valve after draining
-
-      conduits.clear ();
     }
   }
 
