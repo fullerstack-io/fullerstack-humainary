@@ -47,6 +47,13 @@ import java.util.stream.Stream;
  * @see State
  */
 public class LinkedState implements State {
+
+  /**
+   * Singleton empty state - reused to avoid allocations.
+   * Immutable and safe to share across all contexts.
+   */
+  private static final State EMPTY = new LinkedState();
+
   private final List < Slot < ? > > slots;
 
   /**
@@ -271,8 +278,14 @@ public class LinkedState implements State {
   }
 
   // Factory methods for creating states
+  /**
+   * Returns the singleton empty state.
+   * Reuses the same instance to avoid allocations on hot paths.
+   *
+   * @return the empty state singleton
+   */
   public static State empty () {
-    return new LinkedState ();
+    return EMPTY;
   }
 
   public static State of ( Name name, int value ) {
