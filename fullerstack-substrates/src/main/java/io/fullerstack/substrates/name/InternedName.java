@@ -64,6 +64,23 @@ public final class InternedName implements Name {
   }
 
   /**
+   * Fast path for creating non-interned single-segment names.
+   * Used when we know the name is unique and will never be looked up again.
+   * Skips interning cache operations entirely.
+   *
+   * @param segment the single segment (no dots)
+   * @return a new Name (NOT interned)
+   */
+  public static Name ofUnique ( String segment ) {
+    Objects.requireNonNull ( segment, "segment cannot be null" );
+    if ( segment.isEmpty () ) {
+      throw new IllegalArgumentException ( "segment cannot be empty" );
+    }
+    // Direct construction - no interning, no split, no cache lookup
+    return new InternedName ( null, segment );
+  }
+
+  /**
    * Public factory for creating names from dot-separated paths.
    * Splits on '.' to create hierarchical names.
    * Uses interning to ensure identical paths return same instance.

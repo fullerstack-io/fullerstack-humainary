@@ -316,9 +316,16 @@ public class SequentialCircuit implements Circuit, Scheduler {
 
   @Override
   public < P extends Percept, E > Conduit < P, E > conduit ( Composer < E, ? extends P > composer ) {
-    // Generate unique name for unnamed conduits to avoid caching collisions
+    // FAST PATH: Unnamed conduits are never cached (unique names), so bypass ALL cache operations
     // Each call creates a new conduit (TCK requirement: different composer instances → different conduits)
-    return conduit ( InternedName.of ( "conduit-" + SequentialIdentifier.generate ().toString () ), composer );
+    checkClosed ();
+    Objects.requireNonNull ( composer, "Composer cannot be null" );
+
+    // Generate unique name without interning - skips String.split(), NameKey allocation, and cache lookup
+    Name name = InternedName.ofUnique ( "conduit-" + SequentialIdentifier.generate ().toString () );
+
+    // Create conduit directly without ConduitSlot cache check or insertion
+    return new RoutingConduit <> ( name, composer, this );
   }
 
   @Override
