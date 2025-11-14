@@ -324,13 +324,13 @@ public class RoutingConduit < P extends Percept, E > implements Conduit < P, E >
         }
 
         @Override
-        public void register ( Receptor < ? super E > observer ) {
+        public void register ( Receptor < ? super E > receptor ) {
           //  Convenience method for Receptor registration
           // Convert Receptor to anonymous Pipe and register it
           register ( new Pipe < E > () {
             @Override
             public void emit ( E emission ) {
-              observer.receive ( emission );
+              receptor.receive ( emission );
             }
 
             @Override
@@ -398,12 +398,12 @@ public class RoutingConduit < P extends Percept, E > implements Conduit < P, E >
         }
 
         @Override
-        public void register ( Receptor < ? super E > observer ) {
+        public void register ( Receptor < ? super E > receptor ) {
           //  Convert Receptor to Pipe (can't use lambda - Pipe not functional)
           register ( new Pipe < E > () {
             @Override
             public void emit ( E emission ) {
-              observer.receive ( emission );
+              receptor.receive ( emission );
             }
 
             @Override

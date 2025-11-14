@@ -60,7 +60,7 @@ class CountersApiDemoTest {
 
         List<Sign> events = new ArrayList<>();
         counters.subscribe(cortex().subscriber(
-            cortex().name("observer"),
+            cortex().name("receptor"),
             (subject, registrar) -> {
                 registrar.register(events::add);
             }
@@ -90,7 +90,7 @@ class CountersApiDemoTest {
 
         List<Sign> errors = new ArrayList<>();
         counters.subscribe(cortex().subscriber(
-            cortex().name("observer"),
+            cortex().name("receptor"),
             (subject, registrar) -> {
                 registrar.register(errors::add);
             }
@@ -115,7 +115,7 @@ class CountersApiDemoTest {
 
         List<Sign> sendEvents = new ArrayList<>();
         counters.subscribe(cortex().subscriber(
-            cortex().name("observer"),
+            cortex().name("receptor"),
             (subject, registrar) -> {
                 registrar.register(sendEvents::add);
             }

@@ -60,7 +60,7 @@ class ReportersApiDemoTest {
 
         List<Sign> situations = new ArrayList<>();
         reporters.subscribe(cortex().subscriber(
-            cortex().name("observer"),
+            cortex().name("receptor"),
             (subject, registrar) -> {
                 registrar.register(situations::add);
             }
@@ -82,7 +82,7 @@ class ReportersApiDemoTest {
 
         List<Sign> escalation = new ArrayList<>();
         reporters.subscribe(cortex().subscriber(
-            cortex().name("observer"),
+            cortex().name("receptor"),
             (subject, registrar) -> {
                 registrar.register(escalation::add);
             }
@@ -110,7 +110,7 @@ class ReportersApiDemoTest {
 
         List<Sign> recovery = new ArrayList<>();
         reporters.subscribe(cortex().subscriber(
-            cortex().name("observer"),
+            cortex().name("receptor"),
             (subject, registrar) -> {
                 registrar.register(recovery::add);
             }
@@ -138,7 +138,7 @@ class ReportersApiDemoTest {
 
         List<Sign> alert = new ArrayList<>();
         reporters.subscribe(cortex().subscriber(
-            cortex().name("observer"),
+            cortex().name("receptor"),
             (subject, registrar) -> {
                 registrar.register(alert::add);
             }
@@ -161,7 +161,7 @@ class ReportersApiDemoTest {
 
         List<String> situations = new ArrayList<>();
         reporters.subscribe(cortex().subscriber(
-            cortex().name("observer"),
+            cortex().name("receptor"),
             (Subject<Channel<Sign>> subject, Registrar<Sign> registrar) -> {
                 registrar.register(sign -> {
                     situations.add(subject.name() + ":" + sign);

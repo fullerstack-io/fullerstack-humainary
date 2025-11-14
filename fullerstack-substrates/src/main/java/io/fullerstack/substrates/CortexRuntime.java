@@ -5,14 +5,13 @@ import io.fullerstack.substrates.capture.SubjectCapture;
 import io.fullerstack.substrates.circuit.SequentialCircuit;
 import io.fullerstack.substrates.current.ThreadCurrent;
 import io.fullerstack.substrates.id.UuidIdentifier;
-import io.fullerstack.substrates.pool.ConcurrentPool;
 import io.fullerstack.substrates.scope.ManagedScope;
 import io.fullerstack.substrates.slot.TypedSlot;
 import io.fullerstack.substrates.state.LinkedState;
 import io.fullerstack.substrates.subject.ContextualSubject;
-import io.fullerstack.substrates.subscriber.FunctionalSubscriber;
+import io.fullerstack.substrates.subscriber.ContextSubscriber;
 import io.fullerstack.substrates.name.InternedName;
-import io.fullerstack.substrates.sink.CollectingSink;
+import io.fullerstack.substrates.reservoir.CollectingReservoir;
 
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -35,12 +34,11 @@ import java.util.stream.Stream;
  * <ul>
  * <li>Circuit management (2 methods)</li>
  * <li>Name factory (8 methods)</li>
- * <li>Pool management (2 methods)</li>
  * <li>Scope management (2 methods)</li>
  * <li>State factory (1 method)</li>
- * <li>Sink creation (1 method)</li>
+ * <li>Reservoir creation (1 method)</li>
  * <li>Slot management (9 methods)</li>
- * <li>Subscriber management (2 methods)</li>
+ * <li>Subscriber management (1 method)</li>
  * <li>Pipe factory (5 methods)</li>
  * <li>Current management (1 method)</li>
  * </ul>
@@ -52,7 +50,11 @@ import java.util.stream.Stream;
  */
 public class CortexRuntime implements Cortex {
 
+  // Fixed ID for singleton Cortex (one per JVM)
+  private static final Id CORTEX_ID = new UuidIdentifier ( java.util.UUID.fromString ( "00000000-0000-0000-0000-000000000001" ) );
+
   private final Map < Name, Scope > scopes;
+  private final Subject < Cortex > subject;
 
   /**
    * Package-private constructor for SPI instantiation.
@@ -60,6 +62,18 @@ public class CortexRuntime implements Cortex {
    */
   CortexRuntime () {
     this.scopes = new ConcurrentHashMap <> ();
+    // Use fixed ID for singleton Cortex (one per JVM)
+    this.subject = new ContextualSubject < Cortex > (
+      CORTEX_ID,                      // Fixed ID for singleton
+      InternedName.of ( "cortex" ),  // Name
+      LinkedState.empty (),
+      Cortex.class
+    );
+  }
+
+  @Override
+  public Subject < Cortex > subject () {
+    return subject;
   }
 
   // ========== Circuit Management (2 methods) ==========
@@ -128,25 +142,25 @@ public class CortexRuntime implements Cortex {
   }
 
   @Override
-  public < E > Pipe < E > pipe ( Observer < ? super E > observer ) {
-    // Factory method for creating a pipe that routes to an observer
+  public < E > Pipe < E > pipe ( Receptor < ? super E > receptor ) {
+    // Factory method for creating a pipe that routes to an receptor
     return new Pipe < E > () {
       @Override
       public void emit ( E value ) {
-        observer.observe ( value );
+        receptor.receive( ( value ));
       }
 
       @Override
       public void flush () {
-        // No-op: observer has no buffering
+        // No-op: receptor has no buffering
       }
     };
   }
 
   @Override
-  public < E > Pipe < E > pipe ( Class < E > type, Observer < ? super E > observer ) {
-    // Factory method for creating a typed pipe that routes to an observer
-    return pipe ( observer );  // Type is just for compile-time safety
+  public < E > Pipe < E > pipe ( Class < E > type, Receptor < ? super E > receptor ) {
+    // Factory method for creating a typed pipe that routes to an receptor
+    return pipe ( receptor );  // Type is just for compile-time safety
   }
 
   @Override
@@ -234,24 +248,6 @@ public class CortexRuntime implements Cortex {
     return InternedName.of ( member.getDeclaringClass ().getName () ).name ( member );
   }
 
-  // ========== Pool Management (2 methods - PREVIEW API) ==========
-
-  @Override
-  public < P extends Percept > Pool < P > pool ( Function < ? super Name, ? extends P > factory, Pool.Mode mode ) {
-    Objects.requireNonNull ( factory, "Pool factory cannot be null" );
-    Objects.requireNonNull ( mode, "Pool mode cannot be null" );
-    // Create pool with the provided factory function
-    // Mode determines thread-safety (CONCURRENT vs SERIALIZED)
-    return new ConcurrentPool <> ( factory );
-  }
-
-  @Override
-  public < P extends Percept > Pool < P > pool ( P singleton ) {
-    Objects.requireNonNull ( singleton, "Pool singleton cannot be null" );
-    // Create a pool that always returns the same singleton instance
-    return new ConcurrentPool <> ( name -> singleton );
-  }
-
   // ========== Scope Management (2 methods) ==========
 
   @Override
@@ -274,13 +270,13 @@ public class CortexRuntime implements Cortex {
     return LinkedState.empty ();
   }
 
-  // ========== Sink Creation (1 method) ==========
+  // ========== Reservoir Creation (1 method) ==========
 
   @Override
-  public < E, S extends Source < E, S > > Sink < E > sink ( Source < E, S > source ) {
+  public < E, S extends Source < E, S > > Reservoir < E > reservoir ( Source < E, S > source ) {
     Objects.requireNonNull ( source, "Source cannot be null" );
-    // Create CollectingSink directly
-    return new CollectingSink <> ( source );
+    // Create CollectingReservoir directly
+    return new CollectingReservoir <> ( source );
   }
 
   // ========== Slot Management (8 methods) ==========
@@ -337,15 +333,10 @@ public class CortexRuntime implements Cortex {
     );
   }
 
-  // ========== Subscriber Management (2 methods) ==========
+  // ========== Subscriber Management (1 method) ==========
 
   @Override
   public < E > Subscriber < E > subscriber ( Name name, BiConsumer < Subject < Channel < E > >, Registrar < E > > fn ) {
-    return new FunctionalSubscriber <> ( name, fn );
-  }
-
-  @Override
-  public < E > Subscriber < E > subscriber ( Name name, Pool < ? extends Pipe < E > > pool ) {
-    return new FunctionalSubscriber <> ( name, pool );
+    return new ContextSubscriber <> ( name, fn );
   }
 }

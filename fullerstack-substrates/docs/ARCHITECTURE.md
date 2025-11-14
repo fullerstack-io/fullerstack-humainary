@@ -593,32 +593,28 @@ public class ProducerPipe<E> implements Pipe<E> {
 }
 ```
 
-**ConsumerPipe:** Consumer-side pipe that receives FROM the conduit system
+**Consumer Side:** Lambdas/Observers registered via `Registrar`
+
+The consumer side uses the Registrar API's `register(Observer<E>)` convenience method, which accepts lambdas directly:
 
 ```java
-public class ConsumerPipe<E> implements Pipe<E> {
-    private final Consumer<E> consumer;
-
-    // Called BY Conduit when routing emissions to subscribers
-    @Override
-    public void emit(E emission) {
-        consumer.accept(emission);  // Invoke consumer lambda
-    }
-
-    // Factory methods
-    public static <E> ConsumerPipe<E> of(Consumer<E> consumer) { ... }
-    public static <E> ConsumerPipe<E> of(Name name, Consumer<E> consumer) { ... }
-}
+// Registrar creates inline Pipe internally - no ConsumerPipe class needed
+conduit.subscribe((subject, registrar) -> {
+    registrar.register(emission -> {
+        // Lambda invoked BY Conduit when emissions arrive
+        handleEmission(subject.name(), emission);
+    });
+});
 ```
 
 **Producer-Consumer Pattern:**
 
 The `Pipe<E>` interface serves **dual purposes** via a single `emit()` method:
 
-| Pipe Type | Role | Who Calls `emit()` | What It Does |
-|-----------|------|-------------------|--------------|
-| **ProducerPipe** | Producer | Application code | Posts to circuit queue → notifies subscribers |
-| **ConsumerPipe** | Consumer | Conduit (during dispatch) | Invokes consumer lambda |
+| Side | Implementation | Who Calls `emit()` | What It Does |
+|------|---------------|-------------------|--------------|
+| **Producer** | ProducerPipe | Application code | Posts to circuit queue → notifies subscribers |
+| **Consumer** | Lambda/Observer | Conduit (during dispatch) | Invokes user lambda via Registrar |
 
 ```java
 // PRODUCER SIDE

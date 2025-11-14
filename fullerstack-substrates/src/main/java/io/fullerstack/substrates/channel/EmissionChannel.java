@@ -9,8 +9,6 @@ import io.fullerstack.substrates.subject.ContextualSubject;
 import io.fullerstack.substrates.conduit.RoutingConduit;
 import io.fullerstack.substrates.circuit.Scheduler;
 
-import lombok.Getter;
-
 import java.util.Objects;
 import java.util.function.Consumer;
 

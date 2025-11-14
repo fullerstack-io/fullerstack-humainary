@@ -19,9 +19,8 @@ import static org.junit.jupiter.api.Assertions.*;
 ///
 /// This test class covers:
 /// - Circuit creation and lifecycle
-/// - Pool creation and singleton behavior
 /// - Scope creation and resource management
-/// - Sink creation and event capture
+/// - Reservoir creation and event capture
 /// - Subscriber creation with different configurations
 ///
 /// @author wlouth
@@ -29,27 +28,6 @@ import static org.junit.jupiter.api.Assertions.*;
 
 final class CortexTest
   extends TestSupport {
-
-  /**
-   * Helper mock Pipe for testing Pool behavior.
-   */
-  private static class MockPipe<T> implements Pipe<T> {
-    private final T value;
-
-    MockPipe(T value) {
-      this.value = value;
-    }
-
-    public T getValue() {
-      return value;
-    }
-
-    @Override
-    public void emit(T t) {}
-
-    @Override
-    public void flush() {}
-  }
 
   private Cortex cortex;
 
@@ -118,7 +96,7 @@ final class CortexTest
           pipe ()
         );
 
-      final Sink < String > sink = cortex.sink ( conduit );
+      final Reservoir < String > sink = cortex.reservoir( conduit );
 
       final Pipe < String > pipe =
         conduit.percept ( cortex.name ( "integration.channel" ) );
@@ -196,10 +174,6 @@ final class CortexTest
 
   }
 
-  // ===========================
-  // Pool Tests
-  // ===========================
-
   @Test
   void testMultipleCircuitsHaveUniqueSubjects () {
 
@@ -242,95 +216,10 @@ final class CortexTest
 
   }
 
-  @SuppressWarnings ( "DataFlowIssue" )
-  @Test
-  void testPoolCreationNullGuard () {
-
-    assertThrows (
-      NullPointerException.class,
-      () -> cortex.pool ( null )
-    );
-
-  }
-
-  @Test
-  void testPoolCreationWithSingleton () {
-
-    final var singleton = "test-singleton";
-    final Pool<Pipe<String>> pool = cortex.pool(name -> new MockPipe<>(singleton), Pool.Mode.CONCURRENT);
-
-    assertNotNull ( pool );
-
-  }
-
-  @Test
-  void testPoolGetBySubject () {
-
-    final var singleton = 42;
-    final Pool<Pipe<Integer>> pool = cortex.pool(name -> new MockPipe<>(singleton), Pool.Mode.CONCURRENT);
-
-    final var circuit = cortex.circuit ();
-
-    try {
-
-      final Subject < ? > subject = circuit.subject ();
-      MockPipe<Integer> pipe = (MockPipe<Integer>) pool.percept ( subject );
-      assertEquals ( singleton, pipe.getValue() );
-
-    } finally {
-
-      circuit.close ();
-
-    }
-
-  }
 
   // ===========================
   // Scope Tests
   // ===========================
-
-  @Test
-  void testPoolGetBySubstrate () {
-
-    final var singleton = 3.14159;
-    final Pool<Pipe<Double>> pool = cortex.pool(name -> new MockPipe<>(singleton), Pool.Mode.CONCURRENT);
-
-    final var circuit = cortex.circuit ();
-
-    try {
-
-      MockPipe<Double> pipe = (MockPipe<Double>) pool.percept ( circuit );
-      assertEquals ( singleton, pipe.getValue() );
-
-    } finally {
-
-      circuit.close ();
-
-    }
-
-  }
-
-  @Test
-  void testPoolReturnsSameSingletonInstance () {
-
-    final var singleton = "singleton-value";
-    final Pool<Pipe<String>> pool = cortex.pool(name -> new MockPipe<>(singleton), Pool.Mode.CONCURRENT);
-
-    final var name1 = cortex.name ( "pool.test.first" );
-    final var name2 = cortex.name ( "pool.test.second" );
-
-    // Pool returns DIFFERENT Pipe instances for different names (each cached)
-    Pipe<String> pipe1a = pool.percept ( name1 );
-    Pipe<String> pipe2a = pool.percept ( name2 );
-    Pipe<String> pipe1b = pool.percept ( name1 );
-
-    // Same name should return same Pipe instance (cached)
-    assertSame ( pipe1a, pipe1b );
-
-    // Different names return different Pipe instances
-    assertNotSame ( pipe1a, pipe2a );
-
-  }
 
   @Test
   void testScopeClosesRegisteredResources () {
@@ -453,7 +342,7 @@ final class CortexTest
   }
 
   // ===========================
-  // Sink Tests
+  // Reservoir Tests
   // ===========================
 
   @Test
@@ -596,7 +485,7 @@ final class CortexTest
       final Conduit < Pipe < Integer >, Integer > conduit =
         circuit.conduit ( pipe () );
 
-      final Sink < Integer > sink = cortex.sink ( conduit );
+      final Reservoir < Integer > sink = cortex.reservoir( conduit );
 
       final Pipe < Integer > pipe =
         conduit.percept ( cortex.name ( "test.channel" ) );
@@ -636,7 +525,7 @@ final class CortexTest
         circuit.conduit ( pipe () );
 
       // Conduit is a Context
-      final Sink < Integer > sink = cortex.sink ( conduit );
+      final Reservoir < Integer > sink = cortex.reservoir( conduit );
 
       assertNotNull ( sink );
 
@@ -659,7 +548,7 @@ final class CortexTest
 
       final Conduit < Pipe < String >, String > conduit =
         circuit.conduit ( pipe () );
-      final Sink < String > sink = cortex.sink ( conduit );
+      final Reservoir < String > sink = cortex.reservoir( conduit );
 
       assertNotNull ( sink );
       assertNotNull ( sink.subject () );
@@ -680,7 +569,7 @@ final class CortexTest
 
     assertThrows (
       NullPointerException.class,
-      () -> cortex.sink ( null )
+      () -> cortex.reservoir( null )
     );
 
   }
@@ -695,7 +584,7 @@ final class CortexTest
 
     assertThrows (
       NullPointerException.class,
-      () -> cortex.sink ( null )
+      () -> cortex.reservoir( null )
     );
 
   }
@@ -710,7 +599,7 @@ final class CortexTest
       final Conduit < Pipe < String >, String > conduit =
         circuit.conduit ( pipe () );
 
-      final Sink < String > sink = cortex.sink ( conduit );
+      final Reservoir < String > sink = cortex.reservoir( conduit );
 
       final Pipe < String > pipe =
         conduit.percept ( cortex.name ( "test.channel" ) );
@@ -757,9 +646,9 @@ final class CortexTest
       final Conduit < Pipe < String >, String > conduit =
         circuit.conduit ( pipe () );
 
-      final var sink = cortex.sink ( conduit );
+      final var sink = cortex.reservoir( conduit );
 
-      assertEquals ( Sink.class, sink.subject ().type () );
+      assertEquals ( Reservoir.class, sink.subject ().type () );
 
       sink.close ();
 
@@ -800,19 +689,6 @@ final class CortexTest
 
   }
 
-  @SuppressWarnings ( "DataFlowIssue" )
-  @Test
-  void testSubscriberCreationNullPoolGuard () {
-
-    assertThrows (
-      NullPointerException.class,
-      () -> cortex.subscriber (
-        cortex.name ( "test" ),
-        (Pool < ? extends Pipe < String > >) null
-      )
-    );
-
-  }
 
   @Test
   void testSubscriberCreationWithBehavior () {
@@ -832,27 +708,6 @@ final class CortexTest
 
   }
 
-  @Test
-  void testSubscriberCreationWithPool () {
-
-    final var subscriberName = cortex.name ( "cortex.test.subscriber.pool" );
-
-    final Pipe < Integer > pipe = new Pipe <> () {
-      @Override
-      public void emit ( Integer value ) { }
-
-      @Override
-      public void flush () { }
-    };
-    final Pool<Pipe<Integer>> pool = cortex.pool(name -> pipe, Pool.Mode.CONCURRENT);
-
-    final var subscriber =
-      cortex.subscriber ( subscriberName, pool );
-
-    assertNotNull ( subscriber );
-    assertEquals ( subscriberName, subscriber.subject ().name () );
-
-  }
 
   // ===========================
   // Integration Tests
@@ -919,58 +774,5 @@ final class CortexTest
 
   }
 
-  @Test
-  void testSubscriberWithPoolBehavior () {
-
-    final var circuit = cortex.circuit ();
-
-    try {
-
-      final Conduit < Pipe < Integer >, Integer > conduit =
-        circuit.conduit ( pipe () );
-
-      final List < Integer > emissions = new ArrayList <> ();
-
-      final Pipe < Integer > collectorPipe = new Pipe <> () {
-        @Override
-        public void emit ( Integer value ) {
-          emissions.add ( value );
-        }
-
-        @Override
-        public void flush () { }
-      };
-      final var pool = cortex.pool(name -> collectorPipe, Pool.Mode.CONCURRENT);
-
-      final Subscriber < Integer > subscriber =
-        cortex.subscriber (
-          cortex.name ( "pool.subscriber" ),
-          pool
-        );
-
-      conduit.subscribe ( subscriber );
-
-      final Pipe < Integer > pipe1 =
-        conduit.percept ( cortex.name ( "channel.alpha" ) );
-
-      final Pipe < Integer > pipe2 =
-        conduit.percept ( cortex.name ( "channel.beta" ) );
-
-      pipe1.emit ( 100 );
-      pipe2.emit ( 200 );
-
-      circuit.await ();
-
-      assertEquals ( 2, emissions.size () );
-      assertTrue ( emissions.contains ( 100 ) );
-      assertTrue ( emissions.contains ( 200 ) );
-
-    } finally {
-
-      circuit.close ();
-
-    }
-
-  }
 
 }

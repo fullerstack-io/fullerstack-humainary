@@ -61,7 +61,7 @@ class QueuesApiDemoTest {
 
         List<Sign> operations = new ArrayList<>();
         queues.subscribe(cortex().subscriber(
-            cortex().name("observer"),
+            cortex().name("receptor"),
             (subject, registrar) -> {
                 registrar.register(operations::add);
             }
@@ -91,7 +91,7 @@ class QueuesApiDemoTest {
 
         List<Sign> events = new ArrayList<>();
         queues.subscribe(cortex().subscriber(
-            cortex().name("observer"),
+            cortex().name("receptor"),
             (subject, registrar) -> {
                 registrar.register(events::add);
             }
@@ -116,7 +116,7 @@ class QueuesApiDemoTest {
 
         List<Sign> events = new ArrayList<>();
         queues.subscribe(cortex().subscriber(
-            cortex().name("observer"),
+            cortex().name("receptor"),
             (subject, registrar) -> {
                 registrar.register(events::add);
             }
@@ -142,7 +142,7 @@ class QueuesApiDemoTest {
 
         List<Sign> bufferFlow = new ArrayList<>();
         queues.subscribe(cortex().subscriber(
-            cortex().name("observer"),
+            cortex().name("receptor"),
             (subject, registrar) -> {
                 registrar.register(bufferFlow::add);
             }
@@ -173,7 +173,7 @@ class QueuesApiDemoTest {
 
         List<Sign> fetchFlow = new ArrayList<>();
         queues.subscribe(cortex().subscriber(
-            cortex().name("observer"),
+            cortex().name("receptor"),
             (subject, registrar) -> {
                 registrar.register(fetchFlow::add);
             }
@@ -204,7 +204,7 @@ class QueuesApiDemoTest {
 
         List<String> queueEvents = new ArrayList<>();
         queues.subscribe(cortex().subscriber(
-            cortex().name("observer"),
+            cortex().name("receptor"),
             (Subject<Channel<Sign>> subject, Registrar<Sign> registrar) -> {
                 registrar.register(sign -> {
                     queueEvents.add(subject.name() + ":" + sign);

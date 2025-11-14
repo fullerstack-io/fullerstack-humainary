@@ -5,8 +5,6 @@ import io.humainary.substrates.api.Substrates.*;
 import io.fullerstack.substrates.flow.FlowRegulator;
 import io.fullerstack.substrates.circuit.Scheduler;
 
-import lombok.Getter;
-
 import java.util.Objects;
 import java.util.function.Consumer;
 import java.util.function.BooleanSupplier;
@@ -17,7 +15,7 @@ import java.util.function.BooleanSupplier;
  * < p >< b >Role in Architecture:</b >
  * ProducerPipe represents the producer endpoint in the Producer-Consumer pattern.
  * It emits values INTO the conduit system, which then routes them to registered
- * ConsumerPipe instances via subscriber notifications.
+ * subscriber pipes (lambdas/Observers) via subscriber notifications.
  * <p>
  * < p >< b >Creation:</b >
  * Created by Channels when application code calls {@code conduit.get(name)} or
@@ -38,14 +36,14 @@ import java.util.function.BooleanSupplier;
  * <p>
  * < p >< b >Subject Propagation:</b > Each ProducerPipe knows its Channel's Subject, which is paired
  * with the emission value in a Capture within the Script. This preserves the context
- * of WHO emitted for delivery to ConsumerPipes via Subscribers.
+ * of WHO emitted for delivery to subscriber pipes via Subscribers.
  * <p>
  * < p >< b >Subscriber Notification:</b > Holds a subscriber notification callback provided by the Conduit
  * (via Channel at construction time). This callback routes emissions to the Conduit's registered
- * subscribers, who then dispatch to their ConsumerPipes.
+ * subscribers, who then dispatch to their registered pipes (lambdas/Observers).
  *
  * @param < E > the emission type (e.g., MonitorSignal, ServiceSignal)
- * @see ConsumerPipe
+ * @see Pipe
  */
 public class ProducerPipe < E > implements Pipe < E > {
 

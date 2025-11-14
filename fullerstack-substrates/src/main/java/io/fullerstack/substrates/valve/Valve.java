@@ -52,15 +52,19 @@ public class Valve implements AutoCloseable {
   private final BlockingQueue < Runnable > ingressQueue;  // External emissions (FIFO)
   private final BlockingDeque < Runnable > transitDeque;  // Recursive emissions (LIFO for depth-first)
 
-  private final    Thread  processor;
+  private          Thread  processor;  // Lazy-initialized on first emission
   private volatile boolean running   = true;
   private volatile boolean executing = false;
 
   // Synchronization for event-driven await() (eliminates polling)
   private final Object idleLock = new Object ();
 
+  // ThreadLocal to mark when we're executing circuit tasks (processor thread OR sync fast-path)
+  private static final ThreadLocal < Boolean > inCircuitContext = ThreadLocal.withInitial ( () -> Boolean.FALSE );
+
   /**
-   * Creates a new Valve with a virtual thread processor and dual-queue architecture.
+   * Creates a new Valve with lazy-initialized virtual thread processor and dual-queue architecture.
+   * The processor thread is started only on first emission (lazy initialization).
    *
    * @param name descriptive name for the valve (used in thread naming)
    */
@@ -68,7 +72,7 @@ public class Valve implements AutoCloseable {
     this.name = name;
     this.ingressQueue = new LinkedBlockingQueue <> ();  // External emissions (FIFO)
     this.transitDeque = new LinkedBlockingDeque <> ();  // Recursive emissions (LIFO stack)
-    this.processor = Thread.startVirtualThread ( this::processQueue );
+    this.processor = null;  // Lazy-initialized on first async emission
   }
 
   /**
@@ -88,17 +92,65 @@ public class Valve implements AutoCloseable {
    */
   public boolean submit ( Runnable task ) {
     if ( task != null && running ) {
-      //  Route to appropriate queue based on calling thread
-      if ( Thread.currentThread () == processor ) {
+      //  Route to appropriate queue based on calling thread OR sync fast-path context
+      // If we're executing on processor thread OR via sync fast-path, this is a recursive emission
+      if ( ( processor != null && Thread.currentThread () == processor ) || inCircuitContext.get () ) {
         // Recursive emission from circuit thread → Append to Transit (FIFO within batch)
         // Transit has priority, but siblings maintain emit order
         return transitDeque.offerLast ( task );  // Append to back (preserves order)
       } else {
-        // External emission → Append to Ingress queue (FIFO)
+        // OPTIMIZATION: Sync fast-path - if valve is idle AND queues empty, execute directly
+        // This skips async overhead (park/unpark) for single-threaded emit batches
+        // Must check: NOT executing, both queues empty, and we can acquire the lock
+        // Safety: We set executing=true to prevent processor thread from taking other work
+        if ( !executing && ingressQueue.isEmpty () && transitDeque.isEmpty () ) {
+          synchronized ( idleLock ) {
+            // Double-check after acquiring lock (race condition protection)
+            if ( !executing && ingressQueue.isEmpty () && transitDeque.isEmpty () ) {
+              executing = true;
+              inCircuitContext.set ( Boolean.TRUE );  // Mark as circuit context for await() check
+              try {
+                // Execute initial task
+                task.run ();
+
+                // Process any recursive emissions from Transit deque (depth-first with FIFO siblings)
+                // This ensures Transit priority and correct ordering: A, A1, A2, A1a, A1b
+                Runnable transitTask;
+                while ( ( transitTask = transitDeque.pollFirst () ) != null ) {
+                  transitTask.run ();
+                }
+
+                return true;
+              } finally {
+                inCircuitContext.set ( Boolean.FALSE );  // Clear circuit context
+                executing = false;
+                // No need to notify - we're returning to caller immediately
+              }
+            }
+          }
+        }
+
+        // Slow path: External emission → Append to Ingress queue (FIFO)
+        // Lazy initialization: Start processor thread on first async emission
+        ensureProcessorStarted ();
         return ingressQueue.offer ( task );
       }
     }
     return false;
+  }
+
+  /**
+   * Ensures the processor thread is started (lazy initialization).
+   * Thread-safe via double-checked locking.
+   */
+  private void ensureProcessorStarted () {
+    if ( processor == null ) {
+      synchronized ( idleLock ) {
+        if ( processor == null ) {
+          processor = Thread.startVirtualThread ( this::processQueue );
+        }
+      }
+    }
   }
 
   /**
@@ -114,11 +166,16 @@ public class Valve implements AutoCloseable {
    * @throws IllegalStateException if called from valve's thread
    */
   public void await ( String contextName ) {
-    // Cannot be called from valve's own thread
-    if ( Thread.currentThread () == processor ) {
+    // Cannot be called from valve's own thread OR from sync fast-path execution
+    if ( ( processor != null && Thread.currentThread () == processor ) || inCircuitContext.get () ) {
       throw new IllegalStateException (
         "Cannot call " + contextName + "::await from within a " + contextName.toLowerCase () + "'s thread"
       );
+    }
+
+    // Fast path: If processor was never started (no async emissions), we're already idle
+    if ( processor == null && !executing && ingressQueue.isEmpty () && transitDeque.isEmpty () ) {
+      return;
     }
 
     // Event-driven wait - no polling!
@@ -181,9 +238,11 @@ public class Valve implements AutoCloseable {
         }
 
         executing = true;
+        inCircuitContext.set ( Boolean.TRUE );  // Mark as circuit context for await() check
         try {
           task.run ();  // Execute (may push to FRONT of Transit deque recursively)
         } finally {
+          inCircuitContext.set ( Boolean.FALSE );  // Clear circuit context
           executing = false;
 
           // Notify awaiting threads if valve is now idle (BOTH queues empty)
@@ -199,6 +258,7 @@ public class Valve implements AutoCloseable {
       } catch ( Exception e ) {
         // Log error but continue processing
         System.err.println ( "Error executing task in valve '" + name + "': " + e.getMessage () );
+        inCircuitContext.set ( Boolean.FALSE );  // Clear circuit context on error
         executing = false;
 
         // Still notify on error in case both queues are empty
@@ -220,17 +280,21 @@ public class Valve implements AutoCloseable {
   public void close () {
     if ( running ) {
       running = false;
-      processor.interrupt ();
+
+      // Only interrupt processor if it was started
+      if ( processor != null ) {
+        processor.interrupt ();
+
+        try {
+          processor.join ( 1000 );
+        } catch ( InterruptedException e ) {
+          Thread.currentThread ().interrupt ();
+        }
+      }
 
       // Notify any threads waiting in await()
       synchronized ( idleLock ) {
         idleLock.notifyAll ();
-      }
-
-      try {
-        processor.join ( 1000 );
-      } catch ( InterruptedException e ) {
-        Thread.currentThread ().interrupt ();
       }
     }
   }

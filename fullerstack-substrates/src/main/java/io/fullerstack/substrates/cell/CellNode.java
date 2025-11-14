@@ -8,13 +8,12 @@ import io.fullerstack.substrates.state.LinkedState;
 import io.fullerstack.substrates.subject.ContextualSubject;
 import io.fullerstack.substrates.subscription.CallbackSubscription;
 
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Function;
 
 /**
@@ -48,7 +47,7 @@ public class CellNode < I, E > implements Cell < I, E > {
   private final Composer < E, Pipe < I > >  ingressComposer;           // Transforms Channel<E> -> Pipe<I>
   private final Composer < E, Pipe < E > >  egressComposer;            // Transforms Channel<E> -> Pipe<E>
   private final Subject                     subject;
-  private final Map < Name, Cell < I, E > > children = new ConcurrentHashMap <> ();
+  private final Map < Name, Cell < I, E > > children = new HashMap <> ();
 
   /**
    * Creates a new Cell with input and output pipes and composers (API).
@@ -142,16 +141,6 @@ public class CellNode < I, E > implements Cell < I, E > {
       // Create child cell with same composers (all children use same transformation logic)
       return new CellNode <> ( this, n, childInputPipe, childOutputPipe, conduit, ingressComposer, egressComposer, this.subject );
     } );
-  }
-
-  @Override
-  public Cell < I, E > percept ( Subject < ? > subject ) {
-    return percept ( subject.name () );
-  }
-
-  @Override
-  public Cell < I, E > percept ( Substrate < ? > substrate ) {
-    return percept ( substrate.subject ().name () );
   }
 
   // ========== Container implementation ==========

@@ -459,7 +459,7 @@ final class CircuitTest
   // RC1: Clock API removed
 
   @Test
-  void testCircuitWithConduitAndSink () {
+  void testCircuitWithConduitAndReservoir () {
 
     final var circuit = cortex.circuit (
       cortex.name ( "integration.circuit" )
@@ -473,7 +473,7 @@ final class CircuitTest
           pipe ()
         );
 
-      final Sink < Integer > sink = cortex.sink ( conduit );
+      final Reservoir < Integer > sink = cortex.reservoir( conduit );
 
       final Pipe < Integer > pipe =
         conduit.percept ( cortex.name ( "integration.channel" ) );
@@ -520,7 +520,7 @@ final class CircuitTest
           flow -> flow.limit ( 2 )
         );
 
-      final Sink < Integer > sink = cortex.sink ( conduit );
+      final Reservoir < Integer > sink = cortex.reservoir( conduit );
 
       final Pipe < Integer > pipe =
         conduit.percept ( cortex.name ( "flow.channel" ) );
@@ -560,8 +560,8 @@ final class CircuitTest
       final Conduit < Pipe < Integer >, Integer > conduit2 =
         circuit.conduit ( cortex.name ( "conduit.two" ), pipe () );
 
-      final Sink < String > sink1 = cortex.sink ( conduit1 );
-      final Sink < Integer > sink2 = cortex.sink ( conduit2 );
+      final Reservoir < String > sink1 = cortex.reservoir( conduit1 );
+      final Reservoir < Integer > sink2 = cortex.reservoir( conduit2 );
 
       final Pipe < String > pipe1 =
         conduit1.percept ( cortex.name ( "channel.alpha" ) );

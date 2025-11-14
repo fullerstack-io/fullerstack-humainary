@@ -6,8 +6,8 @@ import io.humainary.substrates.api.Substrates.State;
 import io.humainary.substrates.api.Substrates.Subject;
 import io.humainary.substrates.api.Substrates.Substrate;
 
-import lombok.*;
-import lombok.experimental.FieldDefaults;
+import lombok.EqualsAndHashCode;
+import lombok.NonNull;
 
 /**
  * Contextual Subject implementation with parent, state, and type information.
@@ -73,9 +73,7 @@ import lombok.experimental.FieldDefaults;
  * @see InternedName
  * @see CellNode
  */
-@Getter
 @EqualsAndHashCode
-@Builder ( toBuilder = true )
 public class ContextualSubject < S extends Substrate < S > > implements Subject < S >, Comparable < Subject < ? > > {
   /**
    * Unique identifier for this subject.

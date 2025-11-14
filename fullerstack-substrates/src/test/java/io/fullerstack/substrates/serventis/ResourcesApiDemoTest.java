@@ -63,7 +63,7 @@ class ResourcesApiDemoTest {
 
         List<Sign> lifecycle = new ArrayList<>();
         resources.subscribe(cortex().subscriber(
-            cortex().name("observer"),
+            cortex().name("receptor"),
             (subject, registrar) -> {
                 registrar.register(lifecycle::add);
             }
@@ -93,7 +93,7 @@ class ResourcesApiDemoTest {
 
         List<Sign> events = new ArrayList<>();
         resources.subscribe(cortex().subscriber(
-            cortex().name("observer"),
+            cortex().name("receptor"),
             (subject, registrar) -> {
                 registrar.register(events::add);
             }
@@ -121,7 +121,7 @@ class ResourcesApiDemoTest {
 
         List<Sign> events = new ArrayList<>();
         resources.subscribe(cortex().subscriber(
-            cortex().name("observer"),
+            cortex().name("receptor"),
             (subject, registrar) -> {
                 registrar.register(events::add);
             }
@@ -146,7 +146,7 @@ class ResourcesApiDemoTest {
 
         List<String> events = new ArrayList<>();
         resources.subscribe(cortex().subscriber(
-            cortex().name("observer"),
+            cortex().name("receptor"),
             (Subject<Channel<Sign>> subject, Registrar<Sign> registrar) -> {
                 registrar.register(sign -> {
                     events.add(subject.name() + ":" + sign);

@@ -62,7 +62,7 @@ class GaugesApiDemoTest {
 
         List<Sign> changes = new ArrayList<>();
         gauges.subscribe(cortex().subscriber(
-            cortex().name("observer"),
+            cortex().name("receptor"),
             (subject, registrar) -> {
                 registrar.register(changes::add);
             }
@@ -92,7 +92,7 @@ class GaugesApiDemoTest {
 
         List<Sign> lagEvents = new ArrayList<>();
         gauges.subscribe(cortex().subscriber(
-            cortex().name("observer"),
+            cortex().name("receptor"),
             (subject, registrar) -> {
                 registrar.register(lagEvents::add);
             }
@@ -116,7 +116,7 @@ class GaugesApiDemoTest {
 
         List<Sign> requestFlow = new ArrayList<>();
         gauges.subscribe(cortex().subscriber(
-            cortex().name("observer"),
+            cortex().name("receptor"),
             (subject, registrar) -> {
                 registrar.register(requestFlow::add);
             }
@@ -146,7 +146,7 @@ class GaugesApiDemoTest {
 
         List<Sign> events = new ArrayList<>();
         gauges.subscribe(cortex().subscriber(
-            cortex().name("observer"),
+            cortex().name("receptor"),
             (subject, registrar) -> {
                 registrar.register(events::add);
             }

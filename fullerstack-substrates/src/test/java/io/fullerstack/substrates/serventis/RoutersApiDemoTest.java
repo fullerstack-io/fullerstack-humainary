@@ -75,7 +75,7 @@ class RoutersApiDemoTest {
 
         List<Sign> packetFlow = new ArrayList<>();
         routers.subscribe(cortex().subscriber(
-            cortex().name("observer"),
+            cortex().name("receptor"),
             (subject, registrar) -> {
                 registrar.register(packetFlow::add);
             }
@@ -108,7 +108,7 @@ class RoutersApiDemoTest {
 
         List<String> timeline = new ArrayList<>();
         routers.subscribe(cortex().subscriber(
-            cortex().name("observer"),
+            cortex().name("receptor"),
             (Subject<Channel<Sign>> subject, Registrar<Sign> registrar) -> {
                 registrar.register(sign -> {
                     timeline.add(subject.name() + ":" + sign);
@@ -146,7 +146,7 @@ class RoutersApiDemoTest {
 
         AtomicReference<Sign> lastSign = new AtomicReference<>();
         routers.subscribe(cortex().subscriber(
-            cortex().name("observer"),
+            cortex().name("receptor"),
             (subject, registrar) -> {
                 registrar.register(lastSign::set);
             }
@@ -174,7 +174,7 @@ class RoutersApiDemoTest {
 
         List<String> packetLifecycle = new ArrayList<>();
         routers.subscribe(cortex().subscriber(
-            cortex().name("observer"),
+            cortex().name("receptor"),
             (Subject<Channel<Sign>> subject, Registrar<Sign> registrar) -> {
                 registrar.register(sign -> {
                     String router = subject.name().toString().contains("sender") ? "SENDER" : "RECEIVER";
@@ -213,7 +213,7 @@ class RoutersApiDemoTest {
 
         AtomicReference<Sign> lastSign = new AtomicReference<>();
         routers.subscribe(cortex().subscriber(
-            cortex().name("observer"),
+            cortex().name("receptor"),
             (subject, registrar) -> {
                 registrar.register(lastSign::set);
             }
@@ -240,7 +240,7 @@ class RoutersApiDemoTest {
 
         List<Sign> events = new ArrayList<>();
         routers.subscribe(cortex().subscriber(
-            cortex().name("observer"),
+            cortex().name("receptor"),
             (subject, registrar) -> {
                 registrar.register(events::add);
             }
@@ -273,7 +273,7 @@ class RoutersApiDemoTest {
 
         List<String> replicationFlow = new ArrayList<>();
         routers.subscribe(cortex().subscriber(
-            cortex().name("observer"),
+            cortex().name("receptor"),
             (Subject<Channel<Sign>> subject, Registrar<Sign> registrar) -> {
                 registrar.register(sign -> {
                     replicationFlow.add(subject.name() + ":" + sign);
@@ -317,7 +317,7 @@ class RoutersApiDemoTest {
 
         List<String> reassignment = new ArrayList<>();
         routers.subscribe(cortex().subscriber(
-            cortex().name("observer"),
+            cortex().name("receptor"),
             (Subject<Channel<Sign>> subject, Registrar<Sign> registrar) -> {
                 registrar.register(sign -> {
                     reassignment.add(subject.name() + ":" + sign);
@@ -354,7 +354,7 @@ class RoutersApiDemoTest {
 
         List<String> events = new ArrayList<>();
         routers.subscribe(cortex().subscriber(
-            cortex().name("observer"),
+            cortex().name("receptor"),
             (Subject<Channel<Sign>> subject, Registrar<Sign> registrar) -> {
                 registrar.register(sign -> {
                     events.add(subject.name() + ":" + sign);
@@ -418,7 +418,7 @@ class RoutersApiDemoTest {
 
         List<Sign> sampledEvents = new ArrayList<>();
         routers.subscribe(cortex().subscriber(
-            cortex().name("observer"),
+            cortex().name("receptor"),
             (subject, registrar) -> {
                 registrar.register(sampledEvents::add);
             }

@@ -73,7 +73,7 @@ class ProbesApiDemoTest {
 
         List<Signal> clientOps = new ArrayList<>();
         probes.subscribe(cortex().subscriber(
-            cortex().name("observer"),
+            cortex().name("receptor"),
             (subject, registrar) -> {
                 registrar.register(clientOps::add);
             }
@@ -110,7 +110,7 @@ class ProbesApiDemoTest {
 
         List<String> timeline = new ArrayList<>();
         probes.subscribe(cortex().subscriber(
-            cortex().name("observer"),
+            cortex().name("receptor"),
             (Subject<Channel<Signal>> subject, Registrar<Signal> registrar) -> {
                 registrar.register(signal -> {
                     String perspective = signal.dimension() == Dimension.RELEASE ? "SELF" : "OBSERVED";
@@ -154,7 +154,7 @@ class ProbesApiDemoTest {
 
         List<Signal> failures = new ArrayList<>();
         probes.subscribe(cortex().subscriber(
-            cortex().name("observer"),
+            cortex().name("receptor"),
             (subject, registrar) -> {
                 registrar.register(signal -> {
                     if (signal.sign() == Sign.FAIL) {
@@ -187,7 +187,7 @@ class ProbesApiDemoTest {
 
         List<String> sendFlow = new ArrayList<>();
         probes.subscribe(cortex().subscriber(
-            cortex().name("observer"),
+            cortex().name("receptor"),
             (Subject<Channel<Signal>> subject, Registrar<Signal> registrar) -> {
                 registrar.register(signal -> {
                     sendFlow.add(subject.name() + ":" + signal);
@@ -230,7 +230,7 @@ class ProbesApiDemoTest {
 
         List<Sign> consumerOps = new ArrayList<>();
         probes.subscribe(cortex().subscriber(
-            cortex().name("observer"),
+            cortex().name("receptor"),
             (Subject<Channel<Signal>> subject, Registrar<Signal> registrar) -> {
                 registrar.register(signal -> {
                     if (subject.name().toString().contains("consumer")) {
@@ -269,7 +269,7 @@ class ProbesApiDemoTest {
 
         AtomicReference<Signal> lastSignal = new AtomicReference<>();
         probes.subscribe(cortex().subscriber(
-            cortex().name("observer"),
+            cortex().name("receptor"),
             (subject, registrar) -> {
                 registrar.register(lastSignal::set);
             }
@@ -296,7 +296,7 @@ class ProbesApiDemoTest {
 
         List<Signal> pipeline = new ArrayList<>();
         probes.subscribe(cortex().subscriber(
-            cortex().name("observer"),
+            cortex().name("receptor"),
             (subject, registrar) -> {
                 registrar.register(pipeline::add);
             }
@@ -321,13 +321,13 @@ class ProbesApiDemoTest {
     @Test
     @DisplayName("Observed server-side operations")
     void observedServerOperations() {
-        // Scenario: Monitoring server from external observer
+        // Scenario: Monitoring server from external receptor
 
         Probe serverMonitor = probes.percept(cortex().name("server.monitor"));
 
         List<Signal> observations = new ArrayList<>();
         probes.subscribe(cortex().subscriber(
-            cortex().name("observer"),
+            cortex().name("receptor"),
             (subject, registrar) -> {
                 registrar.register(observations::add);
             }
@@ -358,7 +358,7 @@ class ProbesApiDemoTest {
 
         List<String> communication = new ArrayList<>();
         probes.subscribe(cortex().subscriber(
-            cortex().name("observer"),
+            cortex().name("receptor"),
             (Subject<Channel<Signal>> subject, Registrar<Signal> registrar) -> {
                 registrar.register(signal -> {
                     String actor = subject.name().toString().contains("client") ? "CLIENT" : "SERVER";
@@ -452,7 +452,7 @@ class ProbesApiDemoTest {
 
         AtomicReference<Signal> capturedSignal = new AtomicReference<>();
         probes.subscribe(cortex().subscriber(
-            cortex().name("observer"),
+            cortex().name("receptor"),
             (subject, registrar) -> {
                 registrar.register(capturedSignal::set);
             }

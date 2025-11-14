@@ -58,7 +58,7 @@ final class FlowTest
           )
         );
 
-      final Sink < Integer > sink = cortex.sink ( conduit );
+      final Reservoir < Integer > sink = cortex.reservoir( conduit );
 
       final Pipe < Integer > pipe =
         conduit.percept ( cortex.name ( "flow.diff.channel" ) );
@@ -140,7 +140,7 @@ final class FlowTest
           )
         );
 
-      final Sink < Integer > sink = cortex.sink ( conduit );
+      final Reservoir < Integer > sink = cortex.reservoir( conduit );
 
       final Pipe < Integer > pipe =
         conduit.percept ( cortex.name ( "flow.limit.channel" ) );
@@ -243,7 +243,7 @@ final class FlowTest
           )
         );
 
-      final Sink < Integer > sink = cortex.sink ( conduit );
+      final Reservoir < Integer > sink = cortex.reservoir( conduit );
 
       final Pipe < Integer > pipe =
         conduit.percept ( cortex.name ( "flow.sift.channel" ) );
@@ -312,7 +312,7 @@ final class FlowTest
           )
         );
 
-      final Sink < Integer > sink = cortex.sink ( conduit );
+      final Reservoir < Integer > sink = cortex.reservoir( conduit );
 
       final Pipe < Integer > pipe =
         conduit.percept ( cortex.name ( "flow.skip.channel" ) );

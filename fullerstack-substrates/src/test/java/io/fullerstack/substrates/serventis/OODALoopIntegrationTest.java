@@ -91,7 +91,7 @@ class OODALoopIntegrationTest {
 
         // Subscribe to all phases
         probes.subscribe(cortex().subscriber(
-            cortex().name("probe-observer"),
+            cortex().name("probe-receptor"),
             (Subject<Channel<Probes.Signal>> subject, Registrar<Probes.Signal> registrar) -> {
                 registrar.register(signal -> {
                     oodaFlow.add("OBSERVE(Probe):" + subject.name() + ":" + signal.sign());
@@ -100,7 +100,7 @@ class OODALoopIntegrationTest {
         ));
 
         services.subscribe(cortex().subscriber(
-            cortex().name("service-observer"),
+            cortex().name("service-receptor"),
             (Subject<Channel<Services.Signal>> subject, Registrar<Services.Signal> registrar) -> {
                 registrar.register(signal -> {
                     oodaFlow.add("OBSERVE(Service):" + subject.name() + ":" + signal.sign());
@@ -109,7 +109,7 @@ class OODALoopIntegrationTest {
         ));
 
         queues.subscribe(cortex().subscriber(
-            cortex().name("queue-observer"),
+            cortex().name("queue-receptor"),
             (Subject<Channel<Queues.Sign>> subject, Registrar<Queues.Sign> registrar) -> {
                 registrar.register(sign -> {
                     oodaFlow.add("OBSERVE(Queue):" + subject.name() + ":" + sign);
@@ -118,7 +118,7 @@ class OODALoopIntegrationTest {
         ));
 
         monitors.subscribe(cortex().subscriber(
-            cortex().name("monitor-observer"),
+            cortex().name("monitor-receptor"),
             (Subject<Channel<Monitors.Signal>> subject, Registrar<Monitors.Signal> registrar) -> {
                 registrar.register(signal -> {
                     oodaFlow.add("ORIENT(Monitor):" + subject.name() + ":" + signal.sign());
@@ -127,7 +127,7 @@ class OODALoopIntegrationTest {
         ));
 
         reporters.subscribe(cortex().subscriber(
-            cortex().name("reporter-observer"),
+            cortex().name("reporter-receptor"),
             (Subject<Channel<Reporters.Sign>> subject, Registrar<Reporters.Sign> registrar) -> {
                 registrar.register(sign -> {
                     oodaFlow.add("DECIDE(Reporter):" + subject.name() + ":" + sign);
@@ -232,14 +232,14 @@ class OODALoopIntegrationTest {
         List<String> flow = new ArrayList<>();
 
         queues.subscribe(cortex().subscriber(
-            cortex().name("observer"),
+            cortex().name("receptor"),
             (subject, registrar) -> {
                 registrar.register(sign -> flow.add("OBSERVE:" + sign));
             }
         ));
 
         monitors.subscribe(cortex().subscriber(
-            cortex().name("observer"),
+            cortex().name("receptor"),
             (subject, registrar) -> {
                 registrar.register(signal -> flow.add("ORIENT:" + signal.sign()));
             }
@@ -268,14 +268,14 @@ class OODALoopIntegrationTest {
         List<String> flow = new ArrayList<>();
 
         monitors.subscribe(cortex().subscriber(
-            cortex().name("observer"),
+            cortex().name("receptor"),
             (subject, registrar) -> {
                 registrar.register(signal -> flow.add("ORIENT:" + signal.sign()));
             }
         ));
 
         reporters.subscribe(cortex().subscriber(
-            cortex().name("observer"),
+            cortex().name("receptor"),
             (subject, registrar) -> {
                 registrar.register(sign -> flow.add("DECIDE:" + sign));
             }
@@ -313,21 +313,21 @@ class OODALoopIntegrationTest {
         List<String> events = new ArrayList<>();
 
         queues.subscribe(cortex().subscriber(
-            cortex().name("observer"),
+            cortex().name("receptor"),
             (Subject<Channel<Queues.Sign>> subject, Registrar<Queues.Sign> registrar) -> {
                 registrar.register(sign -> events.add("OBSERVE:" + subject.name() + ":" + sign));
             }
         ));
 
         monitors.subscribe(cortex().subscriber(
-            cortex().name("observer"),
+            cortex().name("receptor"),
             (Subject<Channel<Monitors.Signal>> subject, Registrar<Monitors.Signal> registrar) -> {
                 registrar.register(signal -> events.add("ORIENT:" + subject.name() + ":" + signal.sign()));
             }
         ));
 
         reporters.subscribe(cortex().subscriber(
-            cortex().name("observer"),
+            cortex().name("receptor"),
             (Subject<Channel<Reporters.Sign>> subject, Registrar<Reporters.Sign> registrar) -> {
                 registrar.register(sign -> events.add("DECIDE:" + subject.name() + ":" + sign));
             }

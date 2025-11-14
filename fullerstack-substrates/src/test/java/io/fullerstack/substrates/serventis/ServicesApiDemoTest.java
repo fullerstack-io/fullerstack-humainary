@@ -64,7 +64,7 @@ class ServicesApiDemoTest {
 
         List<Sign> lifecycle = new ArrayList<>();
         services.subscribe(cortex().subscriber(
-            cortex().name("observer"),
+            cortex().name("receptor"),
             (subject, registrar) -> {
                 registrar.register(signal -> lifecycle.add(signal.sign()));
             }
@@ -94,7 +94,7 @@ class ServicesApiDemoTest {
 
         List<Sign> retryFlow = new ArrayList<>();
         services.subscribe(cortex().subscriber(
-            cortex().name("observer"),
+            cortex().name("receptor"),
             (subject, registrar) -> {
                 registrar.register(signal -> retryFlow.add(signal.sign()));
             }
@@ -124,7 +124,7 @@ class ServicesApiDemoTest {
 
         List<Sign> degradedFlow = new ArrayList<>();
         services.subscribe(cortex().subscriber(
-            cortex().name("observer"),
+            cortex().name("receptor"),
             (subject, registrar) -> {
                 registrar.register(signal -> degradedFlow.add(signal.sign()));
             }
@@ -153,7 +153,7 @@ class ServicesApiDemoTest {
 
         List<String> redirectFlow = new ArrayList<>();
         services.subscribe(cortex().subscriber(
-            cortex().name("observer"),
+            cortex().name("receptor"),
             (Subject<Channel<Signal>> subject, Registrar<Signal> registrar) -> {
                 registrar.register(signal -> {
                     redirectFlow.add(subject.name() + ":" + signal.sign());
@@ -185,7 +185,7 @@ class ServicesApiDemoTest {
 
         List<Sign> rejected = new ArrayList<>();
         services.subscribe(cortex().subscriber(
-            cortex().name("observer"),
+            cortex().name("receptor"),
             (subject, registrar) -> {
                 registrar.register(signal -> rejected.add(signal.sign()));
             }
@@ -210,7 +210,7 @@ class ServicesApiDemoTest {
 
         List<Sign> scheduled = new ArrayList<>();
         services.subscribe(cortex().subscriber(
-            cortex().name("observer"),
+            cortex().name("receptor"),
             (subject, registrar) -> {
                 registrar.register(signal -> scheduled.add(signal.sign()));
             }
@@ -238,7 +238,7 @@ class ServicesApiDemoTest {
 
         List<Sign> sagaFlow = new ArrayList<>();
         services.subscribe(cortex().subscriber(
-            cortex().name("observer"),
+            cortex().name("receptor"),
             (subject, registrar) -> {
                 registrar.register(signal -> sagaFlow.add(signal.sign()));
             }
@@ -268,7 +268,7 @@ class ServicesApiDemoTest {
 
         List<Sign> connectionIssues = new ArrayList<>();
         services.subscribe(cortex().subscriber(
-            cortex().name("observer"),
+            cortex().name("receptor"),
             (subject, registrar) -> {
                 registrar.register(signal -> connectionIssues.add(signal.sign()));
             }
@@ -295,7 +295,7 @@ class ServicesApiDemoTest {
 
         List<String> orientations = new ArrayList<>();
         services.subscribe(cortex().subscriber(
-            cortex().name("observer"),
+            cortex().name("receptor"),
             (Subject<Channel<Signal>> subject, Registrar<Signal> registrar) -> {
                 registrar.register(signal -> {
                     String perspective = signal.dimension() == Dimension.RELEASE ? "SELF" : "OBSERVED";

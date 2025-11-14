@@ -7,12 +7,12 @@ import io.fullerstack.substrates.state.LinkedState;
 import io.fullerstack.substrates.closure.AutoClosingResource;
 import io.fullerstack.substrates.name.InternedName;
 
+import java.util.ArrayDeque;
 import java.util.Deque;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.concurrent.ConcurrentLinkedDeque;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Implementation of Substrates.Scope for hierarchical context management.
@@ -24,17 +24,20 @@ import java.util.concurrent.ConcurrentHashMap;
  * @see Scope
  */
 public class ManagedScope implements Scope {
-  private final    Name                name;
-  private final    Scope               parent;
-  private final    Map < Name, Scope > childScopes;
-  private final    Deque < Resource >  resources = new ConcurrentLinkedDeque <> ();
-  private volatile boolean             closed    = false;
+  private final Name                            name;
+  private final Scope                           parent;
+  private       Map < Name, Scope >             childScopes;
+  private       Deque < Resource >              resources;
+  private       boolean                         closed = false;
 
-  // Cache Subject - each Scope has a persistent identity
-  private final Subject scopeSubject;
+  // Counter for anonymous child scopes (cheaper than UUID)
+  private       int                             anonymousCounter = 0;
 
-  // Cache Closures per resource - cleared when closure is consumed
-  private final Map < Resource, Closure < ? > > closureCache = new ConcurrentHashMap <> ();
+  // Lazy Subject - only created if subject() is called
+  private       Subject                         scopeSubject;
+
+  // Lazy Closure cache - only created if closure() is called
+  private       Map < Resource, Closure < ? > > closureCache;
 
   /**
    * Creates a root scope.
@@ -54,35 +57,45 @@ public class ManagedScope implements Scope {
   private ManagedScope ( Name name, Scope parent ) {
     this.name = Objects.requireNonNull ( name, "Scope name cannot be null" );
     this.parent = parent;
-    this.childScopes = new ConcurrentHashMap <> ();
-    // Create Subject once - represents persistent identity of this Scope
-    this.scopeSubject = new ContextualSubject <> (
-      UuidIdentifier.generate (),
-      name,
-      LinkedState.empty (),
-      Scope.class
-    );
+    // All collections and Subject are lazy - only created when needed
   }
 
   @Override
   public Subject subject () {
+    // Lazy Subject creation (single-threaded access)
+    if ( scopeSubject == null ) {
+      scopeSubject = new ContextualSubject <> (
+        UuidIdentifier.generate (),
+        name,
+        LinkedState.empty (),
+        Scope.class
+      );
+    }
     return scopeSubject;
   }
 
   @Override
   public Scope scope () {
     checkClosed ();
-    // Create anonymous scope with generated name and add to child scopes
-    // so it gets closed when parent closes
-    Name anonymousName = InternedName.of ( "scope-" + UuidIdentifier.generate () );
-    ManagedScope childScope = new ManagedScope ( anonymousName, this );
-    childScopes.put ( anonymousName, childScope );
-    return childScope;
+    // Lazy create childScopes map (single-threaded access)
+    if ( childScopes == null ) {
+      childScopes = new HashMap <> ();
+    }
+    // Use counter for anonymous child names (cheap vs UUID)
+    // Creates hierarchical name: parent.name.name("0"), parent.name.name("1"), etc.
+    Name childName = name.name ( String.valueOf ( anonymousCounter++ ) );
+    ManagedScope child = new ManagedScope ( childName, this );
+    childScopes.put ( childName, child );
+    return child;
   }
 
   @Override
   public Scope scope ( Name name ) {
     checkClosed ();
+    // Lazy create childScopes map (single-threaded access)
+    if ( childScopes == null ) {
+      childScopes = new HashMap <> ();
+    }
     return childScopes.computeIfAbsent ( name, n -> new ManagedScope ( n, this ) );
   }
 
@@ -90,6 +103,10 @@ public class ManagedScope implements Scope {
   public < R extends Resource > R register ( R resource ) {
     checkClosed ();
     Objects.requireNonNull ( resource, "Resource cannot be null" );
+    // Lazy create resources deque (single-threaded access)
+    if ( resources == null ) {
+      resources = new ArrayDeque <> ();
+    }
     resources.addFirst ( resource );  // Add to front for LIFO closure ordering
     return resource;
   }
@@ -99,6 +116,11 @@ public class ManagedScope implements Scope {
   public < R extends Resource > Closure < R > closure ( R resource ) {
     checkClosed ();
     Objects.requireNonNull ( resource, "Resource cannot be null" );
+
+    // Lazy create closureCache map (single-threaded access)
+    if ( closureCache == null ) {
+      closureCache = new HashMap <> ();
+    }
 
     // Return cached closure if exists and not yet consumed
     Closure < R > cached = (Closure < R >) closureCache.get ( resource );
@@ -124,27 +146,32 @@ public class ManagedScope implements Scope {
     }
     closed = true;
 
-    // Close all child scopes first
-    for ( Scope scope : childScopes.values () ) {
-      try {
-        scope.close ();
-      } catch ( java.lang.Exception e ) {
-        // Log but continue closing others
+    // Close all child scopes first (only if they exist)
+    Map < Name, Scope > scopes = childScopes;
+    if ( scopes != null ) {
+      for ( Scope scope : scopes.values () ) {
+        try {
+          scope.close ();
+        } catch ( java.lang.Exception e ) {
+          // Log but continue closing others
+        }
       }
+      scopes.clear ();
     }
 
-    // Close all resources in LIFO order (reverse of registration)
-    // Since we use addFirst(), iteration is already in LIFO order
-    resources.forEach ( resource -> {
-      try {
-        resource.close ();
-      } catch ( java.lang.Exception e ) {
-        // Log but continue closing others
-      }
-    } );
-
-    resources.clear ();
-    childScopes.clear ();
+    // Close all resources in LIFO order (only if they exist)
+    Deque < Resource > res = resources;
+    if ( res != null ) {
+      // Since we use addFirst(), iteration is already in LIFO order
+      res.forEach ( resource -> {
+        try {
+          resource.close ();
+        } catch ( java.lang.Exception e ) {
+          // Log but continue closing others
+        }
+      } );
+      res.clear ();
+    }
   }
 
   @Override

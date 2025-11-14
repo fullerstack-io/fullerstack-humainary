@@ -70,7 +70,7 @@ class AgentsApiDemoTest {
 
         // Subscribe to observe all agent signals
         agents.subscribe(cortex().subscriber(
-            cortex().name("observer"),
+            cortex().name("receptor"),
             (Subject<Channel<Signal>> subject, Registrar<Signal> registrar) -> {
                 registrar.register(signal -> {
                     if (subject.name().toString().contains("scaler")) {
@@ -130,7 +130,7 @@ class AgentsApiDemoTest {
 
         AtomicReference<Signal> lastSignal = new AtomicReference<>();
         agents.subscribe(cortex().subscriber(
-            cortex().name("observer"),
+            cortex().name("receptor"),
             (subject, registrar) -> {
                 registrar.register(lastSignal::set);
             }
@@ -158,7 +158,7 @@ class AgentsApiDemoTest {
 
         AtomicReference<Signal> lastSignal = new AtomicReference<>();
         agents.subscribe(cortex().subscriber(
-            cortex().name("observer"),
+            cortex().name("receptor"),
             (subject, registrar) -> {
                 registrar.register(lastSignal::set);
             }
@@ -186,7 +186,7 @@ class AgentsApiDemoTest {
         List<Signal> leaderSignals = new ArrayList<>();
 
         agents.subscribe(cortex().subscriber(
-            cortex().name("observer"),
+            cortex().name("receptor"),
             (Subject<Channel<Signal>> subject, Registrar<Signal> registrar) -> {
                 registrar.register(signal -> {
                     if (subject.name().toString().contains("leader")) {
@@ -232,7 +232,7 @@ class AgentsApiDemoTest {
         List<String> timeline = new ArrayList<>();
 
         agents.subscribe(cortex().subscriber(
-            cortex().name("observer"),
+            cortex().name("receptor"),
             (Subject<Channel<Signal>> subject, Registrar<Signal> registrar) -> {
                 registrar.register(signal -> {
                     timeline.add(subject.name() + ":" + signal);
@@ -289,7 +289,7 @@ class AgentsApiDemoTest {
 
         List<Signal> signals = new ArrayList<>();
         agents.subscribe(cortex().subscriber(
-            cortex().name("observer"),
+            cortex().name("receptor"),
             (subject, registrar) -> {
                 registrar.register(signals::add);
             }
@@ -350,8 +350,8 @@ class AgentsApiDemoTest {
         // Dependency (4 signals)
         agent.depend();
         agent.depended();
-        agent.observe();
-        agent.observed();
+        agent.inquire();
+        agent.receive(d());
 
         // Validation (2 signals)
         agent.validate();

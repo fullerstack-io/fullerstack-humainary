@@ -1,4 +1,4 @@
-package io.fullerstack.substrates.sink;
+package io.fullerstack.substrates.reservoir;
 
 import io.humainary.substrates.api.Substrates.*;
 import io.fullerstack.substrates.capture.SubjectCapture;
@@ -13,22 +13,22 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.stream.Stream;
 
 /**
- * Implementation of Substrates.Sink for buffering and draining emissions.
+ * Implementation of Substrates.Reservoir for buffering and draining emissions.
  * <p>
- * < p >Sink accumulates Capture events from a Source and provides them via drain().
+ * < p >Reservoir accumulates Capture events from a Source and provides them via drain().
  * Each call to drain() returns accumulated events since the last drain (or creation)
  * and clears the buffer.
  * <p>
  * < p >Thread-safe implementation using CopyOnWriteArrayList for concurrent access.
  *
  * @param < E > the emission type
- * @see Sink
+ * @see Reservoir
  * @see Source
  * @see Capture
  */
-public class CollectingSink < E > implements Sink < E > {
+public class CollectingReservoir < E > implements Reservoir < E > {
 
-  private final    Subject < Sink < E > > sinkSubject;
+  private final    Subject < Reservoir < E > > reservoirSubject;
   private final    Source < E, ? >        source;
   private final    List < Capture < E > > buffer = new CopyOnWriteArrayList <> ();
   private final    Subscription           subscription;
@@ -38,23 +38,23 @@ public class CollectingSink < E > implements Sink < E > {
   private final Subject < Subscriber < E > > internalSubscriberSubject;
 
   /**
-   * Creates a Sink that subscribes to the given Source.
+   * Creates a Reservoir that subscribes to the given Source.
    *
    * @param source the source to subscribe to
    * @throws NullPointerException if source is null
    */
   @SuppressWarnings ( "unchecked" )
-  public CollectingSink ( Source < E, ? > source ) {
+  public CollectingReservoir ( Source < E, ? > source ) {
     Objects.requireNonNull ( source, "Source cannot be null" );
 
     // Using InternedName.of() static factory
     this.source = source;
-    Id sinkId = UuidIdentifier.generate ();
-    this.sinkSubject = new ContextualSubject <> (
-      sinkId,
-      InternedName.of ( "sink" ).name ( sinkId.toString () ),
+    Id reservoirId = UuidIdentifier.generate ();
+    this.reservoirSubject = new ContextualSubject <> (
+      reservoirId,
+      InternedName.of ( "reservoir" ).name ( reservoirId.toString () ),
       LinkedState.empty (),
-      (Class < Sink < E > >) (Class < ? >) Sink.class
+      (Class < Reservoir < E > >) (Class < ? >) Reservoir.class
     );
 
     // Create internal subscriber's Subject once
@@ -66,9 +66,9 @@ public class CollectingSink < E > implements Sink < E > {
     );
 
     // Subscribe to source and buffer all emissions
-    //  Use FunctionalSubscriber with callback
+    //  Use ContextSubscriber with callback
     this.subscription = source.subscribe (
-      new io.fullerstack.substrates.subscriber.FunctionalSubscriber < E > (
+      new io.fullerstack.substrates.subscriber.ContextSubscriber < E > (
         InternedName.of ( "sink-subscriber" ),
         ( subject, registrar ) -> {
           // Register a pipe that captures emissions into the buffer
@@ -84,7 +84,7 @@ public class CollectingSink < E > implements Sink < E > {
 
   @Override
   public Subject subject () {
-    return sinkSubject;
+    return reservoirSubject;
   }
 
   @Override

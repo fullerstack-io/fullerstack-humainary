@@ -48,7 +48,7 @@ class MonitorsApiDemoTest {
 
         List<Signal> signals = new ArrayList<>();
         monitors.subscribe(cortex().subscriber(
-            cortex().name("observer"),
+            cortex().name("receptor"),
             (subject, registrar) -> {
                 registrar.register(signals::add);
             }

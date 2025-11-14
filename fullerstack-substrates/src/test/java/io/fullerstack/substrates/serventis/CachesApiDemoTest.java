@@ -64,7 +64,7 @@ class CachesApiDemoTest {
 
         List<Sign> events = new ArrayList<>();
         caches.subscribe(cortex().subscriber(
-            cortex().name("observer"),
+            cortex().name("receptor"),
             (subject, registrar) -> {
                 registrar.register(events::add);
             }
@@ -90,7 +90,7 @@ class CachesApiDemoTest {
 
         List<Sign> events = new ArrayList<>();
         caches.subscribe(cortex().subscriber(
-            cortex().name("observer"),
+            cortex().name("receptor"),
             (subject, registrar) -> {
                 registrar.register(events::add);
             }
@@ -118,7 +118,7 @@ class CachesApiDemoTest {
 
         List<Sign> events = new ArrayList<>();
         caches.subscribe(cortex().subscriber(
-            cortex().name("observer"),
+            cortex().name("receptor"),
             (subject, registrar) -> {
                 registrar.register(events::add);
             }
@@ -144,7 +144,7 @@ class CachesApiDemoTest {
 
         List<Sign> events = new ArrayList<>();
         caches.subscribe(cortex().subscriber(
-            cortex().name("observer"),
+            cortex().name("receptor"),
             (subject, registrar) -> {
                 registrar.register(events::add);
             }
@@ -168,7 +168,7 @@ class CachesApiDemoTest {
 
         List<Sign> events = new ArrayList<>();
         caches.subscribe(cortex().subscriber(
-            cortex().name("observer"),
+            cortex().name("receptor"),
             (subject, registrar) -> {
                 registrar.register(events::add);
             }
