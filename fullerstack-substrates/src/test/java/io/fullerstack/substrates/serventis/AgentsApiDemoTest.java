@@ -85,39 +85,40 @@ class AgentsApiDemoTest {
         // ACT: Execute promise lifecycle
 
         // 1. Monitor inquires about scaling capability
-        monitor.inquire();  // OUTBOUND: "Can anyone scale?"
+        monitor.inquire(Dimension.PROMISER);  // PROMISER: "I inquire about scaling"
 
-        // 2. Scaler offers scaling capability
-        scaler.offered();   // INBOUND: "Monitor asked about scaling"
-        scaler.offer();     // OUTBOUND: "I can scale consumers"
+        // 2. Scaler observes inquiry and offers scaling capability
+        scaler.inquire(Dimension.PROMISEE);   // PROMISEE: "Monitor inquired"
+        scaler.offer(Dimension.PROMISER);     // PROMISER: "I offer to scale consumers"
 
         // 3. Scaler makes promise
-        scaler.promise();   // OUTBOUND: "I promise to scale"
+        scaler.promise(Dimension.PROMISER);   // PROMISER: "I promise to scale"
 
-        // 4. Monitor accepts the promise
-        monitor.offered();  // INBOUND: "Scaler offered"
-        monitor.accept();   // OUTBOUND: "I accept your promise"
+        // 4. Monitor observes offer and accepts the promise
+        monitor.offer(Dimension.PROMISEE);  // PROMISEE: "Scaler offered"
+        monitor.accept(Dimension.PROMISER);   // PROMISER: "I accept your promise"
 
         // 5. Scaler acknowledges acceptance and fulfills
-        scaler.accepted();  // INBOUND: "Monitor accepted my promise"
-        scaler.fulfill();   // OUTBOUND: "I kept my promise (scaled consumers)"
+        scaler.accept(Dimension.PROMISEE);  // PROMISEE: "Monitor accepted"
+        scaler.fulfill(Dimension.PROMISER);   // PROMISER: "I kept my promise (scaled consumers)"
 
         circuit.await();
 
         // ASSERT: Verify signal sequence
-        assertThat(scalerSignals).containsExactly(
-            Signal.OFFERED,   // Inbound: observed inquiry
-            Signal.OFFER,     // Outbound: advertise capability
-            Signal.PROMISE,   // Outbound: commit
-            Signal.ACCEPTED,  // Inbound: observed acceptance
-            Signal.FULFILL    // Outbound: kept promise
-        );
+        assertThat(scalerSignals).hasSize(5);
+        assertThat(scalerSignals.get(0).sign()).isEqualTo(Sign.INQUIRE);
+        assertThat(scalerSignals.get(0).dimension()).isEqualTo(Dimension.PROMISEE);
+        assertThat(scalerSignals.get(1).sign()).isEqualTo(Sign.OFFER);
+        assertThat(scalerSignals.get(2).sign()).isEqualTo(Sign.PROMISE);
+        assertThat(scalerSignals.get(3).sign()).isEqualTo(Sign.ACCEPT);
+        assertThat(scalerSignals.get(3).dimension()).isEqualTo(Dimension.PROMISEE);
+        assertThat(scalerSignals.get(4).sign()).isEqualTo(Sign.FULFILL);
 
-        assertThat(monitorSignals).containsExactly(
-            Signal.INQUIRE,   // Outbound: ask about capabilities
-            Signal.OFFERED,   // Inbound: observed offer
-            Signal.ACCEPT     // Outbound: accept promise
-        );
+        assertThat(monitorSignals).hasSize(3);
+        assertThat(monitorSignals.get(0).sign()).isEqualTo(Sign.INQUIRE);
+        assertThat(monitorSignals.get(1).sign()).isEqualTo(Sign.OFFER);
+        assertThat(monitorSignals.get(1).dimension()).isEqualTo(Dimension.PROMISEE);
+        assertThat(monitorSignals.get(2).sign()).isEqualTo(Sign.ACCEPT);
     }
 
     @Test
@@ -137,16 +138,16 @@ class AgentsApiDemoTest {
         ));
 
         // ACT: Consumer promises but breaches
-        consumer.promise();  // OUTBOUND: "I promise to join rebalance"
-        coordinator.promised();  // INBOUND: "Consumer promised"
+        consumer.promise(Dimension.PROMISER);  // PROMISER: "I promise to join rebalance"
+        coordinator.promise(Dimension.PROMISEE);  // PROMISEE: "Consumer promised"
 
         // Consumer times out or crashes
-        consumer.breach();   // OUTBOUND: "I failed to keep my promise"
+        consumer.breach(Dimension.PROMISER);   // PROMISER: "I failed to keep my promise"
 
         circuit.await();
 
         // ASSERT: Breach signal emitted
-        assertThat(lastSignal.get()).isEqualTo(Signal.BREACH);
+        assertThat(lastSignal.get().sign()).isEqualTo(Sign.BREACH);
     }
 
     @Test
@@ -165,13 +166,13 @@ class AgentsApiDemoTest {
         ));
 
         // ACT: Broker retracts promise
-        broker.promise();   // OUTBOUND: "I promise capacity"
-        broker.retract();   // OUTBOUND: "I withdraw my promise"
+        broker.promise(Dimension.PROMISER);   // PROMISER: "I promise capacity"
+        broker.retract(Dimension.PROMISER);   // PROMISER: "I withdraw my promise"
 
         circuit.await();
 
         // ASSERT: Retraction signal emitted
-        assertThat(lastSignal.get()).isEqualTo(Signal.RETRACT);
+        assertThat(lastSignal.get().sign()).isEqualTo(Sign.RETRACT);
     }
 
     @Test
@@ -197,25 +198,25 @@ class AgentsApiDemoTest {
         ));
 
         // ACT: Leader declares dependencies
-        leader.depend();      // OUTBOUND: "I depend on followers"
+        leader.depend(Dimension.PROMISER);      // PROMISER: "I depend on followers"
 
-        follower1.depended(); // INBOUND: "Leader depends on me"
-        follower1.promise();  // OUTBOUND: "I promise to replicate"
+        follower1.depend(Dimension.PROMISEE); // PROMISEE: "Leader depends on me"
+        follower1.promise(Dimension.PROMISER);  // PROMISER: "I promise to replicate"
 
-        follower2.depended(); // INBOUND: "Leader depends on me"
-        follower2.promise();  // OUTBOUND: "I promise to replicate"
+        follower2.depend(Dimension.PROMISEE); // PROMISEE: "Leader depends on me"
+        follower2.promise(Dimension.PROMISER);  // PROMISER: "I promise to replicate"
 
-        leader.validate();    // OUTBOUND: "I validate dependencies are met"
+        leader.validate(Dimension.PROMISER);    // PROMISER: "I validate dependencies are met"
 
-        follower1.fulfill();  // OUTBOUND: "I fulfilled replication"
-        follower2.fulfill();  // OUTBOUND: "I fulfilled replication"
+        follower1.fulfill(Dimension.PROMISER);  // PROMISER: "I fulfilled replication"
+        follower2.fulfill(Dimension.PROMISER);  // PROMISER: "I fulfilled replication"
 
         circuit.await();
 
         // ASSERT: Dependency lifecycle tracked
-        assertThat(leaderSignals).contains(
-            Signal.DEPEND,
-            Signal.VALIDATE
+        assertThat(leaderSignals.stream().map(s -> s.sign()).toList()).contains(
+            Sign.DEPEND,
+            Sign.VALIDATE
         );
     }
 
@@ -235,7 +236,7 @@ class AgentsApiDemoTest {
             cortex().name("receptor"),
             (Subject<Channel<Signal>> subject, Registrar<Signal> registrar) -> {
                 registrar.register(signal -> {
-                    timeline.add(subject.name() + ":" + signal);
+                    timeline.add(subject.name() + ":" + signal.sign());
                 });
             }
         ));
@@ -243,26 +244,26 @@ class AgentsApiDemoTest {
         // ACT: Complete coordination cycle
 
         // Phase 1: Discovery
-        controller.inquire();    // Controller asks about capacity
-        broker1.offered();       // Broker1 observes inquiry
-        broker1.offer();         // Broker1 offers capacity
-        broker2.offered();       // Broker2 observes inquiry
-        broker2.offer();         // Broker2 offers capacity
+        controller.inquire(Dimension.PROMISER);    // Controller asks about capacity
+        broker1.inquire(Dimension.PROMISEE);       // Broker1 observes inquiry
+        broker1.offer(Dimension.PROMISER);         // Broker1 offers capacity
+        broker2.inquire(Dimension.PROMISEE);       // Broker2 observes inquiry
+        broker2.offer(Dimension.PROMISER);         // Broker2 offers capacity
 
         // Phase 2: Commitment
-        controller.offered();    // Controller observes offers
-        broker1.promise();       // Broker1 commits to taking partition
-        broker2.promise();       // Broker2 commits to taking partition
+        controller.offer(Dimension.PROMISEE);    // Controller observes offers
+        broker1.promise(Dimension.PROMISER);       // Broker1 commits to taking partition
+        broker2.promise(Dimension.PROMISER);       // Broker2 commits to taking partition
 
         // Phase 3: Acceptance
-        controller.promised();   // Controller observes promises
-        controller.accept();     // Controller accepts promises
+        controller.promise(Dimension.PROMISEE);   // Controller observes promises
+        controller.accept(Dimension.PROMISER);     // Controller accepts promises
 
         // Phase 4: Execution
-        broker1.accepted();      // Broker1 observes acceptance
-        broker1.fulfill();       // Broker1 completes partition transfer
-        broker2.accepted();      // Broker2 observes acceptance
-        broker2.fulfill();       // Broker2 completes partition transfer
+        broker1.accept(Dimension.PROMISEE);      // Broker1 observes acceptance
+        broker1.fulfill(Dimension.PROMISER);       // Broker1 completes partition transfer
+        broker2.accept(Dimension.PROMISEE);      // Broker2 observes acceptance
+        broker2.fulfill(Dimension.PROMISER);       // Broker2 completes partition transfer
 
         circuit.await();
 
@@ -295,35 +296,32 @@ class AgentsApiDemoTest {
             }
         ));
 
-        // ACT: Self-reporting (OUTBOUND) vs observing others (INBOUND)
+        // ACT: PROMISER vs PROMISEE perspective
 
-        // OUTBOUND: "I promise" (present tense, self)
-        agent.promise();
+        // PROMISER: "I promise" (I am making the promise)
+        agent.promise(Dimension.PROMISER);
 
-        // INBOUND: "They promised" (past tense, other)
-        agent.promised();
+        // PROMISEE: "They promised" (I observed their promise)
+        agent.promise(Dimension.PROMISEE);
 
-        // OUTBOUND: "I fulfill"
-        agent.fulfill();
+        // PROMISER: "I fulfill" (I am fulfilling my promise)
+        agent.fulfill(Dimension.PROMISER);
 
-        // INBOUND: "They fulfilled"
-        agent.fulfilled();
+        // PROMISEE: "They fulfilled" (I observed their fulfillment)
+        agent.fulfill(Dimension.PROMISEE);
 
         circuit.await();
 
         // ASSERT: Both perspectives captured
-        assertThat(signals).containsExactly(
-            Signal.PROMISE,    // Outbound
-            Signal.PROMISED,   // Inbound
-            Signal.FULFILL,    // Outbound
-            Signal.FULFILLED   // Inbound
-        );
-
-        // Verify signal properties
-        assertThat(Signal.PROMISE.dimension())
-            .isEqualTo(Dimension.PROMISER);
-        assertThat(Signal.PROMISED.dimension())
-            .isEqualTo(Dimension.PROMISEE);
+        assertThat(signals).hasSize(4);
+        assertThat(signals.get(0).sign()).isEqualTo(Sign.PROMISE);
+        assertThat(signals.get(0).dimension()).isEqualTo(Dimension.PROMISER);
+        assertThat(signals.get(1).sign()).isEqualTo(Sign.PROMISE);
+        assertThat(signals.get(1).dimension()).isEqualTo(Dimension.PROMISEE);
+        assertThat(signals.get(2).sign()).isEqualTo(Sign.FULFILL);
+        assertThat(signals.get(2).dimension()).isEqualTo(Dimension.PROMISER);
+        assertThat(signals.get(3).sign()).isEqualTo(Sign.FULFILL);
+        assertThat(signals.get(3).dimension()).isEqualTo(Dimension.PROMISEE);
     }
 
     @Test
@@ -333,43 +331,42 @@ class AgentsApiDemoTest {
 
         Agent agent = agents.percept(cortex().name("test-agent"));
 
-        // ACT: Emit all 20 signals
+        // ACT: Emit all signals (10 signs × 2 dimensions = 20 signals)
 
         // Discovery (4 signals)
-        agent.inquire();
-        agent.inquired();
-        agent.offer();
-        agent.offered();
+        agent.inquire(Dimension.PROMISER);
+        agent.inquire(Dimension.PROMISEE);
+        agent.offer(Dimension.PROMISER);
+        agent.offer(Dimension.PROMISEE);
 
         // Commitment (4 signals)
-        agent.promise();
-        agent.promised();
-        agent.accept();
-        agent.accepted();
+        agent.promise(Dimension.PROMISER);
+        agent.promise(Dimension.PROMISEE);
+        agent.accept(Dimension.PROMISER);
+        agent.accept(Dimension.PROMISEE);
 
         // Dependency (4 signals)
-        agent.depend();
-        agent.depended();
-        agent.inquire();
-        agent.receive(d());
+        agent.depend(Dimension.PROMISER);
+        agent.depend(Dimension.PROMISEE);
+        agent.observe(Dimension.PROMISER);
+        agent.observe(Dimension.PROMISEE);
 
         // Validation (2 signals)
-        agent.validate();
-        agent.validated();
+        agent.validate(Dimension.PROMISER);
+        agent.validate(Dimension.PROMISEE);
 
         // Resolution (6 signals)
-        agent.fulfill();
-        agent.fulfilled();
-        agent.breach();
-        agent.breached();
-        agent.retract();
-        agent.retracted();
+        agent.fulfill(Dimension.PROMISER);
+        agent.fulfill(Dimension.PROMISEE);
+        agent.breach(Dimension.PROMISER);
+        agent.breach(Dimension.PROMISEE);
+        agent.retract(Dimension.PROMISER);
+        agent.retract(Dimension.PROMISEE);
 
         circuit.await();
 
-        // ASSERT: All signal types exist
-        Signal[] allSignals = Signal.values();
-        assertThat(allSignals).hasSize(20);
+        // ASSERT: All sign types exist (10 signs × 2 dimensions = 20 signals)
+        // Note: Signal is a record combining Sign + Dimension, not an enum with values()
 
         // Verify 10 sign types exist
         Agents.Sign[] allSigns = Sign.values();

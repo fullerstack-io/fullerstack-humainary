@@ -16,7 +16,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import io.humainary.substrates.ext.serventis.ext.Services;
 
 /**
- * Demonstration of the Services API (RC6) - Service interaction lifecycle.
+ * Demonstration of the Services API (1.0.0-PREVIEW) - Service interaction lifecycle.
  * <p>
  * The Services API enables observation of service call patterns, outcomes, and
  * remediation strategies through semantic signal emission.
@@ -28,6 +28,10 @@ import io.humainary.substrates.ext.serventis.ext.Services;
  * - REJECT/DISCARD: Admission control
  * - SCHEDULE/DELAY/SUSPEND/RESUME: Work management
  * - EXPIRE/DISCONNECT: Failure modes
+ * <p>
+ * Dimensions (CALLER/CALLEE): Replaced RELEASE/RECEIPT for clarity
+ * - CALLER: Client perspective ("I am calling", "my call succeeded")
+ * - CALLEE: Server perspective ("serving request", "request failed")
  * <p>
  * Kafka Use Cases:
  * - Producer send lifecycle (CALL → SUCCESS/FAIL)
@@ -71,10 +75,10 @@ class ServicesApiDemoTest {
         ));
 
         // ACT
-        service.call();       // Initiate service call
-        service.start();      // Begin execution
-        service.success();    // Successful result
-        service.stop();       // Complete execution
+        service.call(Dimension.CALLER);       // Initiate service call (caller perspective)
+        service.start(Dimension.CALLEE);      // Begin execution (callee serving)
+        service.success(Dimension.CALLEE);    // Successful result
+        service.stop(Dimension.CALLEE);       // Complete execution
 
         circuit.await();
 
@@ -101,11 +105,11 @@ class ServicesApiDemoTest {
         ));
 
         // ACT
-        service.call();       // Initial attempt
-        service.fail();       // First attempt failed
-        service.retry();      // Retry strategy triggered
-        service.call();       // Second attempt
-        service.success();    // Retry succeeded
+        service.call(Dimension.CALLER);       // Initial attempt
+        service.fail(Dimension.CALLER);       // First attempt failed
+        service.retry(Dimension.CALLER);      // Retry strategy triggered
+        service.call(Dimension.CALLER);       // Second attempt
+        service.success(Dimension.CALLER);    // Retry succeeded
 
         circuit.await();
 
@@ -131,9 +135,9 @@ class ServicesApiDemoTest {
         ));
 
         // ACT
-        service.call();       // Attempt call
-        service.fail();       // Service unavailable
-        service.recourse();   // Fall back to cached results
+        service.call(Dimension.CALLER);       // Attempt call
+        service.fail(Dimension.CALLER);       // Service unavailable
+        service.recourse(Dimension.CALLER);   // Fall back to cached results
 
         circuit.await();
 
@@ -162,10 +166,10 @@ class ServicesApiDemoTest {
         ));
 
         // ACT
-        primaryService.call();       // Try primary
-        primaryService.redirect();   // Primary overloaded, redirect
-        fallbackService.called();    // Fallback receives redirect
-        fallbackService.success();   // Fallback succeeds
+        primaryService.call(Dimension.CALLER);       // Try primary
+        primaryService.redirect(Dimension.CALLER);   // Primary overloaded, redirect
+        fallbackService.call(Dimension.CALLEE);    // Fallback receives redirect
+        fallbackService.success(Dimension.CALLEE);   // Fallback succeeds
 
         circuit.await();
 
@@ -193,9 +197,9 @@ class ServicesApiDemoTest {
 
         // ACT - Exceed rate limit
         for (int i = 0; i < 5; i++) {
-            service.call();
+            service.call(Dimension.CALLER);
         }
-        service.reject();  // Rate limit exceeded
+        service.reject(Dimension.CALLEE);  // Rate limit exceeded
 
         circuit.await();
 
@@ -217,9 +221,9 @@ class ServicesApiDemoTest {
         ));
 
         // ACT
-        batchJob.schedule();   // Queue for execution
-        batchJob.delay();      // Backpressure delay
-        batchJob.start();      // Begin execution
+        batchJob.schedule(Dimension.CALLER);   // Queue for execution
+        batchJob.delay(Dimension.CALLEE);      // Backpressure delay
+        batchJob.start(Dimension.CALLEE);      // Begin execution
 
         circuit.await();
 
@@ -245,10 +249,10 @@ class ServicesApiDemoTest {
         ));
 
         // ACT
-        workflow.start();     // Begin saga
-        workflow.suspend();   // Wait for payment confirmation
-        workflow.resume();    // Payment confirmed, continue
-        workflow.stop();      // Saga complete
+        workflow.start(Dimension.CALLEE);     // Begin saga
+        workflow.suspend(Dimension.CALLEE);   // Wait for payment confirmation
+        workflow.resume(Dimension.CALLEE);    // Payment confirmed, continue
+        workflow.stop(Dimension.CALLEE);      // Saga complete
 
         circuit.await();
 
@@ -275,8 +279,8 @@ class ServicesApiDemoTest {
         ));
 
         // ACT
-        service.call();         // Attempt call
-        service.disconnect();   // Network failure
+        service.call(Dimension.CALLER);         // Attempt call
+        service.disconnect(Dimension.CALLER);   // Network failure
 
         circuit.await();
 
@@ -288,7 +292,7 @@ class ServicesApiDemoTest {
     }
 
     @Test
-    @DisplayName("Dual orientation: RELEASE vs RECEIPT")
+    @DisplayName("Dual perspective: CALLER vs CALLEE")
     void dualPolarity() {
         Service client = services.percept(cortex().name("client"));
         Service server = services.percept(cortex().name("server"));
@@ -298,26 +302,26 @@ class ServicesApiDemoTest {
             cortex().name("receptor"),
             (Subject<Channel<Signal>> subject, Registrar<Signal> registrar) -> {
                 registrar.register(signal -> {
-                    String perspective = signal.dimension() == Dimension.RELEASE ? "SELF" : "OBSERVED";
+                    String perspective = signal.dimension() == Dimension.CALLER ? "CALLER" : "CALLEE";
                     orientations.add(subject.name() + ":" + signal.sign() + ":" + perspective);
                 });
             }
         ));
 
         // ACT
-        client.call();       // RELEASE: I am calling
-        server.called();     // RECEIPT: It was called
-        server.success();    // RELEASE: I succeeded
-        client.succeeded();  // RECEIPT: It succeeded
+        client.call(Dimension.CALLER);       // CALLER: I am calling
+        server.call(Dimension.CALLEE);       // CALLEE: Server was called
+        server.success(Dimension.CALLEE);    // CALLEE: Server succeeded
+        client.success(Dimension.CALLER);    // CALLER: My call succeeded
 
         circuit.await();
 
         // ASSERT
         assertThat(orientations).containsExactly(
-            "client:CALL:SELF",
-            "server:CALL:OBSERVED",
-            "server:SUCCESS:SELF",
-            "client:SUCCESS:OBSERVED"
+            "client:CALL:CALLER",
+            "server:CALL:CALLEE",
+            "server:SUCCESS:CALLEE",
+            "client:SUCCESS:CALLER"
         );
     }
 
@@ -326,23 +330,23 @@ class ServicesApiDemoTest {
     void allSignsAvailable() {
         Service service = services.percept(cortex().name("test-service"));
 
-        // ACT - Emit all signs
-        service.start();
-        service.stop();
-        service.call();
-        service.success();
-        service.fail();
-        service.recourse();
-        service.redirect();
-        service.expire();
-        service.retry();
-        service.reject();
-        service.discard();
-        service.delay();
-        service.schedule();
-        service.suspend();
-        service.resume();
-        service.disconnect();
+        // ACT - Emit all signs (with CALLER dimension for demonstration)
+        service.start(Dimension.CALLEE);
+        service.stop(Dimension.CALLEE);
+        service.call(Dimension.CALLER);
+        service.success(Dimension.CALLEE);
+        service.fail(Dimension.CALLEE);
+        service.recourse(Dimension.CALLER);
+        service.redirect(Dimension.CALLER);
+        service.expire(Dimension.CALLEE);
+        service.retry(Dimension.CALLER);
+        service.reject(Dimension.CALLEE);
+        service.discard(Dimension.CALLEE);
+        service.delay(Dimension.CALLEE);
+        service.schedule(Dimension.CALLER);
+        service.suspend(Dimension.CALLEE);
+        service.resume(Dimension.CALLEE);
+        service.disconnect(Dimension.CALLER);
 
         circuit.await();
 
@@ -356,8 +360,7 @@ class ServicesApiDemoTest {
             Sign.SUSPEND, Sign.RESUME, Sign.DISCONNECT
         );
 
-        // 16 signs × 2 orientations = 32 signals
-        Signal[] allSignals = Signal.values();
-        assertThat(allSignals).hasSize(32);
+        // 16 signs × 2 dimensions = 32 signals
+        // Note: Signal is a record, not an enum, so no values() method
     }
 }

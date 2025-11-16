@@ -138,12 +138,12 @@ class OODALoopIntegrationTest {
         // ACT: Simulate consumer lag scenario
 
         // Phase 1: OBSERVE - Normal operation
-        consumerProbe.receive();           // Fetching messages
-        consumerService.start();           // Processing started
+        consumerProbe.transfer(Probes.Dimension.INBOUND);           // Fetching messages (inbound)
+        consumerService.start(Services.Dimension.CALLEE);           // Processing started (callee serving)
         consumerQueue.enqueue();           // Message queued
         consumerQueue.dequeue();           // Message processed
-        consumerService.success();         // Processing succeeded
-        consumerService.stop();            // Processing complete
+        consumerService.success(Services.Dimension.CALLEE);         // Processing succeeded
+        consumerService.stop(Services.Dimension.CALLEE);            // Processing complete
 
         circuit.await();
 
@@ -161,9 +161,9 @@ class OODALoopIntegrationTest {
         circuit.await();
 
         // Phase 4: OBSERVE - Continued issues
-        consumerService.start();
-        consumerService.delay();           // Processing delayed
-        consumerService.stop();
+        consumerService.start(Services.Dimension.CALLEE);
+        consumerService.delay(Services.Dimension.CALLEE);           // Processing delayed
+        consumerService.stop(Services.Dimension.CALLEE);
 
         circuit.await();
 
@@ -179,7 +179,7 @@ class OODALoopIntegrationTest {
 
         // Phase 7: OBSERVE - Critical state
         consumerQueue.overflow();          // Still overflowing
-        consumerService.fail();            // Processing failing
+        consumerService.fail(Services.Dimension.CALLEE);            // Processing failing
 
         circuit.await();
 

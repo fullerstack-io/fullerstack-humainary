@@ -29,7 +29,7 @@ import io.humainary.substrates.ext.serventis.ext.Actors;
  * <p>
  * Speech Acts:
  * - Questions: ASK
- * - Assertions: ASSERT, EXPLAIN, REPORT
+ * - Assertions: AFFIRM, EXPLAIN, REPORT
  * - Coordination: REQUEST, COMMAND, ACKNOWLEDGE
  * - Refinement: DENY, CLARIFY
  * - Commitment: PROMISE, DELIVER
@@ -180,7 +180,7 @@ class ActorsApiDemoTest {
         // ACT: Correction cycle
 
         // 1. AI makes assertion
-        ai.assert_();  // "The lag is critical"
+        ai.affirm();  // "The lag is critical"
 
         // 2. Human denies/corrects
         human.deny();  // "No, that's just temporary backpressure"
@@ -195,7 +195,7 @@ class ActorsApiDemoTest {
 
         // ASSERT: Correction pattern captured
         assertThat(dialogue).contains(
-            "assistant.claude:ASSERT",
+            "assistant.claude:AFFIRM",
             "user.charlie:DENY",
             "assistant.claude:CLARIFY",
             "user.charlie:ACKNOWLEDGE"
@@ -257,7 +257,7 @@ class ActorsApiDemoTest {
 
         actor.report();   // "Lag is 10K messages" (factual)
         actor.explain();  // "Lag increased because producer rate doubled" (reasoning)
-        actor.assert_();  // "This lag level is acceptable" (judgment)
+        actor.affirm();  // "This lag level is acceptable" (judgment)
 
         circuit.await();
 
@@ -265,7 +265,7 @@ class ActorsApiDemoTest {
         assertThat(acts).containsExactly(
             Sign.REPORT,
             Sign.EXPLAIN,
-            Sign.ASSERT
+            Sign.AFFIRM
         );
     }
 
@@ -400,7 +400,7 @@ class ActorsApiDemoTest {
         actor.ask();
 
         // Assertions
-        actor.assert_();
+        actor.affirm();
         actor.explain();
         actor.report();
 
@@ -424,7 +424,7 @@ class ActorsApiDemoTest {
         assertThat(allSigns).hasSize(11);
         assertThat(allSigns).contains(
             Sign.ASK,
-            Sign.ASSERT,
+            Sign.AFFIRM,
             Sign.EXPLAIN,
             Sign.REPORT,
             Sign.REQUEST,
@@ -453,11 +453,11 @@ class ActorsApiDemoTest {
         ));
 
         // ACT: Use assert_() method
-        actor.assert_();  // Note the trailing underscore
+        actor.affirm();  // Note the trailing underscore
 
         circuit.await();
 
         // ASSERT: ASSERT sign emitted
-        assertThat(captured.get()).isEqualTo(Sign.ASSERT);
+        assertThat(captured.get()).isEqualTo(Sign.AFFIRM);
     }
 }
