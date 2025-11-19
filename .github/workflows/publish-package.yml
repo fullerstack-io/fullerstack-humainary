@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - 'fullerstack-substrates/**'
+      - '.github/workflows/publish-package.yml'
   workflow_dispatch:
 
 jobs:
