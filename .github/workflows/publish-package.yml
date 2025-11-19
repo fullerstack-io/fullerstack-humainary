@@ -26,6 +26,12 @@ jobs:
           distribution: 'temurin'
           cache: maven
 
+      - name: Clone and install Humainary Substrates API
+        run: |
+          git clone https://github.com/humainary-io/substrates-api-java.git
+          cd substrates-api-java
+          mvn clean install -DskipTests
+
       - name: Build and publish to GitHub Packages
         working-directory: fullerstack-substrates
         run: mvn -B clean deploy -DskipTests
