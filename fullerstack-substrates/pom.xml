@@ -75,6 +75,14 @@
         <url>https://github.com/fullerstack-io/fullerstack-humainary/tree/main/fullerstack-substrates</url>
     </scm>
 
+    <distributionManagement>
+        <repository>
+            <id>github</id>
+            <name>GitHub Packages</name>
+            <url>https://maven.pkg.github.com/fullerstack-io/fullerstack-humainary</url>
+        </repository>
+    </distributionManagement>
+
     <dependencies>
         <!-- Substrates API -->
         <dependency>

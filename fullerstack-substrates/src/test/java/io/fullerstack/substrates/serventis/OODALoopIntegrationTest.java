@@ -16,7 +16,7 @@ import io.humainary.substrates.ext.serventis.ext.Probes;
 import io.humainary.substrates.ext.serventis.ext.Services;
 import io.humainary.substrates.ext.serventis.ext.Queues;
 import io.humainary.substrates.ext.serventis.ext.Monitors;
-import io.humainary.substrates.ext.serventis.ext.Reporters;
+import io.humainary.substrates.ext.serventis.ext.Situations;
 
 /**
  * Integration test demonstrating complete OODA Loop signal flow.
@@ -26,7 +26,7 @@ import io.humainary.substrates.ext.serventis.ext.Reporters;
  * This test shows how signals flow through the cognitive hierarchy:
  * 1. OBSERVE: Raw signals from Probes/Services/Queues
  * 2. ORIENT: Sign assessment via Monitors
- * 3. DECIDE: Urgency determination via Reporters
+ * 3. DECIDE: Urgency determination via Situations
  * 4. ACT: (Would trigger remediation - simulated here)
  * <p>
  * Scenario: Kafka consumer lag detection and escalation
@@ -50,7 +50,7 @@ class OODALoopIntegrationTest {
     private Conduit<Monitors.Monitor, Monitors.Signal> monitors;
 
     // DECIDE phase instruments
-    private Conduit<Reporters.Reporter, Reporters.Sign> reporters;
+    private Conduit<Situations.Situation, Situations.Signal> situations;
 
     @BeforeEach
     void setUp() {
@@ -65,7 +65,7 @@ class OODALoopIntegrationTest {
         monitors = circuit.conduit(cortex().name("monitors"), Monitors::composer);
 
         // DECIDE phase
-        reporters = circuit.conduit(cortex().name("reporters"), Reporters::composer);
+        situations = circuit.conduit(cortex().name("situations"), Situations::composer);
     }
 
     @AfterEach
@@ -85,7 +85,7 @@ class OODALoopIntegrationTest {
         Services.Service consumerService = services.percept(cortex().name("consumer-1.processing"));
         Queues.Queue consumerQueue = queues.percept(cortex().name("consumer-1.buffer"));
         Monitors.Monitor consumerHealth = monitors.percept(cortex().name("consumer-1.health"));
-        Reporters.Reporter lagReporter = reporters.percept(cortex().name("consumer-1.lag"));
+        Situations.Situation lagSituation = situations.percept(cortex().name("consumer-1.lag"));
 
         List<String> oodaFlow = new ArrayList<>();
 
@@ -126,11 +126,11 @@ class OODALoopIntegrationTest {
             }
         ));
 
-        reporters.subscribe(cortex().subscriber(
-            cortex().name("reporter-receptor"),
-            (Subject<Channel<Reporters.Sign>> subject, Registrar<Reporters.Sign> registrar) -> {
-                registrar.register(sign -> {
-                    oodaFlow.add("DECIDE(Reporter):" + subject.name() + ":" + sign);
+        situations.subscribe(cortex().subscriber(
+            cortex().name("situation-receptor"),
+            (Subject<Channel<Situations.Signal>> subject, Registrar<Situations.Signal> registrar) -> {
+                registrar.register(signal -> {
+                    oodaFlow.add("DECIDE(Situation):" + subject.name() + ":" + signal.sign());
                 });
             }
         ));
@@ -173,7 +173,7 @@ class OODALoopIntegrationTest {
         circuit.await();
 
         // Phase 6: DECIDE - Escalate urgency
-        lagReporter.warning();             // Lag warning threshold exceeded
+        lagSituation.warning(Situations.Dimension.VARIABLE);             // Lag warning threshold exceeded
 
         circuit.await();
 
@@ -189,7 +189,7 @@ class OODALoopIntegrationTest {
         circuit.await();
 
         // Phase 9: DECIDE - Critical urgency
-        lagReporter.critical();            // CRITICAL - action required!
+        lagSituation.critical(Situations.Dimension.CONSTANT);            // CRITICAL - action required!
 
         circuit.await();
 
@@ -208,7 +208,7 @@ class OODALoopIntegrationTest {
         assertThat(oodaFlow).anyMatch(s -> s.startsWith("ORIENT(Monitor)"));
 
         // Verify DECIDE phase signals present
-        assertThat(oodaFlow).anyMatch(s -> s.startsWith("DECIDE(Reporter)"));
+        assertThat(oodaFlow).anyMatch(s -> s.startsWith("DECIDE(Situation)"));
 
         // Verify ACT phase triggered
         assertThat(oodaFlow).anyMatch(s -> s.startsWith("ACT("));
@@ -263,7 +263,7 @@ class OODALoopIntegrationTest {
     @DisplayName("ORIENT → DECIDE flow: Degraded condition triggers urgency assessment")
     void orientToDecideFlow() {
         Monitors.Monitor monitor = monitors.percept(cortex().name("system.health"));
-        Reporters.Reporter reporter = reporters.percept(cortex().name("system.status"));
+        Situations.Situation situation = situations.percept(cortex().name("system.status"));
 
         List<String> flow = new ArrayList<>();
 
@@ -274,22 +274,22 @@ class OODALoopIntegrationTest {
             }
         ));
 
-        reporters.subscribe(cortex().subscriber(
+        situations.subscribe(cortex().subscriber(
             cortex().name("receptor"),
             (subject, registrar) -> {
-                registrar.register(sign -> flow.add("DECIDE:" + sign));
+                registrar.register(signal -> flow.add("DECIDE:" + signal.sign()));
             }
         ));
 
         // ACT: Degradation triggers urgency assessment
         monitor.stable(Monitors.Dimension.CONFIRMED);
-        reporter.normal();
+        situation.normal(Situations.Dimension.CONSTANT);
 
         monitor.diverging(Monitors.Dimension.MEASURED);
-        reporter.warning();
+        situation.warning(Situations.Dimension.VARIABLE);
 
         monitor.degraded(Monitors.Dimension.CONFIRMED);
-        reporter.critical();
+        situation.critical(Situations.Dimension.CONSTANT);
 
         circuit.await();
 
@@ -308,7 +308,7 @@ class OODALoopIntegrationTest {
         Queues.Queue consumer1Queue = queues.percept(cortex().name("consumer-1.queue"));
         Queues.Queue consumer2Queue = queues.percept(cortex().name("consumer-2.queue"));
         Monitors.Monitor groupHealth = monitors.percept(cortex().name("consumer-group.health"));
-        Reporters.Reporter groupStatus = reporters.percept(cortex().name("consumer-group.status"));
+        Situations.Situation groupStatus = situations.percept(cortex().name("consumer-group.status"));
 
         List<String> events = new ArrayList<>();
 
@@ -326,10 +326,10 @@ class OODALoopIntegrationTest {
             }
         ));
 
-        reporters.subscribe(cortex().subscriber(
+        situations.subscribe(cortex().subscriber(
             cortex().name("receptor"),
-            (Subject<Channel<Reporters.Sign>> subject, Registrar<Reporters.Sign> registrar) -> {
-                registrar.register(sign -> events.add("DECIDE:" + subject.name() + ":" + sign));
+            (Subject<Channel<Situations.Signal>> subject, Registrar<Situations.Signal> registrar) -> {
+                registrar.register(signal -> events.add("DECIDE:" + subject.name() + ":" + signal.sign()));
             }
         ));
 
@@ -337,7 +337,7 @@ class OODALoopIntegrationTest {
         consumer1Queue.overflow();
         consumer2Queue.overflow();
         groupHealth.degraded(Monitors.Dimension.CONFIRMED);
-        groupStatus.critical();
+        groupStatus.critical(Situations.Dimension.VOLATILE);
 
         circuit.await();
 
