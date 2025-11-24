@@ -59,27 +59,22 @@ public class TypedSlot < T > implements Slot < T > {
   }
 
   // Factory methods for common types
-  @SuppressWarnings ( "unchecked" )
   public static Slot < Boolean > of ( Name name, boolean value ) {
     return (Slot < Boolean >) new TypedSlot <> ( name, value, (Class < Boolean >) boolean.class );
   }
 
-  @SuppressWarnings ( "unchecked" )
   public static Slot < Integer > of ( Name name, int value ) {
     return (Slot < Integer >) new TypedSlot <> ( name, value, (Class < Integer >) int.class );
   }
 
-  @SuppressWarnings ( "unchecked" )
   public static Slot < Long > of ( Name name, long value ) {
     return (Slot < Long >) new TypedSlot <> ( name, value, (Class < Long >) long.class );
   }
 
-  @SuppressWarnings ( "unchecked" )
   public static Slot < Double > of ( Name name, double value ) {
     return (Slot < Double >) new TypedSlot <> ( name, value, (Class < Double >) double.class );
   }
 
-  @SuppressWarnings ( "unchecked" )
   public static Slot < Float > of ( Name name, float value ) {
     return (Slot < Float >) new TypedSlot <> ( name, value, (Class < Float >) float.class );
   }
@@ -99,7 +94,6 @@ public class TypedSlot < T > implements Slot < T > {
     return new TypedSlot <> ( name, value, io.humainary.substrates.api.Substrates.State.class );
   }
 
-  @SuppressWarnings ( "unchecked" )
   public static < T > Slot < T > of ( Name name, T value, Class < T > type ) {
     return new TypedSlot <> ( name, value, type );
   }

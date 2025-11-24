@@ -33,7 +33,7 @@ public class ManagedScope implements Scope {
   private       int                             anonymousCounter = 0;
 
   // Lazy Subject - only created if subject() is called
-  private       Subject                         scopeSubject;
+  private       Subject < Scope >               scopeSubject;
 
   // Lazy Closure cache - only created if closure() is called
   private       Map < Resource, Closure < ? > > closureCache;
@@ -60,12 +60,15 @@ public class ManagedScope implements Scope {
   }
 
   @Override
-  public Subject subject () {
+  public Subject < Scope > subject () {
     // Lazy Subject creation (single-threaded access)
     if ( scopeSubject == null ) {
+      // Pass parent's subject for hierarchy (null for root scope)
+      Subject < ? > parentSubject = parent != null ? parent.subject () : null;
       scopeSubject = new ContextualSubject <> (
         name,
-        Scope.class
+        Scope.class,
+        parentSubject
       );
     }
     return scopeSubject;
