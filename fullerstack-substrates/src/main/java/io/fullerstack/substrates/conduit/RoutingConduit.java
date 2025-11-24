@@ -32,8 +32,8 @@ import java.util.function.Consumer;
  * < p >< b >Data Flow (Circuit Queue Architecture):</b >
  * < ol >
  * < li >Channel (producer) emits value → posts Script to Circuit Queue</li >
- * < li >Circuit Queue processor executes Script → calls processEmission()</li >
- * < li >processEmission() invokes subscribers (on channel creation + first emission)</li >
+ * < li >Circuit Queue processor executes Script → calls notifySubscribers()</li >
+ * < li >notifySubscribers() invokes subscribers on first emission (lazy rebuild)</li >
  * < li >Subscribers register Pipes via Registrar → Pipes receive emissions</li >
  * </ol >
  * <p>
@@ -46,13 +46,13 @@ import java.util.function.Consumer;
  * < li >Matches "Virtual CPU Core" design principle</li >
  * </ul >
  * <p>
- * < p >< b >Subscriber Invocation (Two-Phase Notification):</b >
+ * < p >< b >Subscriber Invocation (Lazy Callback Model):</b >
  * < ul >
- * < li >< b >Phase 1 (Channel creation):</b > subscriber.accept() called when new Channel created via get()</li >
- * < li >< b >Phase 2 (First emission):</b > subscriber.accept() called on first emission from a Subject (lazy registration)</li >
+ * < li >< b >Channel creation:</b > Creating a Channel via percept() does NOT invoke callbacks</li >
+ * < li >< b >First emission:</b > subscriber.accept() called on first emission from a Channel (lazy registration)</li >
+ * < li >< b >Lazy rebuild:</b > Callbacks fire during rebuild triggered by first emission after subscription</li >
  * < li >Registered pipes are cached per Subject per Subscriber</li >
  * < li >Subsequent emissions reuse cached pipes (efficient multi-dispatch)</li >
- * < li >Example: Hierarchical routing where pipes register parent pipes once</li >
  * </ul >
  * <p>
  * < p >< b >Simple Name Model:</b >
@@ -152,22 +152,23 @@ public class RoutingConduit < P extends Percept, E > implements Conduit < P, E >
    * < ul >
    * < li >Conduit emits {@code E} values via its internal Channels</li >
    * < li >Conduit can be subscribed to by {@code Subscriber< E >} instances</li >
-   * < li >Subscriber receives {@code Subject< Channel< E >>} (the subject of each Channel created within this Conduit)</li >
+   * < li >Subscriber receives {@code Subject< Channel< E >>} (the subject of each Channel within this Conduit)</li >
    * </ul >
    * <p>
-   * < p >< b >Subscriber Behavior:</b >
+   * < p >< b >Lazy Callback Model (per Substrates API):</b >
    * The subscriber's {@code accept(Subject< Channel< E >>, Registrar< E >)} method is invoked:
-   * < ol >
-   * < li >< b >On Channel creation</b >: When a new Channel is created via {@link #get(Name)}</li >
-   * < li >< b >On first emission</b >: Lazy registration when a Subject emits for the first time</li >
-   * </ol >
+   * < ul >
+   * < li >< b >NOT on channel creation</b >: Creating a Channel via percept() does NOT invoke callbacks</li >
+   * < li >< b >On first emission</b >: Callbacks fire when a Channel receives its first emission after subscription</li >
+   * < li >< b >Lazy rebuild</b >: Implementation triggers rebuild on first emission to invoke callbacks</li >
+   * </ul >
    * <p>
    * < p >The subscriber can:
    * < ul >
    * < li >Inspect the {@code Subject< Channel< E >>} to determine routing logic</li >
-   * < li >Call {@code conduit.get(subject.name())} to retrieve the percept (cached, no recursion)</li >
+   * < li >Call {@code conduit.percept(subject.name())} to retrieve the percept (cached, no recursion)</li >
    * < li >Register one or more {@code Pipe< E >} instances via the {@code Registrar< E >}</li >
-   * < li >Registered pipes receive all future emissions from that Subject</li >
+   * < li >Registered pipes receive the current emission and all future emissions from that Subject</li >
    * </ul >
    *
    * @param subscriber the subscriber to register
@@ -221,11 +222,10 @@ public class RoutingConduit < P extends Percept, E > implements Conduit < P, E >
     P cachedPercept = percepts.putIfAbsent ( subject, newPercept );
 
     if ( cachedPercept == null ) {
-      // We created it - update single-element cache and notify subscribers AFTER caching
+      // We created it - update single-element cache
+      // Per API: Channel creation does NOT invoke callbacks - they fire on first emission
       lastAccessedName = subject;
       lastAccessedPercept = newPercept;
-      // Subscribers receive Subject with simple name, so conduit.percept(subject.name()) works
-      notifySubscribersOfNewSubject ( channel.subject () );
       return newPercept;
     } else {
       // Someone else created it first - update single-element cache
@@ -285,58 +285,6 @@ public class RoutingConduit < P extends Percept, E > implements Conduit < P, E >
    */
   public Consumer < Capture < E > > emissionHandler () {
     return this::notifySubscribers;
-  }
-
-  /**
-   * Notifies all subscribers that a new Subject (Channel) has become available.
-   * Called AFTER the Channel is cached in percepts map.
-   * <p>
-   * < p >Per the Substrates API contract: "the subscriber's behavior is invoked each time
-   * a new channel or emitting subject is created within that source."
-   * <p>
-   * < p >The subscriber can safely call {@code conduit.get(subject.name())} to retrieve
-   * the percept, as it's already cached.
-   *
-   * @param subject the Subject of the newly created Channel
-   */
-  private void notifySubscribersOfNewSubject ( Subject < Channel < E > > subject ) {
-    for ( Subscriber < E > subscriber : subscribers ) {
-      //  Get callback from subscriber (stored internally)
-      BiConsumer < Subject < Channel < E > >, Registrar < E > > callback =
-        ( (ContextSubscriber < E >) subscriber ).getCallback ();
-
-      callback.accept ( subject, new Registrar < E > () {
-        @Override
-        public void register ( Pipe < ? super E > pipe ) {
-          // Lazy-initialize pipeCache on first registration
-          ensurePipeCacheCreated();
-
-          // Cache the registered pipe for this (subscriber, subject) pair
-          Name subjectName = subject.name ();
-          pipeCache
-            .computeIfAbsent ( subjectName, k -> new HashMap <> () )
-            .computeIfAbsent ( subscriber, k -> new ArrayList <> () )
-            .add ( pipe );
-        }
-
-        @Override
-        public void register ( Receptor < ? super E > receptor ) {
-          //  Convenience method for Receptor registration
-          // Convert Receptor to anonymous Pipe and register it
-          register ( new Pipe < E > () {
-            @Override
-            public void emit ( E emission ) {
-              receptor.receive ( emission );
-            }
-
-            @Override
-            public void flush () {
-              // No-op: Receptor has no buffering
-            }
-          } );
-        }
-      } );
-    }
   }
 
   /**

@@ -44,8 +44,10 @@ class SubjectHierarchyTest {
 
     counters.subscribe ( subscriber );
 
-    // Create Channel (triggers subscriber)
+    // Create Channel and emit (emission triggers subscriber callback per API spec)
     Pipe < Integer > cacheHit = counters.percept ( cortex.name ( "cache.hit" ) );
+    cacheHit.emit ( 1 );  // Trigger subscriber callback on first emission
+    circuit.await ();     // Wait for async processing
 
     Subject < ? > channelSubject = channelSubjectHolder[0];
     assertThat ( (Object) channelSubject ).isNotNull ();
@@ -96,7 +98,10 @@ class SubjectHierarchyTest {
 
     counters.subscribe ( subscriber );
 
-    counters.percept ( cortex.name ( "cache.hit" ) );
+    // Create Channel and emit (emission triggers subscriber callback per API spec)
+    Pipe < Integer > cacheHit = counters.percept ( cortex.name ( "cache.hit" ) );
+    cacheHit.emit ( 1 );  // Trigger subscriber callback on first emission
+    circuit.await ();     // Wait for async processing
 
     Subject < ? > channelSubject = channelSubjectHolder[0];
 
