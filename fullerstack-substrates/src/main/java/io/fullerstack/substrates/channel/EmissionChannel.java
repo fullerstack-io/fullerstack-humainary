@@ -3,7 +3,6 @@ package io.fullerstack.substrates.channel;
 import io.humainary.substrates.api.Substrates.*;
 import io.fullerstack.substrates.pipe.ProducerPipe;
 import io.fullerstack.substrates.flow.FlowRegulator;
-import io.fullerstack.substrates.state.LinkedState;
 import io.fullerstack.substrates.subject.ContextualSubject;
 import io.fullerstack.substrates.conduit.RoutingConduit;
 
@@ -66,18 +65,19 @@ public class EmissionChannel < E > implements Channel < E > {
    * @param conduit        parent Conduit (provides Circuit, scheduling, subscribers, and Subject hierarchy)
    * @param flowConfigurer optional transformation pipeline (null if no transformations)
    */
+  @SuppressWarnings ( "unchecked" )
   public EmissionChannel ( Name channelName, RoutingConduit < ?, E > conduit, Consumer < Flow < E > > flowConfigurer ) {
     this.conduit = Objects.requireNonNull ( conduit, "Conduit cannot be null" );
     this.channelSubject = new ContextualSubject <> (
       channelName,  // Simple name - hierarchy implicit through Extent.enclosure()
-      Channel.class,
+      (Class < Channel < E > >) (Class < ? >) Channel.class,
       conduit.subject ()  // Parent Subject from parent Conduit
     );
     this.flowConfigurer = flowConfigurer; // Can be null
   }
 
   @Override
-  public Subject subject () {
+  public Subject < Channel < E > > subject () {
     return channelSubject;
   }
 
