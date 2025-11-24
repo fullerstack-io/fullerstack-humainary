@@ -15,7 +15,6 @@ import java.util.function.Consumer;
 import io.fullerstack.substrates.cell.CellNode;
 import io.fullerstack.substrates.channel.EmissionChannel;
 import io.fullerstack.substrates.conduit.RoutingConduit;
-import io.fullerstack.substrates.state.LinkedState;
 import io.fullerstack.substrates.subject.ContextualSubject;
 import io.fullerstack.substrates.subscription.CallbackSubscription;
 import io.humainary.substrates.api.Substrates.Cell;
@@ -24,7 +23,6 @@ import io.humainary.substrates.api.Substrates.Circuit;
 import io.humainary.substrates.api.Substrates.Composer;
 import io.humainary.substrates.api.Substrates.Conduit;
 import io.humainary.substrates.api.Substrates.Flow;
-import io.humainary.substrates.api.Substrates.Id;
 import io.humainary.substrates.api.Substrates.Name;
 import io.humainary.substrates.api.Substrates.Percept;
 import io.humainary.substrates.api.Substrates.Pipe;
@@ -121,7 +119,7 @@ public class SequentialCircuit implements Circuit {
 
     @Override
     public void await() {
-        if (isCircuitThread()) throw new IllegalStateException("Cannot call await() from circuit thread");
+        if (isCircuitThread()) throw new IllegalStateException("Cannot call Circuit::await from within a circuit's thread");
         lock.lock();
         try {
             while (!ingressQueue.isEmpty() || !transitQueue.isEmpty()) {
@@ -196,26 +194,39 @@ public class SequentialCircuit implements Circuit {
 
     @Override
     public <P extends Percept, E> Conduit<P, E> conduit(Composer<E, ? extends P> composer) {
+        Objects.requireNonNull(composer, "Composer cannot be null");
         return new RoutingConduit<>(circuitSubject.name(), composer, this);
     }
 
     @Override
     public <P extends Percept, E> Conduit<P, E> conduit(Name name, Composer<E, ? extends P> composer) {
+        Objects.requireNonNull(name, "Conduit name cannot be null");
+        Objects.requireNonNull(composer, "Composer cannot be null");
         return new RoutingConduit<>(name, composer, this);
     }
 
     @Override
     public <P extends Percept, E> Conduit<P, E> conduit(Name name, Composer<E, ? extends P> composer, Consumer<Flow<E>> configurer) {
+        Objects.requireNonNull(name, "Conduit name cannot be null");
+        Objects.requireNonNull(composer, "Composer cannot be null");
+        Objects.requireNonNull(configurer, "Flow configurer cannot be null");
         return new RoutingConduit<>(name, composer, this, configurer);
     }
 
     @Override
     public <I, E> Cell<I, E> cell(Composer<E, Pipe<I>> ingress, Composer<E, Pipe<E>> egress, Pipe<? super E> pipe) {
+        Objects.requireNonNull(ingress, "Ingress composer cannot be null");
+        Objects.requireNonNull(egress, "Egress composer cannot be null");
+        Objects.requireNonNull(pipe, "Pipe cannot be null");
         return cell(circuitSubject.name(), ingress, egress, pipe);
     }
 
     @Override
     public <I, E> Cell<I, E> cell(Name name, Composer<E, Pipe<I>> ingress, Composer<E, Pipe<E>> egress, Pipe<? super E> pipe) {
+        Objects.requireNonNull(name, "Name cannot be null");
+        Objects.requireNonNull(ingress, "Ingress composer cannot be null");
+        Objects.requireNonNull(egress, "Egress composer cannot be null");
+        Objects.requireNonNull(pipe, "Pipe cannot be null");
         Conduit<Pipe<E>, E> cellConduit = conduit(name, Composer.pipe());
         @SuppressWarnings("unchecked")
         RoutingConduit<Pipe<E>, E> transformingConduit = (RoutingConduit<Pipe<E>, E>) cellConduit;

@@ -1,14 +1,16 @@
 package io.fullerstack.substrates.pipe;
 
-import io.fullerstack.substrates.capture.SubjectCapture;
-import io.humainary.substrates.api.Substrates.*;
-import io.fullerstack.substrates.flow.FlowRegulator;
-
 import java.util.Objects;
-import java.util.function.Consumer;
 import java.util.function.BooleanSupplier;
+import java.util.function.Consumer;
 
-import static io.humainary.substrates.api.Substrates.cortex;
+import io.fullerstack.substrates.capture.SubjectCapture;
+import io.fullerstack.substrates.flow.FlowRegulator;
+import io.humainary.substrates.api.Substrates.Capture;
+import io.humainary.substrates.api.Substrates.Channel;
+import io.humainary.substrates.api.Substrates.Circuit;
+import io.humainary.substrates.api.Substrates.Pipe;
+import io.humainary.substrates.api.Substrates.Subject;
 
 /**
  * Producer-side pipe that emits values INTO the conduit system.
@@ -50,7 +52,6 @@ public class ProducerPipe < E > implements Pipe < E > {
 
   private final Pipe < Capture < E > >     dispatchPipe; // Async pipe created by Circuit.pipe() for dispatch
   private final Subject < Channel < E > >  channelSubject; // WHO this pipe belongs to
-  private final Consumer < Capture < E > > subscriberNotifier; // Callback to notify subscribers of emissions
   private final BooleanSupplier            hasSubscribers; // Check for early subscriber optimization
   private final FlowRegulator < E >        flow; // FlowRegulator for apply() and transformation
 
@@ -77,7 +78,7 @@ public class ProducerPipe < E > implements Pipe < E > {
    */
   public ProducerPipe ( Circuit circuit, Subject < Channel < E > > channelSubject, Consumer < Capture < E > > subscriberNotifier, BooleanSupplier hasSubscribers, FlowRegulator < E > flow ) {
     this.channelSubject = Objects.requireNonNull ( channelSubject, "Channel subject cannot be null" );
-    this.subscriberNotifier = Objects.requireNonNull ( subscriberNotifier, "Subscriber notifier cannot be null" );
+    Objects.requireNonNull ( subscriberNotifier, "Subscriber notifier cannot be null" );
     this.hasSubscribers = Objects.requireNonNull ( hasSubscribers, "Subscriber check cannot be null" );
     this.flow = flow;
 
@@ -85,8 +86,18 @@ public class ProducerPipe < E > implements Pipe < E > {
     // This breaks synchronous call chains and ensures circuit-thread execution
     Objects.requireNonNull ( circuit, "Circuit cannot be null" );
 
-    // Use Cortex to create a Pipe from Receptor, then wrap with Circuit.pipe()
-    Pipe < Capture < E > > receptorPipe = cortex ().pipe ( Capture.class, subscriberNotifier::accept );
+    // Create a Pipe wrapper for the subscriber notifier, then wrap with Circuit.pipe()
+    Pipe < Capture < E > > receptorPipe = new Pipe < Capture < E > > () {
+      @Override
+      public void emit ( Capture < E > emission ) {
+        subscriberNotifier.accept ( emission );
+      }
+
+      @Override
+      public void flush () {
+        // No-op: no buffering
+      }
+    };
     this.dispatchPipe = circuit.pipe ( receptorPipe );
   }
 

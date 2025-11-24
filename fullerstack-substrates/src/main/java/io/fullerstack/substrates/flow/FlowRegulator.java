@@ -1,13 +1,20 @@
 package io.fullerstack.substrates.flow;
 
-import io.humainary.substrates.api.Substrates.*;
-import io.fullerstack.substrates.sift.ComparatorSift;
-
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
-import java.util.function.*;
+import java.util.function.BiPredicate;
+import java.util.function.BinaryOperator;
+import java.util.function.Consumer;
+import java.util.function.Function;
+import java.util.function.Predicate;
+import java.util.function.UnaryOperator;
+
+import io.fullerstack.substrates.sift.ComparatorSift;
+import io.humainary.substrates.api.Substrates.Flow;
+import io.humainary.substrates.api.Substrates.Pipe;
+import io.humainary.substrates.api.Substrates.Sift;
 
 /**
  * Implementation of Substrates.Flow that regulates emission flow characteristics.
