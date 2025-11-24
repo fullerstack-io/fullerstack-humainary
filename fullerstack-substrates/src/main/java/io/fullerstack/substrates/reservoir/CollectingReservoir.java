@@ -2,7 +2,6 @@ package io.fullerstack.substrates.reservoir;
 
 import io.humainary.substrates.api.Substrates.*;
 import io.fullerstack.substrates.capture.SubjectCapture;
-import io.fullerstack.substrates.id.UuidIdentifier;
 import io.fullerstack.substrates.state.LinkedState;
 import io.fullerstack.substrates.subject.ContextualSubject;
 import io.fullerstack.substrates.name.InternedName;
@@ -49,19 +48,14 @@ public class CollectingReservoir < E > implements Reservoir < E > {
 
     // Using InternedName.of() static factory
     this.source = source;
-    Id reservoirId = UuidIdentifier.generate ();
     this.reservoirSubject = new ContextualSubject <> (
-      reservoirId,
-      InternedName.of ( "reservoir" ).name ( reservoirId.toString () ),
-      LinkedState.empty (),
+      InternedName.of ( "reservoir" ),
       (Class < Reservoir < E > >) (Class < ? >) Reservoir.class
     );
 
     // Create internal subscriber's Subject once
     this.internalSubscriberSubject = new ContextualSubject <> (
-      UuidIdentifier.generate (),
       InternedName.of ( "sink-subscriber" ),
-      LinkedState.empty (),
       (Class < Subscriber < E > >) (Class < ? >) Subscriber.class
     );
 

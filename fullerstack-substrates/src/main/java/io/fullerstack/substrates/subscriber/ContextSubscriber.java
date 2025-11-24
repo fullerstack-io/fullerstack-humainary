@@ -1,8 +1,6 @@
 package io.fullerstack.substrates.subscriber;
 
 import io.humainary.substrates.api.Substrates.*;
-import io.fullerstack.substrates.id.SequentialIdentifier;
-import io.fullerstack.substrates.state.LinkedState;
 import io.fullerstack.substrates.subject.ContextualSubject;
 
 import java.util.Objects;
@@ -82,9 +80,7 @@ public class ContextSubscriber<E> implements Subscriber<E> {
   @SuppressWarnings("unchecked")
   private Subject<Subscriber<E>> createSubject() {
     return new ContextualSubject<>(
-      SequentialIdentifier.generate(),
       name,
-      LinkedState.empty(),
       (Class<Subscriber<E>>) (Class<?>) Subscriber.class
     );
   }

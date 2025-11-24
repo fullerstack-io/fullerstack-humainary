@@ -1,9 +1,7 @@
 package io.fullerstack.substrates.subscription;
 
 import io.humainary.substrates.api.Substrates.*;
-import io.fullerstack.substrates.id.SequentialIdentifier;
 import io.fullerstack.substrates.name.InternedName;
-import io.fullerstack.substrates.state.LinkedState;
 import io.fullerstack.substrates.subject.ContextualSubject;
 
 import java.util.Objects;
@@ -55,11 +53,8 @@ public class CallbackSubscription implements Subscription {
   }
 
   private Subject<Subscription> createSubject() {
-    Id subscriptionId = SequentialIdentifier.generate();
     return new ContextualSubject<>(
-      subscriptionId,
-      InternedName.of("subscription").name(subscriptionId.toString()),
-      LinkedState.empty(),
+      InternedName.of("subscription"),
       Subscription.class,
       parentSubject  // Parent Subject for hierarchy
     );

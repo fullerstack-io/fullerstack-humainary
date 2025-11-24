@@ -1,12 +1,8 @@
 package io.fullerstack.substrates.id;
 
-import io.humainary.substrates.api.Substrates.Id;
-
-import lombok.EqualsAndHashCode;
-import lombok.Getter;
-import lombok.NonNull;
-
 import java.util.concurrent.atomic.AtomicLong;
+
+import io.humainary.substrates.api.Substrates.Id;
 
 /**
  * Lightweight sequential ID implementation using AtomicLong.
@@ -17,12 +13,12 @@ import java.util.concurrent.atomic.AtomicLong;
  * <p>
  * Use this for performance-critical paths where global uniqueness across JVM restarts
  * is not required (e.g., Subject IDs within a single JVM session).
+ * <p>
+ * <b>Identity Contract:</b> This class uses reference equality per @Identity annotation.
+ * equals() and hashCode() are NOT overridden - use Object's identity-based implementations.
  *
  * @see Id
- * @see UuidIdentifier
  */
-@Getter
-@EqualsAndHashCode
 public class SequentialIdentifier implements Id {
 
   private static final AtomicLong SEQUENCE = new AtomicLong(0);
@@ -64,4 +60,8 @@ public class SequentialIdentifier implements Id {
   public String toString() {
     return Long.toString(value);
   }
+
+  // NOTE: Id uses @Identity contract - reference equality only
+  // Do NOT override equals() or hashCode()
+  // Use Object.equals() (identity) and Object.hashCode() (identity hash)
 }

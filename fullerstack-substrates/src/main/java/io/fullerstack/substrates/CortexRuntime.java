@@ -4,7 +4,6 @@ import io.humainary.substrates.api.Substrates.*;
 import io.fullerstack.substrates.capture.SubjectCapture;
 import io.fullerstack.substrates.circuit.SequentialCircuit;
 import io.fullerstack.substrates.current.ThreadCurrent;
-import io.fullerstack.substrates.id.UuidIdentifier;
 import io.fullerstack.substrates.scope.ManagedScope;
 import io.fullerstack.substrates.slot.TypedSlot;
 import io.fullerstack.substrates.state.LinkedState;
@@ -50,9 +49,6 @@ import java.util.stream.Stream;
  */
 public class CortexRuntime implements Cortex {
 
-  // Fixed ID for singleton Cortex (one per JVM)
-  private static final Id CORTEX_ID = new UuidIdentifier ( java.util.UUID.fromString ( "00000000-0000-0000-0000-000000000001" ) );
-
   private final Map < Name, Scope > scopes;
   private final Subject < Cortex > subject;
 
@@ -62,11 +58,9 @@ public class CortexRuntime implements Cortex {
    */
   CortexRuntime () {
     this.scopes = new ConcurrentHashMap <> ();
-    // Use fixed ID for singleton Cortex (one per JVM)
+    // Subject generates its own unique Id and State
     this.subject = new ContextualSubject < Cortex > (
-      CORTEX_ID,                      // Fixed ID for singleton
       InternedName.of ( "cortex" ),  // Name
-      LinkedState.empty (),
       Cortex.class
     );
   }
@@ -82,7 +76,8 @@ public class CortexRuntime implements Cortex {
   public Circuit circuit () {
     // Generate unique name for each unnamed circuit (do NOT intern)
     // This ensures each call creates a new circuit with unique subject
-    return createCircuit ( InternedName.of ( "circuit." + UuidIdentifier.generate () ) );
+    // Use System.nanoTime() for unique names
+    return createCircuit ( InternedName.of ( "circuit." + System.nanoTime () ) );
   }
 
   @Override
@@ -254,7 +249,8 @@ public class CortexRuntime implements Cortex {
   public Scope scope () {
     // Create a new scope with a unique name each time
     // Each scope is independent and can be closed without affecting others
-    return new ManagedScope ( InternedName.of ( "scope." + UuidIdentifier.generate ().toString () ) );
+    // Use System.nanoTime() for unique names
+    return new ManagedScope ( InternedName.of ( "scope." + System.nanoTime () ) );
   }
 
   @Override

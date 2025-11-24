@@ -1,7 +1,6 @@
 package io.fullerstack.substrates.scope;
 
 import io.humainary.substrates.api.Substrates.*;
-import io.fullerstack.substrates.id.UuidIdentifier;
 import io.fullerstack.substrates.subject.ContextualSubject;
 import io.fullerstack.substrates.state.LinkedState;
 import io.fullerstack.substrates.closure.AutoClosingResource;
@@ -65,9 +64,7 @@ public class ManagedScope implements Scope {
     // Lazy Subject creation (single-threaded access)
     if ( scopeSubject == null ) {
       scopeSubject = new ContextualSubject <> (
-        UuidIdentifier.generate (),
         name,
-        LinkedState.empty (),
         Scope.class
       );
     }

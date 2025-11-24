@@ -15,7 +15,6 @@ import java.util.function.Consumer;
 import io.fullerstack.substrates.cell.CellNode;
 import io.fullerstack.substrates.channel.EmissionChannel;
 import io.fullerstack.substrates.conduit.RoutingConduit;
-import io.fullerstack.substrates.id.SequentialIdentifier;
 import io.fullerstack.substrates.state.LinkedState;
 import io.fullerstack.substrates.subject.ContextualSubject;
 import io.fullerstack.substrates.subscription.CallbackSubscription;
@@ -53,8 +52,7 @@ public class SequentialCircuit implements Circuit {
 
     public SequentialCircuit(Name name) {
         Objects.requireNonNull(name, "Circuit name cannot be null");
-        Id id = SequentialIdentifier.generate();
-        this.circuitSubject = new ContextualSubject<>(id, name, LinkedState.empty(), Circuit.class);
+        this.circuitSubject = new ContextualSubject<>(name, Circuit.class);
         this.circuitName = name.part().toString();
 
         // Start VIRTUAL thread for circuit processing

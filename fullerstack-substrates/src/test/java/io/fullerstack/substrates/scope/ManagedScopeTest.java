@@ -1,8 +1,6 @@
 package io.fullerstack.substrates.scope;
 
 import io.humainary.substrates.api.Substrates.*;
-import io.fullerstack.substrates.id.UuidIdentifier;
-import io.fullerstack.substrates.state.LinkedState;
 import io.fullerstack.substrates.subject.ContextualSubject;
 import io.fullerstack.substrates.name.InternedName;
 import org.junit.jupiter.api.Test;
@@ -129,9 +127,7 @@ class ManagedScopeTest {
     @SuppressWarnings ( "unchecked" )
     public Subject < Subscription > subject () {
       return new ContextualSubject <> (
-        UuidIdentifier.generate (),
         InternedName.of ( "test-resource" ),
-        LinkedState.empty (),
         Subscription.class
       );
     }

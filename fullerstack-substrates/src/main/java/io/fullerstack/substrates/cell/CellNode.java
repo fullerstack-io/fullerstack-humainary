@@ -3,7 +3,6 @@ package io.fullerstack.substrates.cell;
 import io.humainary.substrates.api.Substrates.*;
 import io.fullerstack.substrates.channel.EmissionChannel;
 import io.fullerstack.substrates.conduit.RoutingConduit;
-import io.fullerstack.substrates.id.UuidIdentifier;
 import io.fullerstack.substrates.state.LinkedState;
 import io.fullerstack.substrates.subject.ContextualSubject;
 import io.fullerstack.substrates.subscription.CallbackSubscription;
@@ -79,9 +78,7 @@ public class CellNode < I, E > implements Cell < I, E > {
     this.ingressComposer = Objects.requireNonNull ( ingressComposer, "ingressComposer cannot be null" );
     this.egressComposer = Objects.requireNonNull ( egressComposer, "egressComposer cannot be null" );
     this.subject = new ContextualSubject <> (
-      UuidIdentifier.generate (),
       name,
-      LinkedState.empty (),
       Cell.class,
       parentSubject
     );

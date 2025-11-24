@@ -2,7 +2,6 @@ package io.fullerstack.substrates.conduit;
 
 import io.humainary.substrates.api.Substrates.*;
 import io.fullerstack.substrates.channel.EmissionChannel;
-import io.fullerstack.substrates.id.SequentialIdentifier;
 import io.fullerstack.substrates.state.LinkedState;
 import io.fullerstack.substrates.subject.ContextualSubject;
 import io.fullerstack.substrates.subscriber.ContextSubscriber;
@@ -119,9 +118,7 @@ public class RoutingConduit < P extends Percept, E > implements Conduit < P, E >
   public RoutingConduit ( Name conduitName, Composer < E, ? extends P > perceptComposer, Circuit circuit, Consumer < Flow < E > > flowConfigurer ) {
     this.circuit = Objects.requireNonNull ( circuit, "Circuit cannot be null" );
     this.conduitSubject = new ContextualSubject <> (
-      SequentialIdentifier.generate (),
       conduitName,
-      LinkedState.empty (),
       Conduit.class,
       circuit.subject ()  // Parent Subject from parent Circuit
     );

@@ -5,6 +5,8 @@ import io.humainary.substrates.api.Substrates.Name;
 import io.humainary.substrates.api.Substrates.State;
 import io.humainary.substrates.api.Substrates.Subject;
 import io.humainary.substrates.api.Substrates.Substrate;
+import io.fullerstack.substrates.id.SequentialIdentifier;
+import io.fullerstack.substrates.state.LinkedState;
 
 import lombok.EqualsAndHashCode;
 import lombok.NonNull;
@@ -36,7 +38,7 @@ import lombok.NonNull;
  * <p>
  * // Circuit A creates a Subject for "Miles" (context A)
  * Subject&lt;?&gt; milesInCircuitA = ContextualSubject.builder()
- * .id(UuidIdentifier.generate())
+ * .id(SequentialIdentifier.generate())
  * .name(milesName)                    // Same name reference
  * .state(cortex.state()
  * .set(cortex.slot("status", "online"))
@@ -46,7 +48,7 @@ import lombok.NonNull;
  * <p>
  * // Circuit B creates a different Subject for "Miles" (context B)
  * Subject&lt;?&gt; milesInCircuitB = ContextualSubject.builder()
- * .id(UuidIdentifier.generate())
+ * .id(SequentialIdentifier.generate())
  * .name(milesName)                    // Same name reference
  * .state(cortex.state()
  * .set(cortex.slot("status", "idle"))
@@ -101,19 +103,25 @@ public class ContextualSubject < S extends Substrate < S > > implements Subject 
   private final Subject < ? > parent;
 
   /**
-   * Creates a Subject node with all fields (no parent - root node).
+   * Creates a Subject node with auto-generated Id and State (no parent - root node).
+   * <p>
+   * Subject generates its own unique Id and empty State internally.
    */
-  public ContextualSubject ( @NonNull Id id, @NonNull Name name, State state, @NonNull Class < S > type ) {
-    this ( id, name, state, type, null );
+  public ContextualSubject ( @NonNull Name name, @NonNull Class < S > type ) {
+    this ( name, type, null );
   }
 
   /**
-   * Creates a Subject node with parent reference for hierarchy.
+   * Creates a Subject node with auto-generated Id and State, with parent reference for hierarchy.
+   * <p>
+   * Subject generates its own unique Id and empty State internally.
+   * <p>
+   * This is the canonical constructor - all Subject creation flows through here.
    */
-  public ContextualSubject ( @NonNull Id id, @NonNull Name name, State state, @NonNull Class < S > type, Subject < ? > parent ) {
-    this.id = id;
+  public ContextualSubject ( @NonNull Name name, @NonNull Class < S > type, Subject < ? > parent ) {
+    this.id = SequentialIdentifier.generate ();  // Subject creates its own Id
     this.name = name;
-    this.state = state;
+    this.state = LinkedState.empty ();  // Subject creates its own State
     this.type = type;
     this.parent = parent;
   }
