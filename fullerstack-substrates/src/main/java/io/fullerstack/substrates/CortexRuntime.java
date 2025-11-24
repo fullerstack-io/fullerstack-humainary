@@ -188,8 +188,14 @@ public class CortexRuntime implements Cortex {
 
   @Override
   public Name name ( Enum < ? > e ) {
-    // Convert $ to . for proper hierarchical name, then append enum constant
-    String className = e.getDeclaringClass ().getName ().replace ( '$', '.' );
+    // Use getCanonicalName() which already has dots for inner classes
+    // Falls back to getName() for anonymous/local classes
+    Class<?> declaringClass = e.getDeclaringClass();
+    String className = declaringClass.getCanonicalName();
+    if (className == null) {
+      // Anonymous or local class - use runtime name
+      className = declaringClass.getName();
+    }
     return InternedName.of ( className ).name ( e.name () );
   }
 
@@ -233,8 +239,14 @@ public class CortexRuntime implements Cortex {
 
   @Override
   public Name name ( Class < ? > clazz ) {
-    // Convert $ to . for proper hierarchical name with inner classes
-    return InternedName.of ( clazz.getName ().replace ( '$', '.' ) );
+    // Use getCanonicalName() which already has dots for inner classes
+    // Falls back to getName() for anonymous/local classes per API spec
+    String className = clazz.getCanonicalName();
+    if (className == null) {
+      // Anonymous or local class - use runtime name
+      className = clazz.getName();
+    }
+    return InternedName.of ( className );
   }
 
   @Override
