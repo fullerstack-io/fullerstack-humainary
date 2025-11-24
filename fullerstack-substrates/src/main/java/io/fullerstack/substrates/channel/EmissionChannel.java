@@ -36,15 +36,14 @@ import java.util.function.Consumer;
  * (Flows) applied. All Channels from the same Conduit share the same transformation
  * pipeline, as configured at the Conduit level.
  * <p>
- * < p >< b >Pipe Caching:</b >
- * The first call to {@code pipe()} creates and caches a Pipe instance. Subsequent calls
- * return the same cached Pipe. This ensures that Flow state (emission counters, limit
- * tracking, reduce accumulators, diff last values) is shared across all emissions from
- * this Channel, preventing incorrect behavior where multiple Pipe instances would have
- * separate state.
+ * < p >< b >@New Annotation Compliance:</b >
+ * Per the Substrates API {@code @New} annotation, {@code pipe()} returns a NEW Pipe instance
+ * on each call (not cached). However, when a Flow Consumer is configured at the Conduit level,
+ * all Pipe instances share the SAME FlowRegulator to ensure Flow state (emission counters,
+ * limit tracking, reduce accumulators, diff last values) is consistent across all emissions.
  * <p>
- * < p >Note: {@code pipe(Consumer< Flow >)} is NOT cached - each call creates a new Pipe with
- * fresh transformations, allowing different custom pipelines per call.
+ * < p >Note: {@code pipe(Consumer< Flow >)} creates a new Pipe with a NEW FlowRegulator,
+ * allowing different custom pipelines per call with independent state.
  *
  * @param < E > the emission type (e.g., MonitorSignal, ServiceSignal)
  */
@@ -54,9 +53,9 @@ public class EmissionChannel < E > implements Channel < E > {
   private final Subject < Channel < E > >    channelSubject;
   private final Consumer < Flow < E > >      flowConfigurer; // Optional transformation pipeline (nullable)
 
-  // Cached Pipe instance - ensures Segment state (limits, accumulators, etc.) is shared
-  // across multiple calls to pipe()
-  private volatile Pipe < E > cachedPipe;
+  // Shared FlowRegulator instance - ensures Flow state (limits, accumulators, etc.) is shared
+  // across multiple Pipe instances created by pipe()
+  private volatile FlowRegulator < E > sharedFlow;
 
   /**
    * Creates a Channel with parent Conduit reference.
@@ -83,27 +82,35 @@ public class EmissionChannel < E > implements Channel < E > {
 
   @Override
   public Pipe < E > pipe () {
-    // Return cached Pipe if it exists (ensures Flow state is shared)
-    if ( cachedPipe == null ) {
-      synchronized ( this ) {
-        if ( cachedPipe == null ) {
-          // If Conduit has a Flow Consumer configured, apply it
-          if ( flowConfigurer != null ) {
-            cachedPipe = pipe ( flowConfigurer );
-          } else {
-            // Otherwise, create a plain ProducerPipe with parent Conduit's capabilities
-            // Uses Circuit.pipe() for async dispatch (official Substrates API)
-            cachedPipe = new ProducerPipe < E > (
-              conduit.getCircuit (),           // Circuit directly (no cast needed)
-              channelSubject,
-              conduit.emissionHandler (),      // Emission handler from parent Conduit
-              conduit::hasSubscribers         // Subscriber check from parent Conduit
-            );
+    // Per API @New annotation: return a new Pipe instance on each call
+    // If Conduit has a Flow Consumer configured, use shared FlowRegulator for state
+    if ( flowConfigurer != null ) {
+      // Lazy-initialize shared FlowRegulator on first call
+      if ( sharedFlow == null ) {
+        synchronized ( this ) {
+          if ( sharedFlow == null ) {
+            sharedFlow = new FlowRegulator <> ();
+            flowConfigurer.accept ( sharedFlow );
           }
         }
       }
+      // Return new ProducerPipe instance with shared Flow state
+      return new ProducerPipe < E > (
+        conduit.getCircuit (),
+        channelSubject,
+        conduit.emissionHandler (),
+        conduit::hasSubscribers,
+        sharedFlow  // Shared Flow ensures state (limits, accumulators) is consistent
+      );
+    } else {
+      // No Flow transformations - create plain ProducerPipe
+      return new ProducerPipe < E > (
+        conduit.getCircuit (),
+        channelSubject,
+        conduit.emissionHandler (),
+        conduit::hasSubscribers
+      );
     }
-    return cachedPipe;
   }
 
   @Override
