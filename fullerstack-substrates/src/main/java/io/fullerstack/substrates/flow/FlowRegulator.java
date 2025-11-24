@@ -26,7 +26,8 @@ import java.util.function.*;
  * <p>
  * < p >Key characteristics:
  * < ul >
- * < li >Immutable - each transformation returns a new Flow</li >
+ * < li >Mutable builder - each transformation mutates this instance and returns 'this'</li >
+ * < li >@Temporal - only valid during callback scope (per Substrates API contract)</li >
  * < li >Lazy - transformations are captured, not executed immediately</li >
  * < li >Composable - transformations chain fluently with @Fluent annotations</li >
  * < li >Executed by Circuit - not by emitting thread (per Humainary design)</li >
