@@ -7,7 +7,6 @@ import io.fullerstack.substrates.state.LinkedState;
 import io.fullerstack.substrates.subject.ContextualSubject;
 import io.fullerstack.substrates.subscriber.ContextSubscriber;
 import io.fullerstack.substrates.subscription.CallbackSubscription;
-import io.fullerstack.substrates.circuit.Scheduler;
 
 import lombok.Getter;
 

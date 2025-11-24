@@ -3,11 +3,12 @@ package io.fullerstack.substrates.pipe;
 import io.fullerstack.substrates.capture.SubjectCapture;
 import io.humainary.substrates.api.Substrates.*;
 import io.fullerstack.substrates.flow.FlowRegulator;
-import io.fullerstack.substrates.circuit.Scheduler;
 
 import java.util.Objects;
 import java.util.function.Consumer;
 import java.util.function.BooleanSupplier;
+
+import static io.humainary.substrates.api.Substrates.cortex;
 
 /**
  * Producer-side pipe that emits values INTO the conduit system.
@@ -47,7 +48,7 @@ import java.util.function.BooleanSupplier;
  */
 public class ProducerPipe < E > implements Pipe < E > {
 
-  private final Scheduler                  scheduler; // Circuit's scheduler (retained for potential future use)
+  private final Pipe < Capture < E > >     dispatchPipe; // Async pipe created by Circuit.pipe() for dispatch
   private final Subject < Channel < E > >  channelSubject; // WHO this pipe belongs to
   private final Consumer < Capture < E > > subscriberNotifier; // Callback to notify subscribers of emissions
   private final BooleanSupplier            hasSubscribers; // Check for early subscriber optimization
@@ -56,30 +57,37 @@ public class ProducerPipe < E > implements Pipe < E > {
   /**
    * Creates a ProducerPipe without transformations.
    *
-   * @param scheduler          the Circuit's scheduler
+   * @param circuit            the Circuit for async dispatch (uses Circuit.pipe())
    * @param channelSubject     the Subject of the Channel this ProducerPipe belongs to
    * @param subscriberNotifier callback to notify subscribers of emissions
    * @param hasSubscribers     subscriber check for early-exit optimization
    */
-  public ProducerPipe ( Scheduler scheduler, Subject < Channel < E > > channelSubject, Consumer < Capture < E > > subscriberNotifier, BooleanSupplier hasSubscribers ) {
-    this ( scheduler, channelSubject, subscriberNotifier, hasSubscribers, null );
+  public ProducerPipe ( Circuit circuit, Subject < Channel < E > > channelSubject, Consumer < Capture < E > > subscriberNotifier, BooleanSupplier hasSubscribers ) {
+    this ( circuit, channelSubject, subscriberNotifier, hasSubscribers, null );
   }
 
   /**
    * Creates a ProducerPipe with transformations defined by a Flow.
    *
-   * @param scheduler          the Circuit's scheduler
+   * @param circuit            the Circuit for async dispatch (uses Circuit.pipe())
    * @param channelSubject     the Subject of the Channel this ProducerPipe belongs to
    * @param subscriberNotifier callback to notify subscribers of emissions
    * @param hasSubscribers     subscriber check for early-exit optimization
    * @param flow               the flow regulator (null for no transformations)
    */
-  public ProducerPipe ( Scheduler scheduler, Subject < Channel < E > > channelSubject, Consumer < Capture < E > > subscriberNotifier, BooleanSupplier hasSubscribers, FlowRegulator < E > flow ) {
-    this.scheduler = Objects.requireNonNull ( scheduler, "Scheduler cannot be null" );
+  public ProducerPipe ( Circuit circuit, Subject < Channel < E > > channelSubject, Consumer < Capture < E > > subscriberNotifier, BooleanSupplier hasSubscribers, FlowRegulator < E > flow ) {
     this.channelSubject = Objects.requireNonNull ( channelSubject, "Channel subject cannot be null" );
     this.subscriberNotifier = Objects.requireNonNull ( subscriberNotifier, "Subscriber notifier cannot be null" );
     this.hasSubscribers = Objects.requireNonNull ( hasSubscribers, "Subscriber check cannot be null" );
     this.flow = flow;
+
+    // Create async dispatch pipe using Circuit.pipe() - official API method
+    // This breaks synchronous call chains and ensures circuit-thread execution
+    Objects.requireNonNull ( circuit, "Circuit cannot be null" );
+
+    // Use Cortex to create a Pipe from Receptor, then wrap with Circuit.pipe()
+    Pipe < Capture < E > > receptorPipe = cortex ().pipe ( Capture.class, subscriberNotifier::accept );
+    this.dispatchPipe = circuit.pipe ( receptorPipe );
   }
 
   @Override
@@ -112,10 +120,9 @@ public class ProducerPipe < E > implements Pipe < E > {
   /**
    * Posts emission to Circuit's queue for ordered processing.
    * <p>
-   * < p >< b >Architecture:</b > Emissions are posted as Scripts to the Circuit's queue.
-   * Each Script creates a Capture and invokes subscriber callbacks in the Circuit's
-   * single-threaded execution context. This ensures ordering guarantees as specified
-   * by the Substrates API.
+   * < p >< b >Architecture:</b > Uses Circuit.pipe() to dispatch captures to the Circuit's queue.
+   * The async pipe ensures subscriber callbacks execute on the Circuit's single-threaded
+   * execution context, maintaining ordering guarantees as specified by the Substrates API.
    * <p>
    * < p >< b >OPTIMIZATION:</b > Early exit if no subscribers - avoids allocating Capture
    * and posting to queue when no subscribers are registered.
@@ -129,11 +136,9 @@ public class ProducerPipe < E > implements Pipe < E > {
       return;
     }
 
-    // Post to Circuit's queue - ensures ordering guarantees
-    scheduler.schedule ( () -> {
-      Capture < E > capture = new SubjectCapture <> ( channelSubject, value );
-      subscriberNotifier.accept ( capture );
-    } );
+    // Dispatch to Circuit via async pipe (official API) - ensures ordering guarantees
+    Capture < E > capture = new SubjectCapture <> ( channelSubject, value );
+    dispatchPipe.emit ( capture );
   }
 
 }

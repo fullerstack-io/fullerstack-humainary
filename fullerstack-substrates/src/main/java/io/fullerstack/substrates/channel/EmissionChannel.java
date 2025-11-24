@@ -7,7 +7,6 @@ import io.fullerstack.substrates.flow.FlowRegulator;
 import io.fullerstack.substrates.state.LinkedState;
 import io.fullerstack.substrates.subject.ContextualSubject;
 import io.fullerstack.substrates.conduit.RoutingConduit;
-import io.fullerstack.substrates.circuit.Scheduler;
 
 import java.util.Objects;
 import java.util.function.Consumer;
@@ -20,15 +19,15 @@ import java.util.function.Consumer;
  * < p >< b >Parent Reference Pattern:</b >
  * Channel has a parent Conduit reference. When creating Pipes, Channel accesses:
  * < ul >
- * < li >Circuit's scheduler via {@code conduit.getCircuit()}</li >
+ * < li >Circuit via {@code conduit.getCircuit()}</li >
  * < li >Emission handler via {@code conduit.emissionHandler()}</li >
  * < li >Subscriber check via {@code conduit.hasSubscribers()}</li >
  * </ul >
  * <p>
  * < p >< b >Circuit Queue Architecture:</b >
- * Instead of putting Captures directly on a BlockingQueue, Pipes post Scripts to the
- * Circuit's Queue. Each Script invokes the emission handler callback, ensuring
- * all Conduits share the Circuit's single-threaded execution model.
+ * Uses Circuit.pipe() to dispatch emissions to the Circuit's queue. This breaks
+ * synchronous call chains and ensures all Conduits share the Circuit's single-threaded
+ * execution model as specified in the Substrates API.
  * <p>
  * < p >< b >Subject Hierarchy:</b >
  * Channel's Subject has Conduit's Subject as parent, enabling full path navigation:
@@ -96,9 +95,9 @@ public class EmissionChannel < E > implements Channel < E > {
             cachedPipe = pipe ( flowConfigurer );
           } else {
             // Otherwise, create a plain ProducerPipe with parent Conduit's capabilities
-            // Note: Circuit also implements Scheduler in our implementation (SequentialCircuit)
+            // Uses Circuit.pipe() for async dispatch (official Substrates API)
             cachedPipe = new ProducerPipe < E > (
-              (Scheduler) conduit.getCircuit (), // Cast Circuit to Scheduler
+              conduit.getCircuit (),           // Circuit directly (no cast needed)
               channelSubject,
               conduit.emissionHandler (),      // Emission handler from parent Conduit
               conduit::hasSubscribers         // Subscriber check from parent Conduit
@@ -119,9 +118,9 @@ public class EmissionChannel < E > implements Channel < E > {
     configurer.accept ( flow );
 
     // Return a ProducerPipe with parent Conduit's capabilities and Flow transformations
-    // Note: Circuit also implements Scheduler in our implementation (SequentialCircuit)
+    // Uses Circuit.pipe() for async dispatch (official Substrates API)
     return new ProducerPipe < E > (
-      (Scheduler) conduit.getCircuit (), // Cast Circuit to Scheduler
+      conduit.getCircuit (),           // Circuit directly (no cast needed)
       channelSubject,
       conduit.emissionHandler (),      // Emission handler from parent Conduit
       conduit::hasSubscribers,        // Subscriber check from parent Conduit
