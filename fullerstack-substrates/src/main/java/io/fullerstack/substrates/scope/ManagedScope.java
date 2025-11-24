@@ -77,7 +77,8 @@ public class ManagedScope implements Scope {
   @Override
   public Scope scope () {
     checkClosed ();
-    // Lazy create childScopes map (single-threaded access)
+    // Lazy create childScopes map
+    // Per API: Scope is NOT thread-safe, single-threaded access assumed
     if ( childScopes == null ) {
       childScopes = new HashMap <> ();
     }
@@ -92,7 +93,8 @@ public class ManagedScope implements Scope {
   @Override
   public Scope scope ( Name name ) {
     checkClosed ();
-    // Lazy create childScopes map (single-threaded access)
+    // Lazy create childScopes map
+    // Per API: Scope is NOT thread-safe, single-threaded access assumed
     if ( childScopes == null ) {
       childScopes = new HashMap <> ();
     }
