@@ -2,7 +2,6 @@ package io.fullerstack.substrates.conduit;
 
 import io.humainary.substrates.api.Substrates.*;
 import io.fullerstack.substrates.channel.EmissionChannel;
-import io.fullerstack.substrates.state.LinkedState;
 import io.fullerstack.substrates.subject.ContextualSubject;
 import io.fullerstack.substrates.subscriber.ContextSubscriber;
 import io.fullerstack.substrates.subscription.CallbackSubscription;
@@ -68,9 +67,9 @@ import java.util.function.Consumer;
 @Getter
 public class RoutingConduit < P extends Percept, E > implements Conduit < P, E > {
 
-  private final Circuit                     circuit; // Parent Circuit in hierarchy (provides scheduling + Subject)
-  private final Subject                     conduitSubject;
-  private final Composer < E, ? extends P > perceptComposer;
+  private final Circuit                          circuit; // Parent Circuit in hierarchy (provides scheduling + Subject)
+  private final Subject < Conduit < P, E > >     conduitSubject;
+  private final Composer < E, ? extends P >      perceptComposer;
 
   // Lazy-initialized maps (only allocated when first percept/pipe registered)
   // Saves ~100-200ns for Conduits that are created but never used (common in benchmarks)
@@ -115,11 +114,12 @@ public class RoutingConduit < P extends Percept, E > implements Conduit < P, E >
    * @param circuit         parent Circuit (provides scheduling + Subject hierarchy)
    * @param flowConfigurer  optional transformation pipeline (null if no transformations)
    */
+  @SuppressWarnings ( "unchecked" )
   public RoutingConduit ( Name conduitName, Composer < E, ? extends P > perceptComposer, Circuit circuit, Consumer < Flow < E > > flowConfigurer ) {
     this.circuit = Objects.requireNonNull ( circuit, "Circuit cannot be null" );
     this.conduitSubject = new ContextualSubject <> (
       conduitName,
-      Conduit.class,
+      (Class < Conduit < P, E > >) (Class < ? >) Conduit.class,  // Fixed type cast for generics
       circuit.subject ()  // Parent Subject from parent Circuit
     );
     this.perceptComposer = perceptComposer;
@@ -129,7 +129,7 @@ public class RoutingConduit < P extends Percept, E > implements Conduit < P, E >
   }
 
   @Override
-  public Subject subject () {
+  public Subject < Conduit < P, E > > subject () {
     return conduitSubject;
   }
 
@@ -376,7 +376,7 @@ public class RoutingConduit < P extends Percept, E > implements Conduit < P, E >
    */
   private List < Pipe < ? super E > > resolvePipes (
     Subscriber < E > subscriber,
-    Subject emittingSubject,
+    Subject < Channel < E > > emittingSubject,
     Map < Subscriber < E >, List < Pipe < ? super E > > > subscriberPipes
   ) {
     return subscriberPipes.computeIfAbsent ( subscriber, sub -> {
