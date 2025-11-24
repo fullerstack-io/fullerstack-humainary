@@ -102,8 +102,9 @@ public class LinkedState implements State {
   private State addSlot ( Slot < ? > slot ) {
     // Check if equal slot already exists
     for ( Slot < ? > existing : slots ) {
-      if ( existing.name ().equals ( slot.name () ) &&
-        existing.type ().equals ( slot.type () ) &&
+      // Name and type use @Identity, so use == not .equals()
+      if ( existing.name () == slot.name () &&
+        existing.type () == slot.type () &&
         java.util.Objects.equals ( existing.value (), slot.value () ) ) {
         return this;  // Idempotency: return same instance
       }
@@ -172,8 +173,14 @@ public class LinkedState implements State {
 
     // Per Humainary API: Store enum using its declaring class as the name,
     // and the enum value as a hierarchical Name: className.enumConstant
-    // Convert $ to . for proper hierarchical names
-    String className = value.getDeclaringClass ().getName ().replace ( '$', '.' );
+    // Use getCanonicalName() which already has dots for inner classes
+    // Falls back to getName() for anonymous/local classes
+    Class<?> declaringClass = value.getDeclaringClass();
+    String className = declaringClass.getCanonicalName();
+    if (className == null) {
+      // Anonymous or local class - use runtime name
+      className = declaringClass.getName();
+    }
     Name enumClassName = InternedName.of ( className );
     // Append just the enum constant name (not the full Enum path)
     Name enumValueName = InternedName.of ( className ).name ( value.name () );
@@ -189,8 +196,9 @@ public class LinkedState implements State {
     // This allows "moving" a slot to the most recent position by re-adding it
     if ( !slots.isEmpty () ) {
       Slot < ? > last = slots.get ( slots.size () - 1 );
-      if ( last.name ().equals ( slot.name () ) &&
-        last.type ().equals ( slot.type () ) &&
+      // Name and type use @Identity, so use == not .equals()
+      if ( last.name () == slot.name () &&
+        last.type () == slot.type () &&
         java.util.Objects.equals ( last.value (), slot.value () ) ) {
         return this;  // Already at most recent position
       }
@@ -219,8 +227,9 @@ public class LinkedState implements State {
 
     // Search for matching name AND type, keep updating with each match (last one wins)
     // Per article: "A State stores the type with the name, only matching when both are exact matches"
+    // Name uses @Identity, so use == not .equals()
     for ( Slot < ? > s : slots ) {
-      if ( s.name ().equals ( slot.name () ) && typesMatch ( slot.type (), s.type () ) ) {
+      if ( s.name () == slot.name () && typesMatch ( slot.type (), s.type () ) ) {
         @SuppressWarnings ( "unchecked" )
         T value = ( (Slot < T >) s ).value ();
         result = value;  // Keep updating (last occurrence wins)
@@ -235,10 +244,11 @@ public class LinkedState implements State {
   public < T > Stream < T > values ( Slot < ? extends T > slot ) {
     // Return ALL values with this name AND type in reverse chronological order (most recent first)
     // Per article: "A State stores the type with the name, only matching when both are exact matches"
+    // Name uses @Identity, so use == not .equals()
     // Collect matching values, then reverse to get most recent first
     List < T > values = new ArrayList <> ();
     for ( Slot < ? > s : slots ) {
-      if ( s.name ().equals ( slot.name () ) && typesMatch ( slot.type (), s.type () ) ) {
+      if ( s.name () == slot.name () && typesMatch ( slot.type (), s.type () ) ) {
         @SuppressWarnings ( "unchecked" )
         Slot < T > typed = (Slot < T >) s;
         values.add ( typed.value () );

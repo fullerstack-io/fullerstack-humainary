@@ -113,11 +113,16 @@ public class TypedSlot < T > implements Slot < T > {
   public boolean equals ( Object o ) {
     if ( this == o ) return true;
     if ( !( o instanceof TypedSlot < ? > other ) ) return false;
-    return name.equals ( other.name );
+    // Slot equality: name (identity), type (identity), value (equals)
+    // Name uses @Identity, so use == not .equals()
+    return name == other.name &&
+           type == other.type &&
+           Objects.equals ( value, other.value );
   }
 
   @Override
   public int hashCode () {
-    return name.hashCode ();
+    // Use System.identityHashCode for @Identity types (Name, type)
+    return Objects.hash ( System.identityHashCode ( name ), System.identityHashCode ( type ), value );
   }
 }
