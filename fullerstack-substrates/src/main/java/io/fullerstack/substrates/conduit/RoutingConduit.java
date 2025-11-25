@@ -278,14 +278,25 @@ public class RoutingConduit < P extends Percept, E > implements Conduit < P, E >
   }
 
   /**
-   * Provides an emission handler callback for Channel/Pipe creation.
-   * Channels pass this callback to Pipes, allowing Pipes to notify subscribers.
+   * Returns the routing pipe that handles emissions from Channels.
+   * This is the next pipe in the chain: EmissionPipe → asyncPipe → routingPipe
    *
-   * @return callback that routes emissions to subscribers
+   * @return pipe that routes emissions to subscriber pipes
    */
-  public Consumer < Capture < E > > emissionHandler () {
-    return this::notifySubscribers;
+  public Pipe<Capture<E>> routingPipe() {
+    return new Pipe<Capture<E>>() {
+      @Override
+      public void emit(Capture<E> capture) {
+        notifySubscribers(capture);
+      }
+
+      @Override
+      public void flush() {
+        // No buffering
+      }
+    };
   }
+
 
   /**
    * Notifies all subscribers of an emission from a Channel.
