@@ -1,19 +1,22 @@
 package io.fullerstack.substrates.cell;
 
-import io.humainary.substrates.api.Substrates.*;
-import io.fullerstack.substrates.channel.EmissionChannel;
-import io.fullerstack.substrates.conduit.RoutingConduit;
-import io.fullerstack.substrates.state.LinkedState;
-import io.fullerstack.substrates.subject.ContextualSubject;
-import io.fullerstack.substrates.subscription.CallbackSubscription;
-
 import java.util.HashMap;
-import java.util.Iterator;
-import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.function.Function;
+
+import io.fullerstack.substrates.channel.EmissionChannel;
+import io.fullerstack.substrates.conduit.RoutingConduit;
+import io.fullerstack.substrates.subject.ContextualSubject;
+import io.humainary.substrates.api.Substrates.Cell;
+import io.humainary.substrates.api.Substrates.Channel;
+import io.humainary.substrates.api.Substrates.Composer;
+import io.humainary.substrates.api.Substrates.Conduit;
+import io.humainary.substrates.api.Substrates.Name;
+import io.humainary.substrates.api.Substrates.Pipe;
+import io.humainary.substrates.api.Substrates.Subject;
+import io.humainary.substrates.api.Substrates.Subscriber;
+import io.humainary.substrates.api.Substrates.Subscription;
 
 /**
  * Hierarchical Cell node implementation for Circuit.cell() support (PREVIEW API).
@@ -124,7 +127,6 @@ public class CellNode < I, E > implements Cell < I, E > {
       // RC7 Pattern: Create Channel directly like Circuit.cell() does
       // Conduit.percept() returns Percept (Pipe), not Channel
       // We need to create Channel and pass it to composers
-      @SuppressWarnings ( "unchecked" )
       RoutingConduit < ?, E > transformingConduit =
         (RoutingConduit < ?, E >) conduit;
       Channel < E > childChannel = new EmissionChannel <> ( n, transformingConduit, null );

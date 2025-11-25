@@ -89,7 +89,8 @@ public class CortexRuntime implements Cortex {
   }
 
   private Circuit createCircuit ( Name name ) {
-    return new SequentialCircuit ( name );
+    // Pass Cortex Subject as parent for Circuit hierarchy: Circuit → Cortex
+    return new SequentialCircuit ( name, this.subject );
   }
 
   // ========== Current Management (1 method) ==========

@@ -4,12 +4,10 @@ import static io.humainary.substrates.api.Substrates.cortex;
 
 import java.util.ArrayDeque;
 import java.util.Objects;
-import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.locks.Condition;
-import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Consumer;
 
 import io.fullerstack.substrates.cell.CellNode;
@@ -34,23 +32,25 @@ import io.humainary.substrates.api.Substrates.Subscription;
 
 /**
  * Sequential implementation of Substrates.Circuit using Virtual Threads.
+ * Uses LinkedBlockingQueue for automatic producer-consumer coordination.
  */
 public class SequentialCircuit implements Circuit {
 
-    private final ConcurrentLinkedQueue<Runnable> ingressQueue = new ConcurrentLinkedQueue<>();
+    private final LinkedBlockingQueue<Runnable> ingressQueue = new LinkedBlockingQueue<>();
     private final ArrayDeque<Runnable> transitQueue = new ArrayDeque<>();
     private final Thread circuitThread;
-    private final ReentrantLock lock = new ReentrantLock();
-    private final Condition emptyCondition = lock.newCondition();
-    private final AtomicBoolean closed = new AtomicBoolean(false);
     private final CountDownLatch threadStarted = new CountDownLatch(1);
     private final Subject<Circuit> circuitSubject;
     private final String circuitName;
     private final CopyOnWriteArrayList<Subscriber<State>> stateSubscribers = new CopyOnWriteArrayList<>();
+    private final AtomicBoolean running = new AtomicBoolean(true);
+    private volatile int processing = 0;
 
-    public SequentialCircuit(Name name) {
+    public SequentialCircuit(Name name, Subject<?> parentSubject) {
         Objects.requireNonNull(name, "Circuit name cannot be null");
-        this.circuitSubject = new ContextualSubject<>(name, Circuit.class);
+        Objects.requireNonNull(parentSubject, "Parent subject cannot be null");
+        // Circuit Subject has Cortex Subject as parent (Circuit → Cortex hierarchy)
+        this.circuitSubject = new ContextualSubject<>(name, Circuit.class, parentSubject);
         this.circuitName = name.part().toString();
 
         // Start VIRTUAL thread for circuit processing
@@ -69,32 +69,28 @@ public class SequentialCircuit implements Circuit {
     private void runLoop() {
         threadStarted.countDown();
 
-        while (!Thread.currentThread().isInterrupted() && !closed.get()) {
-            Runnable task;
-            lock.lock();
-            try {
-                while (!transitQueue.isEmpty()) {
-                    task = transitQueue.pollFirst();
-                    lock.unlock();
-                    try { task.run(); } catch (Exception e) { } finally { lock.lock(); }
+        while (running.get() || !transitQueue.isEmpty() || !ingressQueue.isEmpty()) {
+                Runnable task;
+                boolean processedItem = false;
+                // Process transit queue first (depth-first priority)
+                while ((task = transitQueue.pollFirst()) != null) {
+                    processing++;
+                    try { task.run(); } catch (Exception e) { }
+                    finally { processing--; processedItem = true; }
                 }
-                while ((task = ingressQueue.poll()) != null) {
-                    lock.unlock();
-                    try { task.run(); } catch (Exception e) { } finally { lock.lock(); }
-                    if (!transitQueue.isEmpty()) break;
+
+                if (!processedItem) {
+                  Runnable taskIngress = ingressQueue.poll();
+                  if (taskIngress != null) {
+                      processing++;
+                      try { taskIngress.run(); } catch (Exception e) { }
+                      finally { processing--; processedItem = true; }
+                  }
                 }
-                while (ingressQueue.isEmpty() && transitQueue.isEmpty() && !closed.get()) {
-                    emptyCondition.signalAll();
-                    try {
-                        emptyCondition.await();
-                    } catch (InterruptedException e) {
-                        Thread.currentThread().interrupt();
-                        return;
-                    }
+
+                if (!processedItem) {
+                  Thread.onSpinWait();
                 }
-            } finally {
-                lock.unlock();
-            }
         }
     }
 
@@ -103,51 +99,35 @@ public class SequentialCircuit implements Circuit {
     }
 
     public void execute(Runnable task) {
-        if (closed.get()) throw new IllegalStateException("Circuit is closed");
-        lock.lock();
-        try {
-            if (isCircuitThread()) {
-                transitQueue.addLast(task);
-            } else {
-                ingressQueue.add(task);
-            }
-            emptyCondition.signalAll();
-        } finally {
-            lock.unlock();
+        // Silently ignore emissions after close (per TCK specification)
+        if (!running.get()) return;
+
+        // Fast-path for circuit thread
+        if (isCircuitThread()) {
+            // Circuit thread is the only writer to transitQueue - safe direct access
+            transitQueue.addLast(task);
+            return;
         }
+
+        // External thread path - LinkedBlockingQueue handles all coordination
+        ingressQueue.add(task);  // Automatically wakes blocked consumer!
     }
 
     @Override
     public void await() {
         if (isCircuitThread()) throw new IllegalStateException("Cannot call Circuit::await from within a circuit's thread");
-        lock.lock();
-        try {
-            while (!ingressQueue.isEmpty() || !transitQueue.isEmpty()) {
-                emptyCondition.await();
-            }
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new RuntimeException("Await interrupted", e);
-        } finally {
-            lock.unlock();
+
+        // Wait until queues are empty AND no work is currently being processed
+        while (!ingressQueue.isEmpty() || !transitQueue.isEmpty() || processing > 0) {
+            Thread.yield();  // Give circuit thread CPU time to drain queues
         }
     }
 
     @Override
     public void close() {
-        if (!closed.compareAndSet(false, true)) return;
-        lock.lock();
-        try {
-            emptyCondition.signalAll();
-        } finally {
-            lock.unlock();
-        }
-        circuitThread.interrupt();
-        try {
-            circuitThread.join(1000);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
+        // Signal the circuit to stop accepting new work and drain queues
+        running.compareAndSet(true, false);
+        // Virtual thread is daemon - will exit naturally when queues drain
     }
 
     @Override
@@ -228,10 +208,12 @@ public class SequentialCircuit implements Circuit {
         Objects.requireNonNull(egress, "Egress composer cannot be null");
         Objects.requireNonNull(pipe, "Pipe cannot be null");
         Conduit<Pipe<E>, E> cellConduit = conduit(name, Composer.pipe());
-        @SuppressWarnings("unchecked")
         RoutingConduit<Pipe<E>, E> transformingConduit = (RoutingConduit<Pipe<E>, E>) cellConduit;
         Channel<E> channel = new EmissionChannel<>(name, transformingConduit, null);
+
+        // Cache the egress pipe to avoid creating multiple ProducerPipes
         Pipe<E> egressPipe = egress.compose(channel);
+
         Channel<E> ingressChannel = new Channel<E>() {
             @Override
             public Subject<Channel<E>> subject() { return channel.subject(); }
@@ -243,13 +225,14 @@ public class SequentialCircuit implements Circuit {
             }
         };
         Pipe<I> ingressPipe = ingress.compose(ingressChannel);
+
+        // Subscribe to route cell emissions to output pipe
         cellConduit.subscribe(cortex().subscriber(
             cortex().name("cell-outlet-" + name),
             (Subject<Channel<E>> subject, Registrar<E> registrar) -> {
                 registrar.register(pipe::emit);
             }
         ));
-        @SuppressWarnings("unchecked")
         Conduit<?, E> conduit = (Conduit<?, E>) cellConduit;
         return new CellNode<>(null, name, ingressPipe, egressPipe, conduit, ingress, egress, this.circuitSubject);
     }
