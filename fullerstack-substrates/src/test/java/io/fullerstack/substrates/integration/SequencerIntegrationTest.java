@@ -1,18 +1,23 @@
 package io.fullerstack.substrates.integration;
 
-import io.humainary.substrates.api.Substrates.*;
-import io.fullerstack.substrates.circuit.SequentialCircuit;
-import io.fullerstack.substrates.name.InternedName;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.Test;
+import static io.humainary.substrates.api.Substrates.cortex;
+import static org.assertj.core.api.Assertions.assertThat;
 
+import io.fullerstack.substrates.name.InternedName;
+import io.humainary.substrates.api.Substrates.Circuit;
+import io.humainary.substrates.api.Substrates.Composer;
+import io.humainary.substrates.api.Substrates.Conduit;
+import io.humainary.substrates.api.Substrates.Name;
+import io.humainary.substrates.api.Substrates.Pipe;
+import io.humainary.substrates.api.Substrates.Registrar;
+import io.humainary.substrates.api.Substrates.Subject;
+import io.humainary.substrates.api.Substrates.Subscriber;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
-
-import static io.humainary.substrates.api.Substrates.cortex;
-import static org.assertj.core.api.Assertions.assertThat;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Test;
 
 /**
  * Integration tests for Flow transformation functionality showing end-to-end transformation pipelines.
@@ -22,7 +27,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 class SequencerIntegrationTest {
 
-  private SequentialCircuit circuit;
+  private Circuit circuit;
 
   @AfterEach
   void cleanup () {
@@ -45,7 +50,7 @@ class SequencerIntegrationTest {
 
   @Test
   void shouldApplySequencerTransformationsToEmissions () throws InterruptedException {
-    circuit = new SequentialCircuit ( InternedName.of ( "test-circuit" ) );
+    circuit = cortex ().circuit ( cortex ().name ( "test-circuit" ) );
 
     List < Integer > received = new ArrayList <> ();
     CountDownLatch latch = new CountDownLatch ( 3 );
@@ -80,7 +85,7 @@ class SequencerIntegrationTest {
 
   @Test
   void shouldApplyReduceTransformation () throws InterruptedException {
-    circuit = new SequentialCircuit ( InternedName.of ( "test-circuit" ) );
+    circuit = cortex ().circuit ( cortex ().name ( "test-circuit" ) );
 
     List < Integer > received = new ArrayList <> ();
     CountDownLatch latch = new CountDownLatch ( 4 );
@@ -108,7 +113,7 @@ class SequencerIntegrationTest {
 
   @Test
   void shouldApplyReplaceTransformation () throws InterruptedException {
-    circuit = new SequentialCircuit ( InternedName.of ( "test-circuit" ) );
+    circuit = cortex ().circuit ( cortex ().name ( "test-circuit" ) );
 
     List < Integer > received = new ArrayList <> ();
     CountDownLatch latch = new CountDownLatch ( 3 );
@@ -135,7 +140,7 @@ class SequencerIntegrationTest {
 
   @Test
   void shouldApplyDiffTransformation () throws InterruptedException {
-    circuit = new SequentialCircuit ( InternedName.of ( "test-circuit" ) );
+    circuit = cortex ().circuit ( cortex ().name ( "test-circuit" ) );
 
     List < Integer > received = new ArrayList <> ();
     CountDownLatch latch = new CountDownLatch ( 3 );
@@ -164,7 +169,7 @@ class SequencerIntegrationTest {
 
   @Test
   void shouldApplySampleTransformation () throws InterruptedException {
-    circuit = new SequentialCircuit ( InternedName.of ( "test-circuit" ) );
+    circuit = cortex ().circuit ( cortex ().name ( "test-circuit" ) );
 
     List < Integer > received = new ArrayList <> ();
     CountDownLatch latch = new CountDownLatch ( 2 );
@@ -194,7 +199,7 @@ class SequencerIntegrationTest {
 
   @Test
   void shouldApplySiftTransformation () throws InterruptedException {
-    circuit = new SequentialCircuit ( InternedName.of ( "test-circuit" ) );
+    circuit = cortex ().circuit ( cortex ().name ( "test-circuit" ) );
 
     List < Integer > received = new ArrayList <> ();
     CountDownLatch latch = new CountDownLatch ( 3 );
@@ -224,7 +229,7 @@ class SequencerIntegrationTest {
 
   @Test
   void shouldChainMultipleTransformations () throws InterruptedException {
-    circuit = new SequentialCircuit ( InternedName.of ( "test-circuit" ) );
+    circuit = cortex ().circuit ( cortex ().name ( "test-circuit" ) );
 
     List < Integer > received = new ArrayList <> ();
     CountDownLatch latch = new CountDownLatch ( 3 );
@@ -258,7 +263,7 @@ class SequencerIntegrationTest {
 
   @Test
   void shouldSupportMultiplePipesWithDifferentSequencers () throws InterruptedException {
-    circuit = new SequentialCircuit ( InternedName.of ( "test-circuit" ) );
+    circuit = cortex ().circuit ( cortex ().name ( "test-circuit" ) );
 
     List < Integer > received = new ArrayList <> ();
     CountDownLatch latch = new CountDownLatch ( 4 );
@@ -289,7 +294,7 @@ class SequencerIntegrationTest {
 
   @Test
   void shouldApplyFlowTransformationsAtConduitLevelToAllChannels () throws InterruptedException {
-    circuit = new SequentialCircuit ( InternedName.of ( "test-circuit" ) );
+    circuit = cortex ().circuit ( cortex ().name ( "test-circuit" ) );
 
     List < Integer > received = new ArrayList <> ();
     CountDownLatch latch = new CountDownLatch ( 6 );

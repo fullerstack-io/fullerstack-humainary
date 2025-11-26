@@ -1,13 +1,17 @@
 package io.fullerstack.substrates.circuit;
 
-import io.humainary.substrates.api.Substrates.*;
-import io.fullerstack.substrates.name.InternedName;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.Test;
-
 import static io.humainary.substrates.api.Substrates.Composer.pipe;
+import static io.humainary.substrates.api.Substrates.cortex;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import io.fullerstack.substrates.name.InternedName;
+import io.humainary.substrates.api.Substrates.Circuit;
+import io.humainary.substrates.api.Substrates.Composer;
+import io.humainary.substrates.api.Substrates.Conduit;
+import io.humainary.substrates.api.Substrates.Pipe;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Test;
 
 /**
  * Tests for SequentialCircuit (RC1 API compliant).
@@ -15,7 +19,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * Note: Clock and tap() APIs were removed in RC1, so those tests are deleted.
  */
 class SequentialCircuitTest {
-  private SequentialCircuit circuit;
+  private Circuit circuit;
 
   @AfterEach
   void cleanup () {
@@ -26,7 +30,7 @@ class SequentialCircuitTest {
 
   @Test
   void shouldCreateCircuitWithName () {
-    circuit = new SequentialCircuit ( InternedName.of ( "test-circuit" ) );
+    circuit = cortex ().circuit ( cortex ().name ( "test-circuit" ) );
 
     assertThat ( (Object) circuit ).isNotNull ();
     assertThat ( (Object) circuit.subject () ).isNotNull ();
@@ -39,14 +43,13 @@ class SequentialCircuitTest {
 
   @Test
   void shouldRequireNonNullName () {
-    assertThatThrownBy ( () -> new SequentialCircuit ( null ) )
-      .isInstanceOf ( NullPointerException.class )
-      .hasMessageContaining ( "Circuit name cannot be null" );
+    assertThatThrownBy ( () -> cortex ().circuit ( null ) )
+      .isInstanceOf ( NullPointerException.class );
   }
 
   @Test
   void shouldRequireNonNullConduitName () {
-    circuit = new SequentialCircuit ( InternedName.of ( "test" ) );
+    circuit = cortex ().circuit ( cortex ().name ( "test" ) );
 
     assertThatThrownBy ( () -> circuit.conduit ( null, pipe () ) )
       .isInstanceOf ( NullPointerException.class )
@@ -55,7 +58,7 @@ class SequentialCircuitTest {
 
   @Test
   void shouldRequireNonNullComposer () {
-    circuit = new SequentialCircuit ( InternedName.of ( "test" ) );
+    circuit = cortex ().circuit ( cortex ().name ( "test" ) );
 
     assertThatThrownBy ( () -> circuit.conduit ( InternedName.of ( "test" ), null ) )
       .isInstanceOf ( NullPointerException.class )
@@ -66,7 +69,7 @@ class SequentialCircuitTest {
 
   @Test
   void shouldAllowMultipleCloses () {
-    circuit = new SequentialCircuit ( InternedName.of ( "test" ) );
+    circuit = cortex ().circuit ( cortex ().name ( "test" ) );
 
     circuit.close ();
     circuit.close (); // Should not throw
@@ -76,7 +79,7 @@ class SequentialCircuitTest {
 
   @Test
   void shouldCreateDifferentConduitsForDifferentComposers () {
-    circuit = new SequentialCircuit ( InternedName.of ( "test" ) );
+    circuit = cortex ().circuit ( cortex ().name ( "test" ) );
 
     // Same name, different composers should create DIFFERENT Conduits
     Composer < String, Pipe < String > > composer1 = pipe ();
@@ -93,7 +96,7 @@ class SequentialCircuitTest {
 
   @Test
   void shouldProvideAccessToSubject () {
-    circuit = new SequentialCircuit ( InternedName.of ( "test" ) );
+    circuit = cortex ().circuit ( cortex ().name ( "test" ) );
 
     assertThat ( (Object) circuit.subject () ).isNotNull ();
     assertThat ( (Object) circuit ).isNotNull ();
