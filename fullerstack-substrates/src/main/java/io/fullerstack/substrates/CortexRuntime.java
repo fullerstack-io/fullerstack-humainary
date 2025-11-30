@@ -2,7 +2,7 @@ package io.fullerstack.substrates;
 
 import io.humainary.substrates.api.Substrates.*;
 import io.fullerstack.substrates.capture.SubjectCapture;
-import io.fullerstack.substrates.circuit.SequentialCircuit;
+import io.fullerstack.substrates.circuit.CircuitScheduler;
 import io.fullerstack.substrates.current.ThreadCurrent;
 import io.fullerstack.substrates.scope.ManagedScope;
 import io.fullerstack.substrates.slot.TypedSlot;
@@ -72,12 +72,14 @@ public class CortexRuntime implements Cortex {
 
   // ========== Circuit Management (2 methods) ==========
 
+  // Shared name for all unnamed circuits - each circuit has unique Subject.id() anyway
+  private static final Name UNNAMED_CIRCUIT = InternedName.of ( "circuit" );
+
   @Override
   public Circuit circuit () {
-    // Generate unique name for each unnamed circuit (do NOT intern)
-    // This ensures each call creates a new circuit with unique subject
-    // Use System.nanoTime() for unique names
-    return createCircuit ( InternedName.of ( "circuit." + System.nanoTime () ) );
+    // Use fixed interned name - each circuit has unique Subject.id() for identity
+    // Avoids polluting intern cache with unique nanoTime-based names
+    return createCircuit ( UNNAMED_CIRCUIT );
   }
 
   @Override
@@ -90,7 +92,7 @@ public class CortexRuntime implements Cortex {
 
   private Circuit createCircuit ( Name name ) {
     // Pass Cortex Subject as parent for Circuit hierarchy: Circuit → Cortex
-    return new SequentialCircuit ( name, this.subject );
+    return new CircuitScheduler ( name, this.subject );
   }
 
   // ========== Current Management (1 method) ==========

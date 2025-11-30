@@ -37,16 +37,19 @@ final class SubjectTest
       final Conduit < Pipe < Integer >, Integer > conduit =
         circuit.conduit ( conduitName, pipe () );
 
+      final var cortexSubject = cortex.subject ();
       final var circuitSubject = circuit.subject ();
       final var conduitSubject = conduit.subject ();
 
       final var path = conduitSubject.path ().toString ();
 
-      assertTrue ( path.startsWith ( circuitSubject.part ().toString () ) );
+      // Path now starts with cortex (Circuit → Cortex hierarchy)
+      assertTrue ( path.startsWith ( cortexSubject.part ().toString () ) );
       assertTrue ( path.endsWith ( conduitSubject.part ().toString () ) );
       assertEquals ( path, conduitSubject.toString () );
 
-      assertEquals ( 2, conduitSubject.depth () );
+      // Conduit depth is now 3: Cortex → Circuit → Conduit
+      assertEquals ( 3, conduitSubject.depth () );
 
       assertTrue ( conduitSubject.enclosure ().isPresent () );
       assertSame ( circuitSubject, conduitSubject.enclosure ().orElseThrow () );
@@ -55,7 +58,8 @@ final class SubjectTest
       conduitSubject.enclosure ( captured::set );
 
       assertSame ( circuitSubject, captured.get () );
-      assertSame ( circuitSubject, conduitSubject.extremity () );
+      // Extremity is now Cortex (the root)
+      assertSame ( cortexSubject, conduitSubject.extremity () );
 
     } finally {
 
@@ -73,6 +77,7 @@ final class SubjectTest
 
     try {
 
+      final var cortexSubject = cortex.subject ();
       final var subject = circuit.subject ();
 
       assertEquals ( Circuit.class, subject.type () );
@@ -85,12 +90,18 @@ final class SubjectTest
       assertTrue ( part.contains ( circuitName.toString () ) );
       assertTrue ( part.contains ( "type=Circuit" ) );
 
-      assertEquals ( part, subject.path ().toString () );
-      assertEquals ( part, subject.toString () );
+      // Path now includes cortex prefix (Circuit → Cortex hierarchy)
+      final var expectedPath = cortexSubject.part ().toString () + "/" + part;
+      assertEquals ( expectedPath, subject.path ().toString () );
+      assertEquals ( expectedPath, subject.toString () );
 
-      assertEquals ( 1, subject.depth () );
-      assertTrue ( subject.enclosure ().isEmpty () );
-      assertSame ( subject, subject.extremity () );
+      // Circuit depth is now 2: Cortex → Circuit
+      assertEquals ( 2, subject.depth () );
+      // Circuit now has Cortex as enclosure
+      assertTrue ( subject.enclosure ().isPresent () );
+      assertSame ( cortexSubject, subject.enclosure ().orElseThrow () );
+      // Extremity is now Cortex (the root)
+      assertSame ( cortexSubject, subject.extremity () );
 
       assertEquals ( 0L, subject.state ().stream ().count () );
 
@@ -110,6 +121,8 @@ final class SubjectTest
     );
 
     try {
+
+      final var cortexSubject = cortex.subject ();
 
       final Conduit < Pipe < Integer >, Integer > conduit =
         circuit.conduit (
@@ -131,11 +144,15 @@ final class SubjectTest
         assertEquals ( Subscription.class, subscription.subject ().type () );
         assertSame ( conduit.subject (), subscription.subject ().enclosure ().orElseThrow () );
         assertSame ( circuit.subject (), conduit.subject ().enclosure ().orElseThrow () );
+        // Circuit now has Cortex as enclosure
+        assertSame ( cortexSubject, circuit.subject ().enclosure ().orElseThrow () );
 
+        // Stream now includes Cortex at the end (the root)
         final List < Subject < ? > > expectedStream = List.of (
           subscription.subject (),
           conduit.subject (),
-          circuit.subject ()
+          circuit.subject (),
+          cortexSubject
         );
 
         assertEquals (
@@ -145,13 +162,16 @@ final class SubjectTest
 
         assertTrue ( subscription.subject ().within ( conduit.subject () ) );
         assertTrue ( subscription.subject ().within ( circuit.subject () ) );
+        assertTrue ( subscription.subject ().within ( cortexSubject ) );
         assertFalse ( conduit.subject ().within ( subscription.subject () ) );
 
-        assertEquals ( circuit.subject (), subscription.subject ().extremity () );
+        // Extremity is now Cortex (the root)
+        assertEquals ( cortexSubject, subscription.subject ().extremity () );
         final var comparison = conduit.subject ().compareTo ( subscription.subject () );
 
         assertTrue ( comparison < 0 );
-        assertEquals ( 3, subscription.subject ().depth () );
+        // Subscription depth is now 4: Cortex → Circuit → Conduit → Subscription
+        assertEquals ( 4, subscription.subject ().depth () );
 
       } finally {
 

@@ -5,9 +5,9 @@ import static io.humainary.substrates.api.Substrates.cortex;
 import java.util.ArrayDeque;
 import java.util.Objects;
 import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.locks.LockSupport;
 import java.util.function.Consumer;
 
 import io.fullerstack.substrates.cell.CellNode;
@@ -36,15 +36,16 @@ import io.humainary.substrates.api.Substrates.Subscription;
  */
 public class SequentialCircuit implements Circuit {
 
+    private static final int SPIN_ITERATIONS = 100;
+    private static final long PARK_NANOS = 100_000L; // 0.1 ms
+
     private final LinkedBlockingQueue<Runnable> ingressQueue = new LinkedBlockingQueue<>();
     private final ArrayDeque<Runnable> transitQueue = new ArrayDeque<>();
     private final Thread circuitThread;
-    private final CountDownLatch threadStarted = new CountDownLatch(1);
     private final Subject<Circuit> circuitSubject;
     private final String circuitName;
     private final CopyOnWriteArrayList<Subscriber<State>> stateSubscribers = new CopyOnWriteArrayList<>();
     private final AtomicBoolean running = new AtomicBoolean(true);
-    private volatile int processing = 0;
 
     public SequentialCircuit(Name name, Subject<?> parentSubject) {
         Objects.requireNonNull(name, "Circuit name cannot be null");
@@ -57,40 +58,41 @@ public class SequentialCircuit implements Circuit {
         this.circuitThread = Thread.ofVirtual()
             .name("Circuit-" + circuitName)
             .start(this::runLoop);
-
-        try {
-            threadStarted.await();
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new RuntimeException("Interrupted while starting circuit thread", e);
-        }
     }
 
     private void runLoop() {
-        threadStarted.countDown();
-
         while (running.get() || !transitQueue.isEmpty() || !ingressQueue.isEmpty()) {
-                Runnable task;
-                boolean processedItem = false;
-                // Process transit queue first (depth-first priority)
-                while ((task = transitQueue.pollFirst()) != null) {
-                    processing++;
+            Runnable task;
+            boolean processedItem = false;
+
+            // Process transit queue first (depth-first priority) - drain completely
+            while ((task = transitQueue.pollFirst()) != null) {
+                try { task.run(); } catch (Exception e) { }
+                processedItem = true;
+            }
+
+            // Only check ingress if no transit work was done
+            if (!processedItem) {
+                task = ingressQueue.poll();
+                if (task != null) {
                     try { task.run(); } catch (Exception e) { }
-                    finally { processing--; processedItem = true; }
+                    processedItem = true;
+                }
+            }
+
+            // No work available - hybrid spin/park strategy
+            if (!processedItem) {
+                int spins = 0;
+                while (transitQueue.isEmpty() && ingressQueue.isEmpty() && spins < SPIN_ITERATIONS && running.get()) {
+                    Thread.onSpinWait();
+                    spins++;
                 }
 
-                if (!processedItem) {
-                  Runnable taskIngress = ingressQueue.poll();
-                  if (taskIngress != null) {
-                      processing++;
-                      try { taskIngress.run(); } catch (Exception e) { }
-                      finally { processing--; processedItem = true; }
-                  }
+                // After spin, if still no work and still running, park to yield carrier
+                if (transitQueue.isEmpty() && ingressQueue.isEmpty() && running.get()) {
+                    LockSupport.parkNanos(PARK_NANOS);
                 }
-
-                if (!processedItem) {
-                  Thread.onSpinWait();
-                }
+            }
         }
     }
 
@@ -117,9 +119,9 @@ public class SequentialCircuit implements Circuit {
     public void await() {
         if (isCircuitThread()) throw new IllegalStateException("Cannot call Circuit::await from within a circuit's thread");
 
-        // Wait until queues are empty AND no work is currently being processed
-        while (!ingressQueue.isEmpty() || !transitQueue.isEmpty() || processing > 0) {
-            Thread.yield();  // Give circuit thread CPU time to drain queues
+        // Wait until ingress queue is drained - circuit thread processes transit synchronously
+        while (!ingressQueue.isEmpty()) {
+            LockSupport.parkNanos(PARK_NANOS);
         }
     }
 
