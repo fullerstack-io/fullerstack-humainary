@@ -1914,48 +1914,47 @@ public final class NanoSubstrates {
 
   }
 
-  /// A hierarchical dot-separated name using dual-cache interning.
-  /// Primary cache uses full path for O(1) lookup. Interning guarantee maintained by
-  /// ensuring all construction paths go through the same cache.
+  /// A hierarchical dot-separated name using path-less interning.
+  /// No path field stored - toString() computed lazily and cached.
+  /// Memory-efficient: only stores segment + parent reference.
   static final class NanoName
     implements Name {
 
-    /// Primary cache: full path string → NanoName. All construction goes through this.
-    private static final ConcurrentHashMap < String, NanoName > CACHE = new ConcurrentHashMap <> ();
+    /// Root cache: segment string → root NanoName (depth=1 nodes only).
+    private static final ConcurrentHashMap < String, NanoName > ROOT_CACHE = new ConcurrentHashMap <> ();
+    /// Parse cache: full path string → NanoName. Only for parse() calls.
+    private static final ConcurrentHashMap < String, NanoName > PARSE_CACHE = new ConcurrentHashMap <> ();
     /// Enum cache: Enum instance → NanoName. Avoids redundant getDeclaringClass() + getCanonicalName() calls.
     private static final ConcurrentHashMap < Enum < ? >, NanoName > ENUM_CACHE = new ConcurrentHashMap <> ();
     private static final char FULLSTOP = '.';
-    private final String path;
     private final String segment;
+    /// Parent reference - null for root names.
+    private final NanoName parent;
     /// Cached depth - computed at construction, avoids traversal.
     private final int depth;
-    /// Lazily computed parent - computed on first enclosure() call.
-    private volatile NanoName parent;
-    private volatile boolean parentComputed;
+    /// Lazily computed toString() - computed on first call, then cached.
+    private volatile String cachedPath;
     /// Cached Optional for enclosure() - avoids allocation on each call.
     private volatile Optional < Name > cachedEnclosure;
 
     // =========================================================================
     // Per-node children cache for fast chaining
     // Simple array with linear scan - O(n) but n is typically <10
-    // Identity comparison (==) after intern makes each check O(1)
     // =========================================================================
     private volatile NanoName[] childNodes = new NanoName[0];
     private final Object childLock = new Object ();
 
-    /// Private constructor for root names (depth=1).
-    private NanoName ( String path, String segment ) {
-      this.path = path;
+    /// Private constructor for root names (depth=1, no parent).
+    private NanoName ( String segment ) {
       this.segment = segment;
+      this.parent = null;
       this.depth = 1;
     }
 
     /// Private constructor with known parent (depth=parent.depth+1).
-    private NanoName ( String path, String segment, NanoName parent ) {
-      this.path = path;
+    private NanoName ( String segment, NanoName parent ) {
       this.segment = segment;
       this.parent = parent;
-      this.parentComputed = true;
       this.depth = parent.depth + 1;
     }
 
@@ -1964,13 +1963,30 @@ public final class NanoSubstrates {
     // =========================================================================
 
     /// Parses and interns a path string with validation.
-    /// Hot path: check cache first, only validate on cache miss.
+    /// Hot path: check ROOT_CACHE first (single segment), then PARSE_CACHE (multi).
     static NanoName parse ( String path ) {
-      Objects.requireNonNull ( path, "path must not be null" );
-      // Hot path: check cache first - if found, it's already valid
-      NanoName cached = CACHE.get ( path );
+      // Ultra-fast path: check ROOT_CACHE first (covers most single-segment lookups)
+      NanoName cached = ROOT_CACHE.get ( path );
       if ( cached != null ) return cached;
-      // Cache miss: validate then intern
+
+      // Check PARSE_CACHE for multi-segment paths
+      cached = PARSE_CACHE.get ( path );
+      if ( cached != null ) return cached;
+
+      // Cache miss: validate and intern
+      Objects.requireNonNull ( path, "path must not be null" );
+      if ( path.isEmpty () ) {
+        throw new IllegalArgumentException ( "Name path cannot be empty" );
+      }
+
+      // Check if single segment (no dots)
+      int dot = path.indexOf ( FULLSTOP );
+      if ( dot < 0 ) {
+        // Single segment - intern to ROOT_CACHE
+        return ROOT_CACHE.computeIfAbsent ( path, NanoName::new );
+      }
+
+      // Multi-segment: validate and intern
       return validateAndIntern ( path );
     }
 
@@ -1992,11 +2008,10 @@ public final class NanoSubstrates {
     }
 
     /// Interns a name by full path with eager parent chain building.
-    /// This ensures enclosure() never needs lazy computation and depth is cached.
-    /// Also registers child in parent's local children array for fast chaining.
+    /// Builds the tree structure via parent→child relationships.
     static NanoName intern ( String path ) {
-      // Fast path: already cached
-      NanoName cached = CACHE.get ( path );
+      // Check parse cache first
+      NanoName cached = PARSE_CACHE.get ( path );
       if ( cached != null ) return cached;
 
       // Build parent chain eagerly
@@ -2007,14 +2022,15 @@ public final class NanoSubstrates {
         String segment = path.substring ( dot + 1 );
 
         // Use parent's internChild to register in local children array
-        return parent.internChild ( segment );
+        NanoName child = parent.internChild ( segment );
+        // Cache for future parse() calls
+        PARSE_CACHE.putIfAbsent ( path, child );
+        return child;
       } else {
         // Root name - no parent, depth=1
-        return CACHE.computeIfAbsent ( path, p -> {
-          NanoName root = new NanoName ( p, p );
-          root.parentComputed = true; // No parent, but mark as computed
-          return root;
-        } );
+        NanoName root = ROOT_CACHE.computeIfAbsent ( path, NanoName::new );
+        PARSE_CACHE.putIfAbsent ( path, root );
+        return root;
       }
     }
 
@@ -2050,52 +2066,82 @@ public final class NanoSubstrates {
     }
 
     /// Creates a Name from an Iterable of parts.
+    /// Chains directly through the tree - no string building.
     static NanoName fromIterable ( Iterable < String > parts ) {
       Objects.requireNonNull ( parts, "parts must not be null" );
-      StringBuilder sb = new StringBuilder ();
+      NanoName current = null;
       for ( String part : parts ) {
         Objects.requireNonNull ( part, "part must not be null" );
-        if ( !sb.isEmpty () ) sb.append ( FULLSTOP );
-        sb.append ( part );
+        if ( current == null ) {
+          current = parse ( part );  // First segment - get root
+        } else {
+          current = current.internChild ( part );  // Chain via tree
+        }
       }
-      return parse ( sb.toString () );
+      if ( current == null ) {
+        throw new IllegalArgumentException ( "parts must not be empty" );
+      }
+      return current;
     }
 
     /// Creates a Name from an Iterable with mapper.
+    /// Chains directly through the tree - no string building.
     static < T > NanoName fromIterable ( Iterable < ? extends T > parts, Function < T, String > mapper ) {
       Objects.requireNonNull ( parts, "parts must not be null" );
       Objects.requireNonNull ( mapper, "mapper must not be null" );
-      StringBuilder sb = new StringBuilder ( 64 );  // Capacity hint
+      NanoName current = null;
       for ( T item : parts ) {
-        if ( !sb.isEmpty () ) sb.append ( FULLSTOP );
-        sb.append ( mapper.apply ( item ) );
+        String part = mapper.apply ( item );
+        if ( current == null ) {
+          current = parse ( part );
+        } else {
+          current = current.internChild ( part );
+        }
       }
-      return parse ( sb.toString () );
+      if ( current == null ) {
+        throw new IllegalArgumentException ( "parts must not be empty" );
+      }
+      return current;
     }
 
     /// Creates a Name from an Iterator of parts.
+    /// Chains directly through the tree - no string building.
     static NanoName fromIterator ( Iterator < String > parts ) {
       Objects.requireNonNull ( parts, "parts must not be null" );
-      StringBuilder sb = new StringBuilder ();
+      NanoName current = null;
       while ( parts.hasNext () ) {
         String part = parts.next ();
         Objects.requireNonNull ( part, "part must not be null" );
-        if ( !sb.isEmpty () ) sb.append ( FULLSTOP );
-        sb.append ( part );
+        if ( current == null ) {
+          current = parse ( part );
+        } else {
+          current = current.internChild ( part );
+        }
       }
-      return parse ( sb.toString () );
+      if ( current == null ) {
+        throw new IllegalArgumentException ( "parts must not be empty" );
+      }
+      return current;
     }
 
     /// Creates a Name from an Iterator with mapper.
+    /// Chains directly through the tree - no string building.
     static < T > NanoName fromIterator ( Iterator < ? extends T > parts, Function < T, String > mapper ) {
       Objects.requireNonNull ( parts, "parts must not be null" );
       Objects.requireNonNull ( mapper, "mapper must not be null" );
-      StringBuilder sb = new StringBuilder ( 64 );  // Capacity hint
+      NanoName current = null;
       while ( parts.hasNext () ) {
-        if ( !sb.isEmpty () ) sb.append ( FULLSTOP );
-        sb.append ( mapper.apply ( parts.next () ) );
+        String part = mapper.apply ( parts.next () );
+        if ( current == null ) {
+          current = parse ( part );
+        } else {
+          current = current.internChild ( part );
+        }
       }
-      return parse ( sb.toString () );
+      if ( current == null ) {
+        throw new IllegalArgumentException ( "parts must not be empty" );
+      }
+      return current;
     }
 
     // =========================================================================
@@ -2104,8 +2150,9 @@ public final class NanoSubstrates {
 
     /// Extends this name with a single segment (no dots in segment).
     /// Uses simple linear scan with equals() for small child counts.
+    /// No global cache needed - tree structure IS the cache.
     private NanoName internChild ( String childSegment ) {
-      // Fast path: linear scan with equals (typical nodes have <10 children)
+      // Fast path: linear scan (typical nodes have <10 children)
       NanoName[] nodes = childNodes;
       for ( int i = 0; i < nodes.length; i++ ) {
         if ( nodes[i].segment.equals ( childSegment ) ) {
@@ -2113,7 +2160,7 @@ public final class NanoSubstrates {
         }
       }
 
-      // Slow path: create new child
+      // Slow path: synchronized creation
       synchronized ( childLock ) {
         // Double-check after lock
         nodes = childNodes;
@@ -2123,11 +2170,8 @@ public final class NanoSubstrates {
           }
         }
 
-        // Build child path and create/get from global cache
-        String childPath = path + FULLSTOP + childSegment;
-        NanoName child = CACHE.computeIfAbsent ( childPath, p ->
-          new NanoName ( p, childSegment, this )
-        );
+        // Create child directly - no global cache lookup needed
+        NanoName child = new NanoName ( childSegment, this );
 
         // Append to children array
         NanoName[] newNodes = new NanoName[nodes.length + 1];
@@ -2137,16 +2181,6 @@ public final class NanoSubstrates {
 
         return child;
       }
-    }
-
-    /// Get parent lazily.
-    private NanoName getParent () {
-      if ( !parentComputed ) {
-        int dot = path.lastIndexOf ( FULLSTOP );
-        parent = dot > 0 ? intern ( path.substring ( 0, dot ) ) : null;
-        parentComputed = true;
-      }
-      return parent;
     }
 
     @Override
@@ -2159,7 +2193,7 @@ public final class NanoSubstrates {
       // Cache the Optional to avoid allocation on repeated calls
       Optional < Name > result = cachedEnclosure;
       if ( result == null ) {
-        result = Optional.ofNullable ( getParent () );
+        result = Optional.ofNullable ( parent );
         cachedEnclosure = result;
       }
       return result;
@@ -2167,10 +2201,33 @@ public final class NanoSubstrates {
 
     @Override
     public Name name ( Name suffix ) {
-      // Append suffix's full path to this name's path
-      String suffixStr = suffix.toString ();
-      StringBuilder sb = new StringBuilder ( path.length () + 1 + suffixStr.length () );
-      return intern ( sb.append ( path ).append ( FULLSTOP ).append ( suffixStr ).toString () );
+      // Walk suffix segments and chain them
+      if ( suffix instanceof NanoName nano ) {
+        // Fast path for single-segment suffix (most common)
+        if ( nano.depth == 1 ) {
+          return internChild ( nano.segment );
+        }
+        return chainFrom ( nano );
+      }
+      // Fallback: parse suffix string
+      return name ( suffix.toString () );
+    }
+
+    /// Chain segments from another NanoName onto this one.
+    private NanoName chainFrom ( NanoName suffix ) {
+      // Collect suffix segments in order (root to leaf)
+      NanoName[] segments = new NanoName[suffix.depth];
+      NanoName n = suffix;
+      for ( int i = suffix.depth - 1; i >= 0; i-- ) {
+        segments[i] = n;
+        n = n.parent;
+      }
+      // Chain each segment
+      NanoName current = this;
+      for ( NanoName seg : segments ) {
+        current = current.internChild ( seg.segment );
+      }
+      return current;
     }
 
     @Override
@@ -2181,9 +2238,18 @@ public final class NanoSubstrates {
         // Simple case: single segment - use internChild for efficiency
         return internChild ( suffix );
       }
-      // Multi-segment: build full path and intern with pre-sized StringBuilder
-      StringBuilder sb = new StringBuilder ( path.length () + 1 + suffix.length () );
-      return intern ( sb.append ( path ).append ( FULLSTOP ).append ( suffix ).toString () );
+      // Multi-segment: split and chain each segment
+      NanoName current = this;
+      int start = 0;
+      while ( true ) {
+        int nextDot = suffix.indexOf ( FULLSTOP, start );
+        if ( nextDot < 0 ) {
+          // Last segment
+          return current.internChild ( suffix.substring ( start ) );
+        }
+        current = current.internChild ( suffix.substring ( start, nextDot ) );
+        start = nextDot + 1;
+      }
     }
 
     @Override
@@ -2253,9 +2319,8 @@ public final class NanoSubstrates {
     }
 
     private void buildPath ( StringBuilder sb, Function < ? super String, ? extends CharSequence > mapper ) {
-      NanoName p = getParent ();
-      if ( p != null ) {
-        p.buildPath ( sb, mapper );
+      if ( parent != null ) {
+        parent.buildPath ( sb, mapper );
         sb.append ( FULLSTOP );
       }
       sb.append ( mapper.apply ( segment ) );
@@ -2263,7 +2328,28 @@ public final class NanoSubstrates {
 
     @Override
     public String toString () {
-      return path;
+      // Lazy computation - only build path when needed, then cache it
+      String result = cachedPath;
+      if ( result == null ) {
+        if ( parent == null ) {
+          result = segment;
+        } else {
+          StringBuilder sb = new StringBuilder ();
+          buildPathString ( sb );
+          result = sb.toString ();
+        }
+        cachedPath = result;
+      }
+      return result;
+    }
+
+    /// Build raw path string (no mapper) for toString().
+    private void buildPathString ( StringBuilder sb ) {
+      if ( parent != null ) {
+        parent.buildPathString ( sb );
+        sb.append ( FULLSTOP );
+      }
+      sb.append ( segment );
     }
 
     @Override
@@ -2288,8 +2374,8 @@ public final class NanoSubstrates {
     public int compareTo ( Name other ) {
       // Identity check first - interned names are identity-comparable
       if ( this == other ) return 0;
-      // Use cached path strings directly - avoids building CharSequence
-      return path.compareTo ( other.toString () );
+      // Compare using toString (cached after first call)
+      return toString ().compareTo ( other.toString () );
     }
 
   }
