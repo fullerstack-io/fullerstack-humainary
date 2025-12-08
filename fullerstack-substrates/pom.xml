@@ -204,8 +204,8 @@
                         --add-opens java.rmi/sun.rmi.transport=ALL-UNNAMED
                     </argLine>
                     <systemPropertyVariables>
-                        <!-- Configure Substrates API to use our CortexRuntimeProvider implementation -->
-                        <io.humainary.substrates.spi.provider>io.fullerstack.substrates.CortexRuntimeProvider</io.humainary.substrates.spi.provider>
+                        <!-- Configure Substrates API to use our NanoCortexProvider implementation -->
+                        <io.humainary.substrates.spi.provider>io.fullerstack.substrates.NanoCortexProvider</io.humainary.substrates.spi.provider>
                     </systemPropertyVariables>
                 </configuration>
             </plugin>

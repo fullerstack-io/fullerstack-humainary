@@ -2145,7 +2145,7 @@ public final class NanoSubstrates {
 
         System.arraycopy ( segments, 0, newSegments, 0, insertPoint );
         System.arraycopy ( nodes, 0, newNodes, 0, insertPoint );
-        newSegments[insertPoint] = childSegment;
+        newSegments[insertPoint] = child.segment;  // Use segment from child for consistency
         newNodes[insertPoint] = child;
         System.arraycopy ( segments, insertPoint, newSegments, insertPoint + 1, segments.length - insertPoint );
         System.arraycopy ( nodes, insertPoint, newNodes, insertPoint + 1, nodes.length - insertPoint );
