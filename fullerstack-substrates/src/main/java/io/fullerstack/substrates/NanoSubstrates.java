@@ -1945,16 +1945,18 @@ public final class NanoSubstrates {
     private final Object childLock = new Object ();
 
     /// Private constructor for root names (depth=1).
+    /// Interns segment for O(1) identity comparison in binary search.
     private NanoName ( String path, String segment ) {
       this.path = path;
-      this.segment = segment;
+      this.segment = segment.intern ();  // Intern for fast == comparison
       this.depth = 1;
     }
 
     /// Private constructor with known parent (depth=parent.depth+1).
+    /// Interns segment for O(1) identity comparison in binary search.
     private NanoName ( String path, String segment, NanoName parent ) {
       this.path = path;
-      this.segment = segment;
+      this.segment = segment.intern ();  // Intern for fast == comparison
       this.parent = parent;
       this.parentComputed = true;
       this.depth = parent.depth + 1;
@@ -2104,7 +2106,8 @@ public final class NanoSubstrates {
     // =========================================================================
 
     /// Extends this name with a single segment (no dots in segment).
-    /// Optimized: binary search on local children array first (6x faster than global CACHE).
+    /// Optimized: binary search on local children array (6x faster than global CACHE).
+    /// Segments are interned in constructor for memory efficiency.
     private NanoName internChild ( String childSegment ) {
       // Fast path: binary search in local sorted children array
       String[] segments = childSegments;
@@ -2138,14 +2141,14 @@ public final class NanoSubstrates {
           if ( existing != null ) child = existing;
         }
 
-        // Insert into sorted local arrays
+        // Insert into sorted local arrays (binary search requires sorted order)
         int insertPoint = -( idx + 1 );
         String[] newSegments = new String[segments.length + 1];
         NanoName[] newNodes = new NanoName[nodes.length + 1];
 
         System.arraycopy ( segments, 0, newSegments, 0, insertPoint );
         System.arraycopy ( nodes, 0, newNodes, 0, insertPoint );
-        newSegments[insertPoint] = child.segment;  // Use segment from child for consistency
+        newSegments[insertPoint] = child.segment;  // Interned segment from constructor
         newNodes[insertPoint] = child;
         System.arraycopy ( segments, insertPoint, newSegments, insertPoint + 1, segments.length - insertPoint );
         System.arraycopy ( nodes, insertPoint, newNodes, insertPoint + 1, nodes.length - insertPoint );
