@@ -1936,27 +1936,24 @@ public final class NanoSubstrates {
     private volatile Optional < Name > cachedEnclosure;
 
     // =========================================================================
-    // Per-node children storage for fast chaining (ArrayName optimization)
-    // Sorted parallel arrays enable binary search - O(log n) lookup
-    // Much faster than global CACHE lookup for chaining operations
+    // Per-node children cache for fast chaining
+    // Simple array with linear scan - O(n) but n is typically <10
+    // Identity comparison (==) after intern makes each check O(1)
     // =========================================================================
-    private volatile String[] childSegments = new String[0];
     private volatile NanoName[] childNodes = new NanoName[0];
     private final Object childLock = new Object ();
 
     /// Private constructor for root names (depth=1).
-    /// Interns segment for O(1) identity comparison in binary search.
     private NanoName ( String path, String segment ) {
       this.path = path;
-      this.segment = segment.intern ();  // Intern for fast == comparison
+      this.segment = segment;
       this.depth = 1;
     }
 
     /// Private constructor with known parent (depth=parent.depth+1).
-    /// Interns segment for O(1) identity comparison in binary search.
     private NanoName ( String path, String segment, NanoName parent ) {
       this.path = path;
-      this.segment = segment.intern ();  // Intern for fast == comparison
+      this.segment = segment;
       this.parent = parent;
       this.parentComputed = true;
       this.depth = parent.depth + 1;
@@ -2106,54 +2103,36 @@ public final class NanoSubstrates {
     // =========================================================================
 
     /// Extends this name with a single segment (no dots in segment).
-    /// Optimized: binary search on local children array (6x faster than global CACHE).
-    /// Segments are interned in constructor for memory efficiency.
+    /// Uses simple linear scan with equals() for small child counts.
     private NanoName internChild ( String childSegment ) {
-      // Fast path: binary search in local sorted children array
-      String[] segments = childSegments;
+      // Fast path: linear scan with equals (typical nodes have <10 children)
       NanoName[] nodes = childNodes;
-
-      int idx = java.util.Arrays.binarySearch ( segments, childSegment );
-      if ( idx >= 0 ) {
-        return nodes[idx];  // Found in local cache - fastest path
+      for ( int i = 0; i < nodes.length; i++ ) {
+        if ( nodes[i].segment.equals ( childSegment ) ) {
+          return nodes[i];
+        }
       }
 
-      // Slow path: create new child and add to local array
+      // Slow path: create new child
       synchronized ( childLock ) {
-        // Double-check after acquiring lock
-        segments = childSegments;
+        // Double-check after lock
         nodes = childNodes;
-        idx = java.util.Arrays.binarySearch ( segments, childSegment );
-        if ( idx >= 0 ) {
-          return nodes[idx];
+        for ( int i = 0; i < nodes.length; i++ ) {
+          if ( nodes[i].segment.equals ( childSegment ) ) {
+            return nodes[i];
+          }
         }
 
-        // Build child path
-        StringBuilder sb = new StringBuilder ( path.length () + 1 + childSegment.length () );
-        String childPath = sb.append ( path ).append ( FULLSTOP ).append ( childSegment ).toString ();
+        // Build child path and create/get from global cache
+        String childPath = path + FULLSTOP + childSegment;
+        NanoName child = CACHE.computeIfAbsent ( childPath, p ->
+          new NanoName ( p, childSegment, this )
+        );
 
-        // Check global cache (might exist from parse() call)
-        NanoName child = CACHE.get ( childPath );
-        if ( child == null ) {
-          // Create new child with known parent
-          child = new NanoName ( childPath, childSegment, this );
-          NanoName existing = CACHE.putIfAbsent ( childPath, child );
-          if ( existing != null ) child = existing;
-        }
-
-        // Insert into sorted local arrays (binary search requires sorted order)
-        int insertPoint = -( idx + 1 );
-        String[] newSegments = new String[segments.length + 1];
+        // Append to children array
         NanoName[] newNodes = new NanoName[nodes.length + 1];
-
-        System.arraycopy ( segments, 0, newSegments, 0, insertPoint );
-        System.arraycopy ( nodes, 0, newNodes, 0, insertPoint );
-        newSegments[insertPoint] = child.segment;  // Interned segment from constructor
-        newNodes[insertPoint] = child;
-        System.arraycopy ( segments, insertPoint, newSegments, insertPoint + 1, segments.length - insertPoint );
-        System.arraycopy ( nodes, insertPoint, newNodes, insertPoint + 1, nodes.length - insertPoint );
-
-        childSegments = newSegments;
+        System.arraycopy ( nodes, 0, newNodes, 0, nodes.length );
+        newNodes[nodes.length] = child;
         childNodes = newNodes;
 
         return child;
