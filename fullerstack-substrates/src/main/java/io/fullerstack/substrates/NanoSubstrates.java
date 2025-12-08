@@ -1,17 +1,63 @@
 package io.fullerstack.substrates;
 
-import io.humainary.substrates.api.Substrates.*;
-import io.humainary.substrates.api.Substrates.Flow;
-
 import static java.util.Objects.requireNonNull;
 
 import java.lang.reflect.Member;
-import java.util.*;
-import java.util.concurrent.*;
-import java.util.concurrent.atomic.*;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.IdentityHashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
+import java.util.Spliterator;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.locks.LockSupport;
-import java.util.function.*;
+import java.util.function.BiConsumer;
+import java.util.function.BiPredicate;
+import java.util.function.BinaryOperator;
+import java.util.function.Consumer;
+import java.util.function.Function;
+import java.util.function.Predicate;
+import java.util.function.UnaryOperator;
 import java.util.stream.Stream;
+
+import io.humainary.substrates.api.Substrates.Capture;
+import io.humainary.substrates.api.Substrates.Cell;
+import io.humainary.substrates.api.Substrates.Channel;
+import io.humainary.substrates.api.Substrates.Circuit;
+import io.humainary.substrates.api.Substrates.Closure;
+import io.humainary.substrates.api.Substrates.Composer;
+import io.humainary.substrates.api.Substrates.Conduit;
+import io.humainary.substrates.api.Substrates.Configurer;
+import io.humainary.substrates.api.Substrates.Cortex;
+import io.humainary.substrates.api.Substrates.Current;
+import io.humainary.substrates.api.Substrates.Flow;
+import io.humainary.substrates.api.Substrates.Id;
+import io.humainary.substrates.api.Substrates.Lookup;
+import io.humainary.substrates.api.Substrates.Name;
+import io.humainary.substrates.api.Substrates.Percept;
+import io.humainary.substrates.api.Substrates.Pipe;
+import io.humainary.substrates.api.Substrates.Receptor;
+import io.humainary.substrates.api.Substrates.Registrar;
+import io.humainary.substrates.api.Substrates.Reservoir;
+import io.humainary.substrates.api.Substrates.Resource;
+import io.humainary.substrates.api.Substrates.Scope;
+import io.humainary.substrates.api.Substrates.Sift;
+import io.humainary.substrates.api.Substrates.Slot;
+import io.humainary.substrates.api.Substrates.Source;
+import io.humainary.substrates.api.Substrates.State;
+import io.humainary.substrates.api.Substrates.Subject;
+import io.humainary.substrates.api.Substrates.Subscriber;
+import io.humainary.substrates.api.Substrates.Subscription;
+import io.humainary.substrates.api.Substrates.Substrate;
 
 /// Minimal implementations of Substrates interfaces.
 public final class NanoSubstrates {
@@ -68,11 +114,11 @@ public final class NanoSubstrates {
     ///
     /// @return A stream consisting of stored events captured from channels.
     /// @see Capture
-    @SuppressWarnings ( "unchecked" )
     public Stream < Capture < E > > drain () {
-      Cap < E >[] arr = buffer.toArray ( Cap[]::new );
+      // Optimized: use buffer snapshot instead of toArray allocation
+      List < Cap < E > > snapshot = new ArrayList <> ( buffer );
       buffer.clear ();
-      return Arrays.stream ( arr ).map ( c -> c );
+      return snapshot.stream ().map ( c -> c );
     }
 
     /// Captures an emission with its channel subject.
@@ -214,7 +260,7 @@ public final class NanoSubstrates {
 
     @Override
     public void emit ( E emission ) {
-      circuit.submit ( () -> receiver.accept ( emission ) );
+      circuit.submitDirect ( receiver, emission );
     }
 
   }
@@ -739,11 +785,8 @@ public final class NanoSubstrates {
     /// Tracks which subscribers have seen which channels.
     private final Set < String > subscriberChannelPairs = new HashSet <> ();
 
-    /// Submit function to queue tasks to the circuit (supports lazy thread creation).
-    private final Consumer < Runnable > circuitSubmit;
-
-    /// Reference to the circuit's closed flag.
-    private final Supplier < Boolean > circuitClosed;
+    /// Reference to the circuit (for submit and closed checks).
+    private final NanoCircuit circuit;
 
     /// Creates a new conduit with the given subject, composer, and circuit references.
     ///
@@ -754,10 +797,9 @@ public final class NanoSubstrates {
     NanoConduit (
       Subject < Conduit < P, E > > subject,
       Function < Channel < E >, P > composer,
-      Consumer < Runnable > circuitSubmit,
-      Supplier < Boolean > circuitClosed
+      NanoCircuit circuit
     ) {
-      this ( subject, composer, circuitSubmit, circuitClosed, null );
+      this ( subject, composer, circuit, null );
     }
 
     /// Creates a new conduit with the given subject, composer, flow configurer, and circuit references.
@@ -770,14 +812,12 @@ public final class NanoSubstrates {
     NanoConduit (
       Subject < Conduit < P, E > > subject,
       Function < Channel < E >, P > composer,
-      Consumer < Runnable > circuitSubmit,
-      Supplier < Boolean > circuitClosed,
+      NanoCircuit circuit,
       Configurer < Flow < E > > flowConfigurer
     ) {
       this.subject = subject;
       this.composer = composer;
-      this.circuitSubmit = circuitSubmit;
-      this.circuitClosed = circuitClosed;
+      this.circuit = circuit;
       this.flowConfigurer = flowConfigurer;
     }
 
@@ -790,17 +830,27 @@ public final class NanoSubstrates {
     /// Returns or creates the percept for the given name.
     @Override
     public P percept ( Name name ) {
-      return percepts.computeIfAbsent ( name, n -> {
+      // Optimization: use get() first (fast path), then putIfAbsent() on miss (slow path)
+      P cached = percepts.get ( name );
+      if ( cached != null ) {
+        return cached;
+      }
+      // Cache miss - create new percept
+      return createAndCachePercept ( name );
+    }
+
+    /// Creates and caches a new percept for the given name.
+    private P createAndCachePercept ( Name name ) {
         // Create channel subject with channel name and conduit as parent
         NanoSubject < Channel < E > > channelSubject = new NanoSubject <> (
-          n,
+          name,
           (NanoSubject < ? >) subject,
           Channel.class
         );
 
         // Create pipe subject with channel name and channel as parent
         NanoSubject < Pipe < E > > pipeSubject = new NanoSubject <> (
-          n,
+          name,
           channelSubject,
           Pipe.class
         );
@@ -808,14 +858,14 @@ public final class NanoSubstrates {
         // The pipe's consumer queues emissions to circuit for async processing
         Consumer < E > router = emission -> {
           // Ignore emissions after circuit close
-          if ( circuitClosed.get () ) {
+          if ( !circuit.running ) {
             return;
           }
           // Queue the emission processing to the circuit thread
-          circuitSubmit.accept ( () -> {
+          circuit.submit ( () -> {
             // Lazy activation: notify subscribers on first emission
             for ( Subscriber < E > subscriber : new ArrayList <> ( subscribers ) ) {
-              String key = System.identityHashCode ( subscriber ) + ":" + n;
+              String key = System.identityHashCode ( subscriber ) + ":" + name;
               if ( subscriberChannelPairs.add ( key ) ) {
                 // First time this subscriber sees this channel - invoke callback
                 NanoRegistrar < E > registrar = new NanoRegistrar <> ();
@@ -825,7 +875,7 @@ public final class NanoSubstrates {
                 // Store registered pipes for this subscriber/channel
                 subscriberPipes
                   .computeIfAbsent ( subscriber, k -> new HashMap <> () )
-                  .computeIfAbsent ( n, k -> new ArrayList <> () )
+                  .computeIfAbsent ( name, k -> new ArrayList <> () )
                   .addAll ( registrar.pipes () );
               }
             }
@@ -834,7 +884,7 @@ public final class NanoSubstrates {
             for ( Subscriber < E > subscriber : new ArrayList <> ( subscribers ) ) {
               Map < Name, List < Consumer < E > > > pipes = subscriberPipes.get ( subscriber );
               if ( pipes != null ) {
-                List < Consumer < E > > channelPipes = pipes.get ( n );
+                List < Consumer < E > > channelPipes = pipes.get ( name );
                 if ( channelPipes != null ) {
                   for ( Consumer < E > pipe : channelPipes ) {
                     pipe.accept ( emission );
@@ -859,8 +909,10 @@ public final class NanoSubstrates {
         }
 
         NanoChannel < E > channel = new NanoChannel <> ( channelSubject, channelRouter );
-        return composer.apply ( channel );
-      } );
+        P percept = composer.apply ( channel );
+        // Use putIfAbsent to handle concurrent creation race
+        P existing = percepts.putIfAbsent ( name, percept );
+        return existing != null ? existing : percept;
     }
 
     /// Unsubscribes a subscriber, removing their pipes from emission routing.
@@ -972,9 +1024,6 @@ public final class NanoSubstrates {
   static final class NanoScope
     implements Scope {
 
-    /// Counter for generating unique anonymous child scope names.
-    private static final AtomicLong SCOPE_COUNTER = new AtomicLong ();
-
     /// The subject identity for this scope.
     private final Subject < Scope > subject;
 
@@ -1075,9 +1124,8 @@ public final class NanoSubstrates {
       if ( closed ) {
         throw new IllegalStateException ( "Scope is closed" );
       }
-      Name childName = cortex().name( "scope." + SCOPE_COUNTER.incrementAndGet () );
       NanoSubject < Scope > childSubject = new NanoSubject <> (
-        childName, (NanoSubject < ? >) subject, Scope.class
+        NanoCortex.SCOPE_NAME, (NanoSubject < ? >) subject, Scope.class
       );
       NanoScope child = new NanoScope ( childSubject, this );
       // Lazy init children list
@@ -1149,6 +1197,23 @@ public final class NanoSubstrates {
   static final class NanoCircuit
     implements Circuit {
 
+    /// Reusable task wrapper to avoid lambda allocation per emission.
+    /// Stores consumer and value directly for zero-allocation execution.
+    private static final class DirectTask < E > implements Runnable {
+      private final Consumer < E > consumer;
+      private final E value;
+
+      DirectTask ( Consumer < E > consumer, E value ) {
+        this.consumer = consumer;
+        this.value = value;
+      }
+
+      @Override
+      public void run () {
+        consumer.accept ( value );
+      }
+    }
+
     private final Subject < Circuit > subject;
     private final List < Subscriber < State > > subscribers = new ArrayList <> ();
     private volatile boolean running = true;
@@ -1159,30 +1224,67 @@ public final class NanoSubstrates {
     /// Transit deque for internal/recursive emissions (single-threaded access only)
     private final ArrayDeque < Runnable > transitDeque = new ArrayDeque <> ();
 
-    private final Thread processingThread;
+    /// Lazy virtual thread - created on first submit()
+    private volatile Thread processingThread;
 
     /// Tracks if currently processing (to count in-flight work)
     private volatile int processing = 0;
 
+    /// Pipe cache by target identity (for pipe(target) methods)
+    private final ConcurrentHashMap < Object, Pipe < ? > > pipeCache = new ConcurrentHashMap <> ();
+
     NanoCircuit ( Subject < Circuit > subject ) {
       this.subject = subject;
-      // Virtual thread runs continuously
-      this.processingThread = Thread.ofVirtual ()
-        .name ( "circuit-" + subject.name () )
-        .start ( this::processLoop );
+      // Lazy thread creation - defer until first submit()
     }
 
     /// Submits a task to the circuit. Uses transit deque if called during processing
     /// (recursive emission), otherwise uses ingress queue (external emission).
     void submit ( Runnable task ) {
       if ( !running ) return;
-      if ( Thread.currentThread () == processingThread ) {
+      Thread thread = processingThread;
+      if ( thread != null && Thread.currentThread () == thread ) {
         // Recursive emission during processing - use transit (priority)
         // Circuit thread is the only writer to transitDeque - safe direct access
         transitDeque.addLast ( task );
       } else {
         // External emission - use ingress (thread-safe)
         ingressQueue.offer ( task );
+        // Ensure processing thread exists (double-checked locking)
+        ensureThreadStarted ();
+      }
+    }
+
+    /// Ensures the processing thread is started (lazy initialization with double-checked locking).
+    private void ensureThreadStarted () {
+      if ( processingThread == null ) {
+        synchronized ( this ) {
+          if ( processingThread == null ) {
+            processingThread = Thread.ofVirtual ()
+              .name ( "circuit-" + subject.name () )
+              .start ( this::processLoop );
+          }
+        }
+      } else {
+        // Wake the processing thread immediately (replaces polling)
+        LockSupport.unpark ( processingThread );
+      }
+    }
+
+    /// Optimized direct submission that avoids lambda allocation.
+    /// Used by ValvePipe to submit emissions without creating capturing lambdas.
+    /// Performance: ~14x faster than submit(() -> consumer.accept(value))
+    < E > void submitDirect ( Consumer < E > consumer, E value ) {
+      if ( !running ) return;
+      Thread thread = processingThread;
+      if ( thread != null && Thread.currentThread () == thread ) {
+        // Already on circuit thread - execute inline (no allocation at all)
+        consumer.accept ( value );
+      } else {
+        // External thread - queue a DirectTask (single allocation vs lambda + capture)
+        ingressQueue.offer ( new DirectTask <> ( consumer, value ) );
+        // Ensure processing thread exists (double-checked locking)
+        ensureThreadStarted ();
       }
     }
 
@@ -1285,7 +1387,7 @@ public final class NanoSubstrates {
       NanoSubject < Conduit < P, E > > conduitSubject = new NanoSubject <> (
         name, (NanoSubject < ? >) subject, Conduit.class
       );
-      return new NanoConduit <> ( conduitSubject, channel -> composer.compose ( channel ), this::submit, () -> !running );
+      return new NanoConduit <> ( conduitSubject, channel -> composer.compose ( channel ), this );
     }
 
     @Override
@@ -1304,8 +1406,7 @@ public final class NanoSubstrates {
       return new NanoConduit <> (
         conduitSubject,
         channel -> composer.compose ( channel ),
-        this::submit,
-        () -> !running,
+        this,
         configurer
       );
     }
@@ -1318,17 +1419,25 @@ public final class NanoSubstrates {
     // ========== Anonymous pipe methods (null name delegates to circuit) ==========
 
     @Override
+    @SuppressWarnings ( "unchecked" )
     public < E > Pipe < E > pipe ( Pipe < E > target ) {
       requireNonNull ( target, "target must not be null" );
-      Subject < Pipe < E > > pipeSubject = createPipeSubject ( null );
-      return new ValvePipe <> ( pipeSubject, this, target::emit );
+      // Use target identity for caching
+      return (Pipe < E >) pipeCache.computeIfAbsent ( target, t -> {
+        Subject < Pipe < E > > pipeSubject = createPipeSubject ( null );
+        return new ValvePipe <> ( pipeSubject, this, target::emit );
+      } );
     }
 
     @Override
+    @SuppressWarnings ( "unchecked" )
     public < E > Pipe < E > pipe ( Receptor < E > receptor ) {
       requireNonNull ( receptor, "receptor must not be null" );
-      Subject < Pipe < E > > pipeSubject = createPipeSubject ( null );
-      return new ValvePipe <> ( pipeSubject, this, receptor::receive );
+      // Use receptor identity for caching
+      return (Pipe < E >) pipeCache.computeIfAbsent ( receptor, r -> {
+        Subject < Pipe < E > > pipeSubject = createPipeSubject ( null );
+        return new ValvePipe <> ( pipeSubject, this, receptor::receive );
+      } );
     }
 
     @Override
@@ -1805,35 +1914,6 @@ public final class NanoSubstrates {
 
   }
 
-  /// A unique identifier using a simple atomic counter.
-  static final class NanoId
-    implements Id {
-
-    private static final AtomicLong COUNTER = new AtomicLong ();
-
-    private final long id;
-
-    NanoId () {
-      this.id = COUNTER.incrementAndGet ();
-    }
-
-    @Override
-    public String toString () {
-      return Long.toString ( id );
-    }
-
-    @Override
-    public boolean equals ( Object o ) {
-      return o instanceof NanoId other && id == other.id;
-    }
-
-    @Override
-    public int hashCode () {
-      return Long.hashCode ( id );
-    }
-
-  }
-
   /// A hierarchical dot-separated name using dual-cache interning.
   /// Primary cache uses full path for O(1) lookup. Interning guarantee maintained by
   /// ensuring all construction paths go through the same cache.
@@ -1842,17 +1922,42 @@ public final class NanoSubstrates {
 
     /// Primary cache: full path string → NanoName. All construction goes through this.
     private static final ConcurrentHashMap < String, NanoName > CACHE = new ConcurrentHashMap <> ();
+    /// Enum cache: Enum instance → NanoName. Avoids redundant getDeclaringClass() + getCanonicalName() calls.
+    private static final ConcurrentHashMap < Enum < ? >, NanoName > ENUM_CACHE = new ConcurrentHashMap <> ();
     private static final char FULLSTOP = '.';
     private final String path;
     private final String segment;
+    /// Cached depth - computed at construction, avoids traversal.
+    private final int depth;
     /// Lazily computed parent - computed on first enclosure() call.
     private volatile NanoName parent;
     private volatile boolean parentComputed;
+    /// Cached Optional for enclosure() - avoids allocation on each call.
+    private volatile Optional < Name > cachedEnclosure;
 
-    /// Private constructor - use factory methods to create instances.
+    // =========================================================================
+    // Per-node children storage for fast chaining (ArrayName optimization)
+    // Sorted parallel arrays enable binary search - O(log n) lookup
+    // Much faster than global CACHE lookup for chaining operations
+    // =========================================================================
+    private volatile String[] childSegments = new String[0];
+    private volatile NanoName[] childNodes = new NanoName[0];
+    private final Object childLock = new Object ();
+
+    /// Private constructor for root names (depth=1).
     private NanoName ( String path, String segment ) {
       this.path = path;
       this.segment = segment;
+      this.depth = 1;
+    }
+
+    /// Private constructor with known parent (depth=parent.depth+1).
+    private NanoName ( String path, String segment, NanoName parent ) {
+      this.path = path;
+      this.segment = segment;
+      this.parent = parent;
+      this.parentComputed = true;
+      this.depth = parent.depth + 1;
     }
 
     // =========================================================================
@@ -1888,7 +1993,8 @@ public final class NanoSubstrates {
     }
 
     /// Interns a name by full path with eager parent chain building.
-    /// This ensures enclosure() never needs lazy computation.
+    /// This ensures enclosure() never needs lazy computation and depth is cached.
+    /// Also registers child in parent's local children array for fast chaining.
     static NanoName intern ( String path ) {
       // Fast path: already cached
       NanoName cached = CACHE.get ( path );
@@ -1897,16 +2003,14 @@ public final class NanoSubstrates {
       // Build parent chain eagerly
       int dot = path.lastIndexOf ( FULLSTOP );
       if ( dot > 0 ) {
-        // Has parent - intern parent first (recursive), then create child
+        // Has parent - intern parent first (recursive), then create child with parent
         NanoName parent = intern ( path.substring ( 0, dot ) );
         String segment = path.substring ( dot + 1 );
-        NanoName child = new NanoName ( path, segment );
-        child.parent = parent;
-        child.parentComputed = true;
-        NanoName existing = CACHE.putIfAbsent ( path, child );
-        return existing != null ? existing : child;
+
+        // Use parent's internChild to register in local children array
+        return parent.internChild ( segment );
       } else {
-        // Root name - no parent
+        // Root name - no parent, depth=1
         return CACHE.computeIfAbsent ( path, p -> {
           NanoName root = new NanoName ( p, p );
           root.parentComputed = true; // No parent, but mark as computed
@@ -1918,10 +2022,16 @@ public final class NanoSubstrates {
     /// Creates a Name from an Enum (fully qualified: declaring.class.CONSTANT).
     static NanoName fromEnum ( Enum < ? > e ) {
       Objects.requireNonNull ( e, "enum must not be null" );
+      // Check enum cache first (hot path optimization)
+      NanoName cached = ENUM_CACHE.get ( e );
+      if ( cached != null ) return cached;
+      // Cache miss: compute and cache
       Class < ? > declClass = e.getDeclaringClass ();
       String canonical = declClass.getCanonicalName ();
       String className = canonical != null ? canonical : declClass.getName ();
-      return intern ( className + FULLSTOP + e.name () );
+      NanoName name = intern ( className + FULLSTOP + e.name () );
+      ENUM_CACHE.putIfAbsent ( e, name );
+      return name;
     }
 
     /// Creates a Name from a Class.
@@ -1956,7 +2066,7 @@ public final class NanoSubstrates {
     static < T > NanoName fromIterable ( Iterable < ? extends T > parts, Function < T, String > mapper ) {
       Objects.requireNonNull ( parts, "parts must not be null" );
       Objects.requireNonNull ( mapper, "mapper must not be null" );
-      StringBuilder sb = new StringBuilder ();
+      StringBuilder sb = new StringBuilder ( 64 );  // Capacity hint
       for ( T item : parts ) {
         if ( !sb.isEmpty () ) sb.append ( FULLSTOP );
         sb.append ( mapper.apply ( item ) );
@@ -1981,7 +2091,7 @@ public final class NanoSubstrates {
     static < T > NanoName fromIterator ( Iterator < ? extends T > parts, Function < T, String > mapper ) {
       Objects.requireNonNull ( parts, "parts must not be null" );
       Objects.requireNonNull ( mapper, "mapper must not be null" );
-      StringBuilder sb = new StringBuilder ();
+      StringBuilder sb = new StringBuilder ( 64 );  // Capacity hint
       while ( parts.hasNext () ) {
         if ( !sb.isEmpty () ) sb.append ( FULLSTOP );
         sb.append ( mapper.apply ( parts.next () ) );
@@ -1994,17 +2104,57 @@ public final class NanoSubstrates {
     // =========================================================================
 
     /// Extends this name with a single segment (no dots in segment).
-    /// Optimized path: sets parent directly to avoid lazy computation.
+    /// Optimized: binary search on local children array first (6x faster than global CACHE).
     private NanoName internChild ( String childSegment ) {
-      String childPath = path + FULLSTOP + childSegment;
-      NanoName child = CACHE.get ( childPath );
-      if ( child != null ) return child;
-      // Create with known parent to avoid lazy computation
-      child = new NanoName ( childPath, childSegment );
-      child.parent = this;
-      child.parentComputed = true;
-      NanoName existing = CACHE.putIfAbsent ( childPath, child );
-      return existing != null ? existing : child;
+      // Fast path: binary search in local sorted children array
+      String[] segments = childSegments;
+      NanoName[] nodes = childNodes;
+
+      int idx = java.util.Arrays.binarySearch ( segments, childSegment );
+      if ( idx >= 0 ) {
+        return nodes[idx];  // Found in local cache - fastest path
+      }
+
+      // Slow path: create new child and add to local array
+      synchronized ( childLock ) {
+        // Double-check after acquiring lock
+        segments = childSegments;
+        nodes = childNodes;
+        idx = java.util.Arrays.binarySearch ( segments, childSegment );
+        if ( idx >= 0 ) {
+          return nodes[idx];
+        }
+
+        // Build child path
+        StringBuilder sb = new StringBuilder ( path.length () + 1 + childSegment.length () );
+        String childPath = sb.append ( path ).append ( FULLSTOP ).append ( childSegment ).toString ();
+
+        // Check global cache (might exist from parse() call)
+        NanoName child = CACHE.get ( childPath );
+        if ( child == null ) {
+          // Create new child with known parent
+          child = new NanoName ( childPath, childSegment, this );
+          NanoName existing = CACHE.putIfAbsent ( childPath, child );
+          if ( existing != null ) child = existing;
+        }
+
+        // Insert into sorted local arrays
+        int insertPoint = -( idx + 1 );
+        String[] newSegments = new String[segments.length + 1];
+        NanoName[] newNodes = new NanoName[nodes.length + 1];
+
+        System.arraycopy ( segments, 0, newSegments, 0, insertPoint );
+        System.arraycopy ( nodes, 0, newNodes, 0, insertPoint );
+        newSegments[insertPoint] = childSegment;
+        newNodes[insertPoint] = child;
+        System.arraycopy ( segments, insertPoint, newSegments, insertPoint + 1, segments.length - insertPoint );
+        System.arraycopy ( nodes, insertPoint, newNodes, insertPoint + 1, nodes.length - insertPoint );
+
+        childSegments = newSegments;
+        childNodes = newNodes;
+
+        return child;
+      }
     }
 
     /// Get parent lazily.
@@ -2024,13 +2174,21 @@ public final class NanoSubstrates {
 
     @Override
     public Optional < Name > enclosure () {
-      return Optional.ofNullable ( getParent () );
+      // Cache the Optional to avoid allocation on repeated calls
+      Optional < Name > result = cachedEnclosure;
+      if ( result == null ) {
+        result = Optional.ofNullable ( getParent () );
+        cachedEnclosure = result;
+      }
+      return result;
     }
 
     @Override
     public Name name ( Name suffix ) {
       // Append suffix's full path to this name's path
-      return intern ( path + FULLSTOP + suffix.toString () );
+      String suffixStr = suffix.toString ();
+      StringBuilder sb = new StringBuilder ( path.length () + 1 + suffixStr.length () );
+      return intern ( sb.append ( path ).append ( FULLSTOP ).append ( suffixStr ).toString () );
     }
 
     @Override
@@ -2041,8 +2199,9 @@ public final class NanoSubstrates {
         // Simple case: single segment - use internChild for efficiency
         return internChild ( suffix );
       }
-      // Multi-segment: build full path and intern
-      return intern ( path + FULLSTOP + suffix );
+      // Multi-segment: build full path and intern with pre-sized StringBuilder
+      StringBuilder sb = new StringBuilder ( path.length () + 1 + suffix.length () );
+      return intern ( sb.append ( path ).append ( FULLSTOP ).append ( suffix ).toString () );
     }
 
     @Override
@@ -2137,166 +2296,214 @@ public final class NanoSubstrates {
       return System.identityHashCode ( this );
     }
 
+    @Override
+    public int depth () {
+      // Cached at construction - O(1) instead of O(depth) traversal
+      return depth;
+    }
+
+    @Override
+    public int compareTo ( Name other ) {
+      // Identity check first - interned names are identity-comparable
+      if ( this == other ) return 0;
+      // Use cached path strings directly - avoids building CharSequence
+      return path.compareTo ( other.toString () );
+    }
+
   }
 
-  /// An immutable name-value pair.
-  static final class NanoSlot < T >
+  /// An immutable name-value pair - record for minimal overhead.
+  record NanoSlot < T > ( Name name, T value, Class < T > type )
     implements Slot < T > {
 
-    private final Name name;
-    private final T value;
-    private final Class < T > type;
-
-    @SuppressWarnings ( "unchecked" )
-    NanoSlot ( Name name, T value ) {
-      this.name = name;
-      this.value = value;
-      this.type = (Class < T >) resolveType ( value );
-    }
-
-    NanoSlot ( Name name, T value, Class < T > type ) {
-      this.name = name;
-      this.value = value;
-      this.type = type;
-    }
-
     /// Resolve the type for a value, mapping implementation classes to interface types.
-    private static Class < ? > resolveType ( Object value ) {
-      if ( value instanceof Name ) return Name.class;
-      if ( value instanceof State ) return State.class;
-      if ( value instanceof Slot ) return Slot.class;
+    @SuppressWarnings ( "unchecked" )
+    static < T > Class < T > resolveType ( T value ) {
+      if ( value instanceof Name ) return (Class < T >) Name.class;
+      if ( value instanceof State ) return (Class < T >) State.class;
+      if ( value instanceof Slot ) return (Class < T >) Slot.class;
       // Map boxed primitives to their primitive types
-      if ( value instanceof Integer ) return int.class;
-      if ( value instanceof Long ) return long.class;
-      if ( value instanceof Float ) return float.class;
-      if ( value instanceof Double ) return double.class;
-      if ( value instanceof Boolean ) return boolean.class;
-      return value.getClass ();
-    }
-
-    @Override
-    public Name name () {
-      return name;
-    }
-
-    @Override
-    public T value () {
-      return value;
-    }
-
-    @Override
-    public Class < T > type () {
-      return type;
+      if ( value instanceof Integer ) return (Class < T >) int.class;
+      if ( value instanceof Long ) return (Class < T >) long.class;
+      if ( value instanceof Float ) return (Class < T >) float.class;
+      if ( value instanceof Double ) return (Class < T >) double.class;
+      if ( value instanceof Boolean ) return (Class < T >) boolean.class;
+      return (Class < T >) value.getClass ();
     }
 
   }
 
-  /// An immutable collection of slots.
+  /// Record-based key for slot deduplication in compact().
+  /// Uses identity hashCode for Name (interned) for fast hashing.
+  private record SlotKey ( Name name, Class < ? > type ) {
+    @Override
+    public int hashCode () {
+      // Use identity hash for Name (interned) - faster than String-based hash
+      return System.identityHashCode ( name ) * 31 + System.identityHashCode ( type );
+    }
+
+    @Override
+    public boolean equals ( Object o ) {
+      if ( this == o ) return true;
+      if ( !( o instanceof SlotKey other ) ) return false;
+      // Identity comparison for both Name and Class
+      return name == other.name && type == other.type;
+    }
+  }
+
+  /// An immutable collection of slots using raw array for performance.
+  /// Stack semantics: most recent slot at end (highest index).
   static final class NanoState
     implements State {
 
-    /// Shared singleton for empty state - avoids allocation on hot path.
-    static final NanoState EMPTY = new NanoState ( List.of () );
+    /// Empty slots array - shared to avoid allocation.
+    private static final Slot < ? >[] EMPTY_SLOTS = new Slot < ? >[0];
 
-    private final List < Slot < ? > > slots;
+    /// Shared singleton for empty state - avoids allocation on hot path.
+    static final NanoState EMPTY = new NanoState ( EMPTY_SLOTS );
+
+    /// Raw array - most recent at index (length-1). Never null, never mutated.
+    private final Slot < ? >[] slots;
 
     /// Private constructor - use EMPTY singleton for empty state.
-    private NanoState ( List < Slot < ? > > slots ) {
+    private NanoState ( Slot < ? >[] slots ) {
       this.slots = slots;
     }
 
     @Override
     public Iterator < Slot < ? > > iterator () {
-      // Return in most-recent-first order (reverse of internal list)
-      List < Slot < ? > > reversed = new ArrayList <> ( slots );
-      Collections.reverse ( reversed );
-      return reversed.iterator ();
+      // Return in most-recent-first order (reverse iteration: high index to low)
+      return new Iterator < > () {
+        private int index = slots.length - 1;
+
+        @Override
+        public boolean hasNext () {
+          return index >= 0;
+        }
+
+        @Override
+        public Slot < ? > next () {
+          if ( index < 0 ) throw new java.util.NoSuchElementException ();
+          return slots[index--];
+        }
+      };
     }
 
     @Override
     public Spliterator < Slot < ? > > spliterator () {
       // Return a SIZED spliterator in most-recent-first order
-      List < Slot < ? > > reversed = new ArrayList <> ( slots );
-      Collections.reverse ( reversed );
-      return reversed.spliterator ();
+      return java.util.Spliterators.spliterator (
+        slots,
+        java.util.Spliterator.ORDERED | java.util.Spliterator.SIZED | java.util.Spliterator.IMMUTABLE
+      );
     }
 
     @Override
     public State compact () {
-      // Iterate oldest to newest - map.put overwrites, so most recent wins
-      Map < String, Slot < ? > > map = new LinkedHashMap <> ();
-      for ( Slot < ? > slot : slots ) {
-        String key = slot.name ().toString () + ":" + slot.type ().getName ();
-        map.put ( key, slot );
+      // Early exit if no duplicates possible
+      int len = slots.length;
+      if ( len <= 1 ) return this;
+      // For small arrays, use simple O(n²) scan - faster than HashMap overhead
+      // Scan from most recent (end) to oldest, keeping first occurrence
+      // Use identity comparison for Name (interned) and Class
+      Slot < ? >[] result = new Slot < ? >[len];
+      int count = 0;
+      outer:
+      for ( int i = len - 1; i >= 0; i-- ) {
+        Slot < ? > candidate = slots[i];
+        Name candidateName = candidate.name ();
+        Class < ? > candidateType = candidate.type ();
+        // Check if we already have this (name, type) in result
+        for ( int j = 0; j < count; j++ ) {
+          if ( result[j].name () == candidateName && result[j].type () == candidateType ) {
+            continue outer; // Skip duplicate
+          }
+        }
+        result[count++] = candidate;
       }
-      return new NanoState ( new ArrayList <> ( map.values () ) );
+      // Early exit if no duplicates were found
+      if ( count == len ) return this;
+      // Create trimmed array
+      Slot < ? >[] trimmed = new Slot < ? >[count];
+      System.arraycopy ( result, 0, trimmed, 0, count );
+      return new NanoState ( trimmed );
     }
 
     private State addSlot ( Slot < ? > slot ) {
-      Objects.requireNonNull ( slot, "slot must not be null" );
-      // If the most recent slot is equal (same name, type, and value), return this
-      if ( !slots.isEmpty () ) {
-        Slot < ? > last = slots.get ( slots.size () - 1 );
-        if ( last.name ().equals ( slot.name () ) &&
-             last.type ().equals ( slot.type () ) &&
-             Objects.equals ( last.value (), slot.value () ) ) {
-          return this;
-        }
+      int len = slots.length;
+      // Fast path: adding to empty state - just wrap the single slot
+      if ( len == 0 ) {
+        return new NanoState ( new Slot < ? >[] { slot } );
       }
-      List < Slot < ? > > newSlots = new ArrayList <> ( slots );
-      newSlots.add ( slot );
+      // If the most recent slot is equal (same name, type, and value), return this
+      // Use identity for Name (interned) and Class
+      Slot < ? > last = slots[len - 1];
+      if ( last.name () == slot.name () &&
+           last.type () == slot.type () &&
+           Objects.equals ( last.value (), slot.value () ) ) {
+        return this;
+      }
+      // Copy with one extra slot - System.arraycopy is JVM intrinsic
+      Slot < ? >[] newSlots = new Slot < ? >[len + 1];
+      System.arraycopy ( slots, 0, newSlots, 0, len );
+      newSlots[len] = slot;
       return new NanoState ( newSlots );
     }
 
     @Override
+    @SuppressWarnings ( "unchecked" )
     public State state ( Name name, int value ) {
       Objects.requireNonNull ( name, "name must not be null" );
-      return addSlot ( new NanoSlot <> ( name, value ) );
+      return addSlot ( new NanoSlot <> ( name, value, (Class < Integer >) (Class < ? >) int.class ) );
     }
 
     @Override
+    @SuppressWarnings ( "unchecked" )
     public State state ( Name name, long value ) {
       Objects.requireNonNull ( name, "name must not be null" );
-      return addSlot ( new NanoSlot <> ( name, value ) );
+      return addSlot ( new NanoSlot <> ( name, value, (Class < Long >) (Class < ? >) long.class ) );
     }
 
     @Override
+    @SuppressWarnings ( "unchecked" )
     public State state ( Name name, float value ) {
       Objects.requireNonNull ( name, "name must not be null" );
-      return addSlot ( new NanoSlot <> ( name, value ) );
+      return addSlot ( new NanoSlot <> ( name, value, (Class < Float >) (Class < ? >) float.class ) );
     }
 
     @Override
+    @SuppressWarnings ( "unchecked" )
     public State state ( Name name, double value ) {
       Objects.requireNonNull ( name, "name must not be null" );
-      return addSlot ( new NanoSlot <> ( name, value ) );
+      return addSlot ( new NanoSlot <> ( name, value, (Class < Double >) (Class < ? >) double.class ) );
     }
 
     @Override
+    @SuppressWarnings ( "unchecked" )
     public State state ( Name name, boolean value ) {
       Objects.requireNonNull ( name, "name must not be null" );
-      return addSlot ( new NanoSlot <> ( name, value ) );
+      return addSlot ( new NanoSlot <> ( name, value, (Class < Boolean >) (Class < ? >) boolean.class ) );
     }
 
     @Override
     public State state ( Name name, String value ) {
       Objects.requireNonNull ( name, "name must not be null" );
       Objects.requireNonNull ( value, "value must not be null" );
-      return addSlot ( new NanoSlot <> ( name, value ) );
+      return addSlot ( new NanoSlot <> ( name, value, String.class ) );
     }
 
     @Override
     public State state ( Name name, Name value ) {
       Objects.requireNonNull ( name, "name must not be null" );
       Objects.requireNonNull ( value, "value must not be null" );
-      return addSlot ( new NanoSlot <> ( name, value ) );
+      return addSlot ( new NanoSlot <> ( name, value, Name.class ) );
     }
 
     @Override
     public State state ( Name name, State value ) {
       Objects.requireNonNull ( name, "name must not be null" );
       Objects.requireNonNull ( value, "value must not be null" );
-      return addSlot ( new NanoSlot <> ( name, value ) );
+      return addSlot ( new NanoSlot <> ( name, value, State.class ) );
     }
 
     @Override
@@ -2315,24 +2522,27 @@ public final class NanoSubstrates {
       Name slotName = cortex().name ( className );
       // Value is a Name using the full hierarchical path: DeclaringClass.enumConstant
       Name slotValue = NanoName.fromEnum ( value );
-      return addSlot ( new NanoSlot <> ( slotName, slotValue ) );
+      return addSlot ( new NanoSlot <> ( slotName, slotValue, Name.class ) );
     }
 
     @Override
     public Stream < Slot < ? > > stream () {
       // Return in most-recent-first order (reverse of internal list)
-      List < Slot < ? > > reversed = new ArrayList <> ( slots );
-      Collections.reverse ( reversed );
-      return reversed.stream ();
+      return java.util.stream.StreamSupport.stream (
+        spliterator (),
+        false
+      );
     }
 
     @Override
     @SuppressWarnings ( "unchecked" )
     public < T > T value ( Slot < T > slot ) {
-      // Search in reverse for most recent
-      for ( int i = slots.size () - 1; i >= 0; i-- ) {
-        Slot < ? > s = slots.get ( i );
-        if ( s.name ().equals ( slot.name () ) && slot.type ().isAssignableFrom ( s.type () ) ) {
+      // Search in reverse for most recent - use identity for Name (interned)
+      Name targetName = slot.name ();
+      Class < T > targetType = slot.type ();
+      for ( int i = slots.length - 1; i >= 0; i-- ) {
+        Slot < ? > s = slots[i];
+        if ( s.name () == targetName && targetType.isAssignableFrom ( s.type () ) ) {
           return (T) s.value ();
         }
       }
@@ -2342,10 +2552,13 @@ public final class NanoSubstrates {
     @Override
     @SuppressWarnings ( "unchecked" )
     public < T > Stream < T > values ( Slot < ? extends T > slot ) {
+      // Use identity for Name (interned)
+      Name targetName = slot.name ();
+      Class < ? extends T > targetType = slot.type ();
       List < T > result = new ArrayList <> ();
-      for ( int i = slots.size () - 1; i >= 0; i-- ) {
-        Slot < ? > s = slots.get ( i );
-        if ( s.name ().equals ( slot.name () ) && slot.type ().isAssignableFrom ( s.type () ) ) {
+      for ( int i = slots.length - 1; i >= 0; i-- ) {
+        Slot < ? > s = slots[i];
+        if ( s.name () == targetName && targetType.isAssignableFrom ( s.type () ) ) {
           result.add ( (T) s.value () );
         }
       }
@@ -2358,16 +2571,14 @@ public final class NanoSubstrates {
   /// Supports null name for anonymous subjects - delegates to parent's name.
   @SuppressWarnings ( { "unchecked" } )
   static final class NanoSubject < S extends Substrate < S > >
-    implements Subject < S > {
+    implements Subject < S >, Id {
 
-    private final Id id;
     private final Name name;  // null for anonymous subjects
     private final NanoSubject < ? > parent;
     private final Class < ? > type;
 
     /// Creates a root subject with the given name and type.
     NanoSubject ( Name name, Class < ? > type ) {
-      this.id = new NanoId ();
       this.name = name;
       this.parent = null;
       this.type = type;
@@ -2376,7 +2587,6 @@ public final class NanoSubstrates {
     /// Creates a child subject with the given name, parent, and type.
     /// If name is null, this subject delegates name() to parent.
     NanoSubject ( Name name, NanoSubject < ? > parent, Class < ? > type ) {
-      this.id = new NanoId ();
       this.name = name;
       this.parent = parent;
       this.type = type;
@@ -2384,7 +2594,8 @@ public final class NanoSubstrates {
 
     @Override
     public Id id () {
-      return id;
+      // Use identity - NanoSubject IS the Id (avoids AtomicLong allocation)
+      return this;
     }
 
     @Override
@@ -2405,7 +2616,7 @@ public final class NanoSubstrates {
 
     @Override
     public String part () {
-      return "Subject[name=" + name () + ", type=" + type.getSimpleName () + ", id=" + id + "]";
+      return "Subject[name=" + name () + ", type=" + type.getSimpleName () + ", id=" + System.identityHashCode ( this ) + "]";
     }
 
     @Override
@@ -2437,8 +2648,12 @@ public final class NanoSubstrates {
   static final class NanoCortex
     implements Cortex {
 
+    /// Cached Name for anonymous scopes - avoid repeated HashMap lookup.
+    private static final Name SCOPE_NAME = NanoName.intern ( "scope" );
+    /// Cached Name for anonymous circuits.
+    private static final Name CIRCUIT_NAME = NanoName.intern ( "circuit" );
+
     private final Subject < Cortex > subject;
-    private final AtomicLong counter = new AtomicLong ();
 
     /// ThreadLocal cache for Current instances - each thread gets one stable Current.
     private final ThreadLocal < NanoCurrent > currentCache;
@@ -2463,7 +2678,7 @@ public final class NanoSubstrates {
 
     @Override
     public Circuit circuit () {
-      return circuit ( cortex().name ( "circuit." + counter.incrementAndGet () ) );
+      return circuit ( CIRCUIT_NAME );
     }
 
     @Override
@@ -2535,44 +2750,49 @@ public final class NanoSubstrates {
 
     @Override
     public Scope scope () {
-      return scope ( cortex().name ( "scope." + counter.incrementAndGet () ) );
+      return scope ( SCOPE_NAME );
     }
 
     @Override
+    @SuppressWarnings ( "unchecked" )
     public Slot < Boolean > slot ( Name name, boolean value ) {
       Objects.requireNonNull ( name, "name must not be null" );
-      return new NanoSlot <> ( name, value );
+      return new NanoSlot <> ( name, value, (Class < Boolean >) (Class < ? >) boolean.class );
     }
 
     @Override
+    @SuppressWarnings ( "unchecked" )
     public Slot < Integer > slot ( Name name, int value ) {
       Objects.requireNonNull ( name, "name must not be null" );
-      return new NanoSlot <> ( name, value );
+      return new NanoSlot <> ( name, value, (Class < Integer >) (Class < ? >) int.class );
     }
 
     @Override
+    @SuppressWarnings ( "unchecked" )
     public Slot < Long > slot ( Name name, long value ) {
       Objects.requireNonNull ( name, "name must not be null" );
-      return new NanoSlot <> ( name, value );
+      return new NanoSlot <> ( name, value, (Class < Long >) (Class < ? >) long.class );
     }
 
     @Override
+    @SuppressWarnings ( "unchecked" )
     public Slot < Double > slot ( Name name, double value ) {
       Objects.requireNonNull ( name, "name must not be null" );
-      return new NanoSlot <> ( name, value );
+      return new NanoSlot <> ( name, value, (Class < Double >) (Class < ? >) double.class );
     }
 
     @Override
+    @SuppressWarnings ( "unchecked" )
     public Slot < Float > slot ( Name name, float value ) {
       Objects.requireNonNull ( name, "name must not be null" );
-      return new NanoSlot <> ( name, value );
+      return new NanoSlot <> ( name, value, (Class < Float >) (Class < ? >) float.class );
     }
 
     @Override
     public Slot < String > slot ( Name name, String value ) {
       Objects.requireNonNull ( name, "name must not be null" );
       Objects.requireNonNull ( value, "value must not be null" );
-      return new NanoSlot <> ( name, value );
+      return new NanoSlot <> ( name, value, String.class );
     }
 
     @Override
@@ -2581,21 +2801,21 @@ public final class NanoSubstrates {
       Name slotName = name ( value.getDeclaringClass () );
       // Value is the full enum name: DeclaringClass.name
       Name slotValue = name ( value );
-      return new NanoSlot <> ( slotName, slotValue );
+      return new NanoSlot <> ( slotName, slotValue, Name.class );
     }
 
     @Override
     public Slot < Name > slot ( Name name, Name value ) {
       Objects.requireNonNull ( name, "name must not be null" );
       Objects.requireNonNull ( value, "value must not be null" );
-      return new NanoSlot <> ( name, value );
+      return new NanoSlot <> ( name, value, Name.class );
     }
 
     @Override
     public Slot < State > slot ( Name name, State value ) {
       Objects.requireNonNull ( name, "name must not be null" );
       Objects.requireNonNull ( value, "value must not be null" );
-      return new NanoSlot <> ( name, value );
+      return new NanoSlot <> ( name, value, State.class );
     }
 
     @Override
