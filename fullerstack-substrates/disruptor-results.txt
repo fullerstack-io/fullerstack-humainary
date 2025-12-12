@@ -1,0 +1,116 @@
+WARNING: A terminally deprecated method in sun.misc.Unsafe has been called
+WARNING: sun.misc.Unsafe::objectFieldOffset has been called by org.openjdk.jmh.util.Utils (file:/workspaces/fullerstack-humainary/fullerstack-substrates/target/benchmarks.jar)
+WARNING: Please consider reporting this to the maintainers of class org.openjdk.jmh.util.Utils
+WARNING: sun.misc.Unsafe::objectFieldOffset will be removed in a future release
+# JMH version: 1.37
+# VM version: JDK 25.0.1, OpenJDK 64-Bit Server VM, 25.0.1+8-27
+# VM invoker: /usr/local/sdkman/candidates/java/25.0.1-open/bin/java
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 2 iterations, 1 s each
+# Measurement: 3 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: io.fullerstack.substrates.benchmarks.CircuitComparison.disruptor_conduit_percept
+
+# Run progress: 0.00% complete, ETA 00:01:00
+# Fork: 1 of 1
+WARNING: A terminally deprecated method in sun.misc.Unsafe has been called
+WARNING: sun.misc.Unsafe::objectFieldOffset has been called by org.openjdk.jmh.util.Utils (file:/workspaces/fullerstack-humainary/fullerstack-substrates/target/benchmarks.jar)
+WARNING: Please consider reporting this to the maintainers of class org.openjdk.jmh.util.Utils
+WARNING: sun.misc.Unsafe::objectFieldOffset will be removed in a future release
+# Warmup Iteration   1: 11.789 ns/op
+# Warmup Iteration   2: 12.444 ns/op
+Iteration   1: 8.332 ns/op
+Iteration   2: 7.886 ns/op
+Iteration   3: 8.060 ns/op
+
+
+Result "io.fullerstack.substrates.benchmarks.CircuitComparison.disruptor_conduit_percept":
+  8.093 ±(99.9%) 4.103 ns/op [Average]
+  (min, avg, max) = (7.886, 8.093, 8.332), stdev = 0.225
+  CI (99.9%): [3.990, 12.195] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 25.0.1, OpenJDK 64-Bit Server VM, 25.0.1+8-27
+# VM invoker: /usr/local/sdkman/candidates/java/25.0.1-open/bin/java
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 2 iterations, 1 s each
+# Measurement: 3 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: io.fullerstack.substrates.benchmarks.CircuitComparison.disruptor_create_and_close
+
+# Run progress: 8.33% complete, ETA 00:01:00
+# Fork: 1 of 1
+WARNING: A terminally deprecated method in sun.misc.Unsafe has been called
+WARNING: sun.misc.Unsafe::objectFieldOffset has been called by org.openjdk.jmh.util.Utils (file:/workspaces/fullerstack-humainary/fullerstack-substrates/target/benchmarks.jar)
+WARNING: Please consider reporting this to the maintainers of class org.openjdk.jmh.util.Utils
+WARNING: sun.misc.Unsafe::objectFieldOffset will be removed in a future release
+# Warmup Iteration   1: 107222.956 ns/op
+# Warmup Iteration   2: 50919.065 ns/op
+Iteration   1: 45353.271 ns/op
+Iteration   2: 44429.736 ns/op
+Iteration   3: 41720.470 ns/op
+
+
+Result "io.fullerstack.substrates.benchmarks.CircuitComparison.disruptor_create_and_close":
+  43834.493 ±(99.9%) 34446.583 ns/op [Average]
+  (min, avg, max) = (41720.470, 43834.493, 45353.271), stdev = 1888.133
+  CI (99.9%): [9387.910, 78281.075] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 25.0.1, OpenJDK 64-Bit Server VM, 25.0.1+8-27
+# VM invoker: /usr/local/sdkman/candidates/java/25.0.1-open/bin/java
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 2 iterations, 1 s each
+# Measurement: 3 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: io.fullerstack.substrates.benchmarks.CircuitComparison.disruptor_create_await_close
+
+# Run progress: 16.67% complete, ETA 00:00:55
+# Fork: 1 of 1
+WARNING: A terminally deprecated method in sun.misc.Unsafe has been called
+WARNING: sun.misc.Unsafe::objectFieldOffset has been called by org.openjdk.jmh.util.Utils (file:/workspaces/fullerstack-humainary/fullerstack-substrates/target/benchmarks.jar)
+WARNING: Please consider reporting this to the maintainers of class org.openjdk.jmh.util.Utils
+WARNING: sun.misc.Unsafe::objectFieldOffset will be removed in a future release
+# Warmup Iteration   1: 87847.281 ns/op
+# Warmup Iteration   2: 44471.819 ns/op
+Iteration   1: 49546.069 ns/op
+Iteration   2: 43956.535 ns/op
+Iteration   3: 49874.613 ns/op
+
+
+Result "io.fullerstack.substrates.benchmarks.CircuitComparison.disruptor_create_await_close":
+  47792.406 ±(99.9%) 60678.998 ns/op [Average]
+  (min, avg, max) = (43956.535, 47792.406, 49874.613), stdev = 3326.021
+  CI (99.9%): [≈ 0, 108471.404] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 25.0.1, OpenJDK 64-Bit Server VM, 25.0.1+8-27
+# VM invoker: /usr/local/sdkman/candidates/java/25.0.1-open/bin/java
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 2 iterations, 1 s each
+# Measurement: 3 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: io.fullerstack.substrates.benchmarks.CircuitComparison.disruptor_emit_batch
+
+# Run progress: 25.00% complete, ETA 00:00:50
+# Fork: 1 of 1
+WARNING: A terminally deprecated method in sun.misc.Unsafe has been called
+WARNING: sun.misc.Unsafe::objectFieldOffset has been called by org.openjdk.jmh.util.Utils (file:/workspaces/fullerstack-humainary/fullerstack-substrates/target/benchmarks.jar)
+WARNING: Please consider reporting this to the maintainers of class org.openjdk.jmh.util.Utils
+WARNING: sun.misc.Unsafe::objectFieldOffset will be removed in a future release
+# Warmup Iteration   1: 

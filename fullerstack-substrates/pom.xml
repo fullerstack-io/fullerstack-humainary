@@ -154,6 +154,13 @@
             <scope>test</scope>
         </dependency>
 
+        <!-- LMAX Disruptor for benchmarking comparison -->
+        <dependency>
+            <groupId>com.lmax</groupId>
+            <artifactId>disruptor</artifactId>
+            <version>4.0.0</version>
+        </dependency>
+
         <!-- JMH for Performance Benchmarking -->
         <dependency>
             <groupId>org.openjdk.jmh</groupId>
@@ -204,8 +211,8 @@
                         --add-opens java.rmi/sun.rmi.transport=ALL-UNNAMED
                     </argLine>
                     <systemPropertyVariables>
-                        <!-- Configure Substrates API to use our NanoCortexProvider implementation -->
-                        <io.humainary.substrates.spi.provider>io.fullerstack.substrates.NanoCortexProvider</io.humainary.substrates.spi.provider>
+                        <!-- Configure Substrates API to use our FsCortexProvider implementation -->
+                        <io.humainary.substrates.spi.provider>io.fullerstack.substrates.FsCortexProvider</io.humainary.substrates.spi.provider>
                     </systemPropertyVariables>
                 </configuration>
             </plugin>
@@ -263,6 +270,27 @@
                                     </excludes>
                                 </filter>
                             </filters>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!-- Add JMH benchmark sources -->
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>build-helper-maven-plugin</artifactId>
+                <version>3.5.0</version>
+                <executions>
+                    <execution>
+                        <id>add-jmh-source</id>
+                        <phase>generate-sources</phase>
+                        <goals>
+                            <goal>add-source</goal>
+                        </goals>
+                        <configuration>
+                            <sources>
+                                <source>src/jmh/java</source>
+                            </sources>
                         </configuration>
                     </execution>
                 </executions>

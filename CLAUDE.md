@@ -320,3 +320,4 @@ The TCK tests are maintained by Humainary and verify that implementations correc
 **Build it simple, build it correct, then optimize hot paths identified by profiling.**
 
 We don't add features or change the API - we implement exactly what the Substrates specification defines, following William Louth's architectural vision for semiotic observability.
+- Always show full jmh benchmark results with a side by side comparisson with humainary results from substrates-api-java/BENCHMARKS.md in a single table
