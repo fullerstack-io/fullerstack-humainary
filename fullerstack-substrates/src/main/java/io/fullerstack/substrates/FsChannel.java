@@ -47,9 +47,8 @@ final class FsChannel<E> implements Channel<E> {
   /// @return A new pipe routing to this channel
   @Override
   public Pipe<E> pipe() {
-    // Create a new Subject for this pipe (child of channel subject)
-    FsSubject<Pipe<E>> pipeSubject = new FsSubject<>(subject.name(), (FsSubject<?>) subject, Pipe.class);
-    return new FsConsumerPipe<>(pipeSubject, router);
+    // Lazy subject creation - pass parent and name, FsConsumerPipe creates subject on demand
+    return new FsConsumerPipe<>((FsSubject<?>) subject, subject.name(), router);
   }
 
   /// Returns a new pipe with custom flow configuration.
@@ -58,12 +57,11 @@ final class FsChannel<E> implements Channel<E> {
   /// @return A new pipe instance with the configured flow
   @Override
   public Pipe<E> pipe(Configurer<Flow<E>> configurer) {
-    // Create a new Subject for this pipe (child of channel subject)
-    FsSubject<Pipe<E>> pipeSubject = new FsSubject<>(subject.name(), (FsSubject<?>) subject, Pipe.class);
-    // Create base pipe that routes to this channel
-    Pipe<E> basePipe = new FsConsumerPipe<>(pipeSubject, router);
+    // Lazy subject creation - pass parent and name
+    FsSubject<?> parent = (FsSubject<?>) subject;
+    Pipe<E> basePipe = new FsConsumerPipe<>(parent, subject.name(), router);
     // Apply flow configuration
-    FsFlow<E> flow = new FsFlow<>(pipeSubject, basePipe);
+    FsFlow<E> flow = new FsFlow<>(parent, subject.name(), basePipe);
     configurer.configure(flow);
     return flow.pipe();
   }

@@ -2,10 +2,10 @@ package io.fullerstack.substrates;
 
 import io.humainary.substrates.api.Substrates.Configurer;
 import io.humainary.substrates.api.Substrates.Flow;
+import io.humainary.substrates.api.Substrates.Name;
 import io.humainary.substrates.api.Substrates.Pipe;
 import io.humainary.substrates.api.Substrates.Receptor;
 import io.humainary.substrates.api.Substrates.Sift;
-import io.humainary.substrates.api.Substrates.Subject;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -17,17 +17,20 @@ import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.function.UnaryOperator;
 
-/// A configurable processing pipeline for data transformation.
-///
-/// Flow provides operators like diff, guard, limit, sample, etc.
-/// Each operator returns a new Flow representing the extended pipeline.
-/// Operators are composed in the order they are added (left-to-right).
-///
-/// @param <E> the class type of emitted value
+/**
+ * A configurable processing pipeline for data transformation.
+ *
+ * <p>Flow provides operators like diff, guard, limit, sample, etc. Each operator returns a new
+ * Flow representing the extended pipeline. Operators are composed in the order they are added
+ * (left-to-right).
+ *
+ * @param <E> the class type of emitted value
+ */
 public final class FsFlow<E> implements Flow<E> {
 
-  /// The subject for pipes created by this flow.
-  private final Subject<Pipe<E>> subject;
+  // For lazy subject creation in the final pipe
+  private final FsSubject<?> parent;
+  private final Name name;
 
   /// The target pipe that receives emissions after all transformations.
   private final Pipe<E> target;
@@ -36,12 +39,16 @@ public final class FsFlow<E> implements Flow<E> {
   /// and returns a consumer that applies the operator before calling downstream.
   private final List<Function<Consumer<E>, Consumer<E>>> operators = new ArrayList<>();
 
-  /// Creates a new flow targeting the given pipe.
-  ///
-  /// @param subject the subject for created pipes
-  /// @param target the pipe that receives emissions
-  public FsFlow(Subject<Pipe<E>> subject, Pipe<E> target) {
-    this.subject = subject;
+  /**
+   * Creates a new flow targeting the given pipe with lazy subject creation.
+   *
+   * @param parent the parent subject (for hierarchy)
+   * @param name the pipe name (may be null for anonymous pipes)
+   * @param target the pipe that receives emissions
+   */
+  public FsFlow(FsSubject<?> parent, Name name, Pipe<E> target) {
+    this.parent = parent;
+    this.name = name;
     this.target = target;
   }
 
@@ -54,7 +61,8 @@ public final class FsFlow<E> implements Flow<E> {
     for (int i = operators.size() - 1; i >= 0; i--) {
       consumer = operators.get(i).apply(consumer);
     }
-    return new FsConsumerPipe<>(subject, consumer);
+    // Lazy subject creation - pass parent + name to FsConsumerPipe
+    return new FsConsumerPipe<>(parent, name, consumer);
   }
 
   @Override

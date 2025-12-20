@@ -30,6 +30,8 @@ public final class FsName
   private final int depth;
   /// Path string - computed at construction, never null.
   private final String path;
+  /// Cached identity hash code - avoids System.identityHashCode() call on every lookup.
+  private final int cachedHash;
 
   // =========================================================================
   // Per-node children cache for fast chaining
@@ -44,6 +46,7 @@ public final class FsName
     this.parent = null;
     this.depth = 1;
     this.path = segment;  // Root: path = segment
+    this.cachedHash = System.identityHashCode ( this );
   }
 
   /// Private constructor with known parent (depth=parent.depth+1).
@@ -52,6 +55,7 @@ public final class FsName
     this.parent = parent;
     this.depth = parent.depth + 1;
     this.path = parent.path + FULLSTOP + segment;
+    this.cachedHash = System.identityHashCode ( this );
   }
 
   // =========================================================================
@@ -479,8 +483,8 @@ public final class FsName
 
   @Override
   public int hashCode () {
-    // Use identity hash code since we're identity-based
-    return System.identityHashCode ( this );
+    // Return cached identity hash code - computed once at construction
+    return cachedHash;
   }
 
   @Override

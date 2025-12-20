@@ -130,9 +130,8 @@ public final class FsCell<I, E> implements Cell<I, E> {
 
     this.internalChannel = new FsChannel<>(channelSubject, childRouter);
 
-    // For children, ingress is a pipe that routes to the channel
-    Subject<Pipe<E>> pipeSubject = new FsSubject<>(childName, (FsSubject<?>) subject, Pipe.class);
-    this.ingressPipe = (Pipe<I>) (Pipe<?>) new FsConsumerPipe<>(pipeSubject, childRouter);
+    // For children, ingress is a pipe that routes to the channel (lazy subject creation)
+    this.ingressPipe = (Pipe<I>) (Pipe<?>) new FsConsumerPipe<>((FsSubject<?>) subject, childName, childRouter);
   }
 
   /// Routes an emission to receptor and subscribers.

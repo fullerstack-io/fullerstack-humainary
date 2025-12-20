@@ -5,9 +5,7 @@ import static io.humainary.substrates.api.Substrates.cortex;
 import io.humainary.substrates.api.Substrates.Name;
 import io.humainary.substrates.api.Substrates.Slot;
 import io.humainary.substrates.api.Substrates.State;
-import java.util.ArrayList;
 import java.util.Iterator;
-import java.util.List;
 import java.util.Objects;
 import java.util.Spliterator;
 import java.util.stream.Stream;
@@ -219,17 +217,45 @@ final class FsState
   @Override
   @SuppressWarnings ( "unchecked" )
   public < T > Stream < T > values ( Slot < ? extends T > slot ) {
+    Objects.requireNonNull ( slot, "slot must not be null" );
     // Use identity for Name (interned)
+    // Fast path: empty state returns empty stream
+    int len = slots.length;
+    if ( len == 0 ) {
+      return Stream.empty ();
+    }
     Name targetName = slot.name ();
     Class < ? extends T > targetType = slot.type ();
-    List < T > result = new ArrayList <> ();
-    for ( int i = slots.length - 1; i >= 0; i-- ) {
+    // Fast path: single slot - check and return single-element or empty stream
+    if ( len == 1 ) {
+      Slot < ? > s = slots[0];
+      if ( s.name () == targetName && targetType.isAssignableFrom ( s.type () ) ) {
+        return Stream.of ( (T) s.value () );
+      }
+      return Stream.empty ();
+    }
+    // Count matches first to size array exactly - also enables SIZED stream
+    int count = 0;
+    for ( int i = 0; i < len; i++ ) {
       Slot < ? > s = slots[i];
       if ( s.name () == targetName && targetType.isAssignableFrom ( s.type () ) ) {
-        result.add ( (T) s.value () );
+        count++;
       }
     }
-    return result.stream ();
+    if ( count == 0 ) {
+      return Stream.empty ();
+    }
+    // Collect matches into exactly-sized array and stream with SIZED spliterator
+    Object[] matches = new Object[count];
+    int idx = 0;
+    for ( int i = 0; i < len; i++ ) {
+      Slot < ? > s = slots[i];
+      if ( s.name () == targetName && targetType.isAssignableFrom ( s.type () ) ) {
+        matches[idx++] = s.value ();
+      }
+    }
+    // Arrays.stream creates SIZED|SUBSIZED spliterator - count() is O(1)
+    return (Stream < T >) java.util.Arrays.stream ( matches );
   }
 
 }
