@@ -16,15 +16,14 @@ import java.util.Objects;
 import java.util.function.Function;
 
 /// The entry point for creating substrates.
-final class FsCortex
-  implements Cortex {
+final class FsCortex implements Cortex {
 
   /// Cached Name for anonymous scopes - avoid repeated HashMap lookup.
-  static final Name SCOPE_NAME = FsName.intern ( "scope" );
+  static final Name SCOPE_NAME = FsName.intern("scope");
   /// Cached Name for anonymous circuits.
-  static final Name CIRCUIT_NAME = FsName.intern ( "circuit" );
+  static final Name CIRCUIT_NAME = FsName.intern("circuit");
 
-  private final Subject < Cortex > subject;
+  private final Subject<Cortex> subject;
 
   /// ThreadLocal cache for Current instances - each thread gets one stable Current.
   private final ThreadLocal < FsCurrent > currentCache;
@@ -58,7 +57,7 @@ final class FsCortex
     FsSubject < Circuit > circuitSubject = new FsSubject <> (
       name, (FsSubject < ? >) subject, Circuit.class
     );
-    return new FsCircuit ( circuitSubject );
+    return new FsJctoolsCircuit(circuitSubject);
   }
 
   @Override

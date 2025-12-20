@@ -1,14 +1,11 @@
 package io.fullerstack.substrates;
 
 import io.humainary.substrates.api.Substrates.Circuit;
-import io.humainary.substrates.api.Substrates.Name;
-import io.humainary.substrates.api.Substrates.Pipe;
-import io.humainary.substrates.api.Substrates.Subject;
 
 /**
- * Internal interface for circuit implementations to support FsConduit/FsCell and unified pipes.
+ * Internal interface for circuit implementations to support FsConduit/FsCell and async pipes.
  *
- * <p>This interface exposes the internal methods needed by FsConduit, FsCell, and FsCircuitPipe to
+ * <p>This interface exposes the internal methods needed by FsConduit, FsCell, and FsAsyncPipe to
  * function correctly with any Circuit implementation.
  */
 public interface FsInternalCircuit extends Circuit {
@@ -20,21 +17,14 @@ public interface FsInternalCircuit extends Circuit {
   boolean isRunning();
 
   /**
-   * Emits a value through the given pipe. The circuit implementation handles queueing and
-   * thread-safe delivery.
+   * Enqueues a value to the ingress queue for async processing.
+   *
+   * <p>This method queues the emission to the circuit's ingress queue for processing
+   * by the circuit thread. The pipe's deliver() method will be called on the circuit thread.
    *
    * @param pipe the pipe that is emitting
    * @param value the value to emit
    * @param <E> the emission type
    */
-  <E> void emit(FsCircuitPipe<E> pipe, Object value);
-
-  /**
-   * Creates a subject for a pipe with the given name.
-   *
-   * @param name the pipe name (may be null for anonymous pipes)
-   * @param <E> the emission type
-   * @return a new subject for the pipe
-   */
-  <E> Subject<Pipe<E>> createPipeSubject(Name name);
+  <E> void enqueue(FsAsyncPipe<E> pipe, Object value);
 }
