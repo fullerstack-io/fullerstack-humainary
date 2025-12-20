@@ -34,6 +34,7 @@ public class CascadeOps implements Substrates {
   private Pipe<Integer> cascadePipe1; // depth 1
   private Pipe<Integer> cascadePipe3; // depth 3
   private Pipe<Integer> cascadePipe5; // depth 5
+  private Pipe<Integer> cascadePipe100; // depth 100 (stress test)
 
   @Setup(org.openjdk.jmh.annotations.Level.Trial)
   public void setup() {
@@ -67,6 +68,14 @@ public class CascadeOps implements Substrates {
     Pipe<Integer> mid5b = circuit.pipe(v -> mid5a.emit(v));
     Pipe<Integer> mid5c = circuit.pipe(v -> mid5b.emit(v));
     cascadePipe5 = circuit.pipe(v -> mid5c.emit(v));
+
+    // Depth 100: emit -> cascade x99 -> receptor (stress test)
+    Pipe<Integer> current = circuit.pipe(v -> counter.incrementAndGet());
+    for (int i = 0; i < 99; i++) {
+      final Pipe<Integer> next = current;
+      current = circuit.pipe(v -> next.emit(v));
+    }
+    cascadePipe100 = current;
 
     circuit.await();
   }
@@ -102,6 +111,16 @@ public class CascadeOps implements Substrates {
   public void cascade_depth_5() {
     for (int i = 0; i < BATCH_SIZE; i++) {
       cascadePipe5.emit(i);
+    }
+    circuit.await();
+  }
+
+  /// 100-level cascade: stress test for deep cascading without stack overflow.
+  @Benchmark
+  @OperationsPerInvocation(BATCH_SIZE)
+  public void cascade_depth_100() {
+    for (int i = 0; i < BATCH_SIZE; i++) {
+      cascadePipe100.emit(i);
     }
     circuit.await();
   }

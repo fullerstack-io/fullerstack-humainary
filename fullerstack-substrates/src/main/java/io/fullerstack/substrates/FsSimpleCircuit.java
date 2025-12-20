@@ -78,8 +78,14 @@ public final class FsSimpleCircuit implements FsInternalCircuit {
     }
   }
 
-  void cascade(Runnable task) {
+  @Override
+  public void cascade(Runnable task) {
     transit.addLast(task);
+  }
+
+  @Override
+  public boolean isCircuitThread() {
+    return Thread.currentThread() == thread;
   }
 
   @Override
