@@ -50,7 +50,13 @@ public final class FsAsyncPipe<E> extends FsSubstrate<Pipe<E>> implements Pipe<E
 
   @Override
   public void emit(E emission) {
-    circuit.enqueue(this, emission);
+    if (circuit.isCircuitThread()) {
+      // Cascade path: we're on the circuit thread, use transit queue (depth-first)
+      circuit.cascade(() -> receiver.accept(emission));
+    } else {
+      // External path: enqueue to ingress
+      circuit.enqueue(this, emission);
+    }
   }
 
   /**

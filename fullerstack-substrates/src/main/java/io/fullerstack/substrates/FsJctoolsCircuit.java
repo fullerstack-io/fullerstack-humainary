@@ -73,8 +73,14 @@ public final class FsJctoolsCircuit implements FsInternalCircuit {
     }
   }
 
-  void cascade(Runnable task) {
+  @Override
+  public void cascade(Runnable task) {
     transit.push(task);  // LIFO - most recent first (true depth-first)
+  }
+
+  @Override
+  public boolean isCircuitThread() {
+    return Thread.currentThread() == thread;
   }
 
   @Override
