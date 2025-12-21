@@ -3,7 +3,7 @@
 **Substrates API:** 1.0.0-PREVIEW (sealed hierarchy + Cell API + Flow)
 **Serventis API:** 1.0.0-PREVIEW (24+ Instrument APIs for semiotic observability)
 **Java Version:** 25 (Virtual Threads + Preview Features)
-**Status:** 381 TCK tests passing (100% compliance)
+**Status:** 383 TCK tests passing (100% compliance)
 **Benchmarks:** 150 benchmarks across 10 groups (see [BENCHMARK-COMPARISON.md](BENCHMARK-COMPARISON.md))
 
 ---
@@ -77,10 +77,11 @@ Serventis organizes instruments into 7 categories across the OODA loop (Observe,
 
 | Instrument | Purpose | Key Signals |
 |------------|---------|-------------|
-| **Services** | Service lifecycle | call, succeeded, failed |
+| **Services** | Service lifecycle (16 signs) | start, stop, call, success, fail, retry, reject, etc. |
 | **Tasks** | Task execution | start, complete, cancel, fail |
 | **Processes** | Process lifecycle | spawn, run, exit, signal |
 | **Transactions** | Transaction state | begin, commit, rollback, abort |
+| **Timers** | Time constraint outcomes | meet, miss × deadline, threshold |
 
 #### Flow Category (Flow Control)
 
@@ -89,6 +90,7 @@ Serventis organizes instruments into 7 categories across the OODA loop (Observe,
 | **Valves** | Flow control | open, close, throttle |
 | **Breakers** | Circuit breaker | trip, reset, half-open |
 | **Routers** | Message routing | route, deliver, drop, redirect |
+| **Flows** | Data movement stages | success, fail × ingress, transit, egress |
 
 #### Pool Category (Resource Management)
 
@@ -105,6 +107,7 @@ Serventis organizes instruments into 7 categories across the OODA loop (Observe,
 |------------|---------|-------------|
 | **Locks** | Lock operations | acquire, release, contend |
 | **Latches** | Latch operations | await, countdown, release |
+| **Atomics** | CAS contention dynamics | attempt, success, fail, spin, yield, backoff, park, exhaust |
 
 #### Role Category (Behavioral)
 
@@ -113,7 +116,7 @@ Serventis organizes instruments into 7 categories across the OODA loop (Observe,
 | **Agents** | Promise theory | promise, kept, broken |
 | **Actors** | Speech acts | request, commit, execute, confirm |
 
-#### SDK Category (Meta)
+#### SDK Category (Meta/Universal)
 
 | Instrument | Purpose | Key Signals |
 |------------|---------|-------------|
@@ -121,6 +124,10 @@ Serventis organizes instruments into 7 categories across the OODA loop (Observe,
 | **Situations** | Urgency assessment | normal, warning, critical |
 | **Systems** | System-wide | startup, shutdown, checkpoint |
 | **Cycles** | Timing cycles | tick, tock, pulse |
+| **Operations** | Universal action bracketing | begin, end |
+| **Outcomes** | Binary verdicts | success, fail |
+| **Surveys** | Collective assessment | divided, majority, unanimous |
+| **Trends** | Statistical patterns | stable, drift, spike, cycle, chaos |
 
 ### Example Usage
 
@@ -1084,7 +1091,7 @@ FsCell
 ### Performance Characteristics
 
 **Test Suite:**
-- 381 TCK tests passing (100% compliance)
+- 383 TCK tests passing (100% compliance)
 - 150 JMH benchmarks across 10 groups
 
 **Benchmark Summary (Fullerstack vs Humainary):**
@@ -1245,7 +1252,7 @@ circuit.close();
 **Fullerstack Substrates:**
 
 ✅ **Simple** - Flat package structure, Fs-prefixed classes, easy to understand
-✅ **Correct** - 381/381 TCK tests passing (100% Humainary API compliance)
+✅ **Correct** - 383/383 TCK tests passing (100% Humainary API compliance)
 ✅ **Lean** - Core implementation only, no application frameworks
 ✅ **Optimized** - Lazy thread start, JCTools MPSC, cached name paths
 ✅ **Thread-Safe** - Dual-queue pattern, proper concurrent collections

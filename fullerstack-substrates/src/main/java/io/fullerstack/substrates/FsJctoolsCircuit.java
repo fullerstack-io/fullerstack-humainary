@@ -236,12 +236,8 @@ public final class FsJctoolsCircuit implements FsInternalCircuit {
   }
 
   @Override
-  @SuppressWarnings("unchecked")
   public <E> Pipe<E> pipe(Pipe<E> target) {
-    // If target is already an async pipe on this circuit, return it directly
-    if (target instanceof FsAsyncPipe<?> asyncTarget && asyncTarget.circuit() == this) {
-      return (Pipe<E>) asyncTarget;
-    }
+    requireNonNull(target);
     return new FsAsyncPipe<>((FsSubject<?>) subject, null, this, target::emit);
   }
 
@@ -294,12 +290,15 @@ public final class FsJctoolsCircuit implements FsInternalCircuit {
 
   @Override
   public <E> Subscriber<E> subscriber(Name name, BiConsumer<Subject<Channel<E>>, Registrar<E>> callback) {
+    requireNonNull(name);
+    requireNonNull(callback);
     return new FsSubscriber<>(new FsSubject<>(name, (FsSubject<?>) subject, Subscriber.class), callback);
   }
 
   @Override
   @SuppressWarnings("unchecked")
   public Subscription subscribe(Subscriber<State> subscriber) {
+    requireNonNull(subscriber);
     subscribers.add(subscriber);
     return new FsSubscription((Subject<Subscription>) (Subject<?>) subject, () -> subscribers.remove(subscriber));
   }

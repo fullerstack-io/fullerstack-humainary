@@ -103,7 +103,7 @@ mvn test \
   -Dtck.spi.version=1.0.0-SNAPSHOT
 ```
 
-Expected: 381 tests, 0 failures, 0 errors (100% compliance)
+Expected: 383 tests, 0 failures, 0 errors (100% compliance)
 
 ## Architecture Overview
 
@@ -269,7 +269,7 @@ monitor.degraded(Monitors.Confidence.HIGH);  // Emit status
 
 ## TCK Compliance
 
-This implementation passes **381/381 tests** from the Humainary Substrates TCK (Test Compatibility Kit), ensuring 100% API compliance.
+This implementation passes **383/383 tests** from the Humainary Substrates TCK (Test Compatibility Kit), ensuring 100% API compliance.
 
 The TCK tests are maintained by Humainary and verify that implementations correctly handle:
 - Circuit event ordering and processing

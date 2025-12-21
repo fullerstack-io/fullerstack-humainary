@@ -2,7 +2,7 @@
 #
 # Central TCK runner for Fullerstack Substrates
 #
-# Runs all 381 TCK tests against the Fullerstack implementation.
+# Runs all 383 TCK tests against the Fullerstack implementation.
 #
 # Usage:
 #   ./scripts/tck.sh              # Run all TCK tests
@@ -54,10 +54,11 @@ mvn test \
     -Dsubstrates.spi.groupId=io.fullerstack \
     -Dsubstrates.spi.artifactId=fullerstack-substrates \
     -Dsubstrates.spi.version=1.0.0-SNAPSHOT \
+    -Dio.humainary.substrates.spi.provider=io.fullerstack.substrates.FsCortexProvider \
     "$@"
 
 echo ""
 echo "=========================================="
 echo "TCK Complete!"
-echo "Expected: 381 tests, 0 failures, 0 errors"
+echo "Expected: 383 tests, 0 failures, 0 errors"
 echo "=========================================="
