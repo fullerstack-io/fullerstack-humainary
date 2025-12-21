@@ -385,8 +385,23 @@ sub.close();
 ### Performance Summary
 
 **Test Suite:**
-- 247 tests in ~16 seconds
-- 0 failures, 0 errors
+- 381 TCK tests passing (100% compliance)
+- 150 JMH benchmarks across 10 groups
+
+**Benchmark Results (Fullerstack vs Humainary):**
+- **Fullerstack Wins:** 36 (24%)
+- **Humainary Wins:** 99 (66%)
+- **Ties:** 14 (9%)
+
+**Key Fullerstack Advantages:**
+| Category | Benchmark | Improvement |
+|----------|-----------|-------------|
+| Await | create_await_close | -97% |
+| Await | hot_await_queue_drain | -100% |
+| Names | name_compare | -89% |
+| Names | name_path_generation | -96% |
+| Subscriber | close_*_await | -98% to -100% |
+| Scopes | scope_create_and_close | -55% |
 
 **Design Target:**
 - 100k+ metrics @ 1Hz
@@ -397,28 +412,31 @@ sub.close();
 
 ### Architecture Performance
 
-#### Virtual CPU Core Pattern
+#### FsJctoolsCircuit - Virtual CPU Core Pattern
 
 ```
-Circuit Queue (FIFO):
-  Events → Single Virtual Thread → Process in Order
+FsJctoolsCircuit:
+  Ingress (JCTools MPSC) → Lazy Virtual Thread → Process in Order
+  Transit (ArrayDeque)   ↗   (depth-first)
 
 Benefits:
-✅ No lock contention
-✅ Precise ordering
-✅ Predictable latency
+✅ Wait-free producer path (JCTools MPSC)
+✅ Lazy thread initialization (massive await savings)
+✅ Precise ordering (depth-first for cascading)
+✅ Spin-then-park (low wake-up latency)
 ✅ Lightweight (virtual threads)
 ```
 
 #### Component Caching
 
 ```java
-private final Map<Name, Conduit<?, ?>> conduits = new ConcurrentHashMap<>();
+// FsConduit caches channels internally
+private final Map<Name, FsChannel<E>> channels = new ConcurrentHashMap<>();
 
-public <P, E> Conduit<P, E> conduit(Name name, Composer<P, E> composer) {
-    return (Conduit<P, E>) conduits.computeIfAbsent(name, n ->
-        new RoutingConduit<>(n, this, composer)
-    );
+public P get(Name name) {
+    return channels.computeIfAbsent(name, n ->
+        new FsChannel<>(new FsSubject<>(n, parent, Channel.class), circuit, composer, configurer)
+    ).percept();
 }
 ```
 
@@ -594,13 +612,13 @@ Circuit brokers51to100 = cortex().circuit(cortex().name("brokers-51-100"));
 **Component Footprint (Approximate):**
 
 ```
-InternedName:       ~64 bytes
-CircuitImpl:    ~1KB
-RoutingConduit:    ~512 bytes
-EmissionChannel:    ~256 bytes
-Pipe implementation:       ~512 bytes
+FsName:             ~64 bytes
+FsJctoolsCircuit:   ~1KB (includes JCTools queue)
+FsConduit:          ~512 bytes
+FsChannel:          ~256 bytes
+FsAsyncPipe:        ~128 bytes
 
-Per Metric (Pipe): ~1KB
+Per Metric (Pipe):  ~1KB
 ```
 
 **Scaling:**
@@ -889,7 +907,8 @@ conduit.subscribe(
 );
 
 pipe.emit("Hello");
-Thread.sleep(100);  // Wait for async processing
+circuit.await();  // Wait for async processing (preferred)
+// Or: Thread.sleep(100);
 assertEquals(1, received.size());  // Now passes
 ```
 

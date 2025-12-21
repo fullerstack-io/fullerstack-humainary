@@ -36,4 +36,4 @@ yarn-debug.log*
 yarn-error.log*
 .bmad/
 docs/
-benchmark-results/
+benchmark-results/substrates-api-java/

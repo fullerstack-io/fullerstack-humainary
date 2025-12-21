@@ -1,9 +1,10 @@
 # Fullerstack Substrates - Architecture & Core Concepts
 
 **Substrates API:** 1.0.0-PREVIEW (sealed hierarchy + Cell API + Flow)
-**Serventis API:** 1.0.0-PREVIEW (12 Instrument APIs for semiotic observability)
-**Java Version:** 25 (Virtual Threads)
+**Serventis API:** 1.0.0-PREVIEW (24+ Instrument APIs for semiotic observability)
+**Java Version:** 25 (Virtual Threads + Preview Features)
 **Status:** 381 TCK tests passing (100% compliance)
+**Benchmarks:** 150 benchmarks across 10 groups (see [BENCHMARK-COMPARISON.md](BENCHMARK-COMPARISON.md))
 
 ---
 
@@ -49,132 +50,106 @@ Steering (automated responses)
 
 Serventis extends Substrates with **typed instrument APIs** for building semiotic observability systems. Each instrument emits domain-specific signals that gain meaning through their Subject context.
 
-### The Twelve Instrument APIs (PREVIEW)
+### Serventis Instrument Categories (24+ Instruments)
 
-#### OBSERVE Phase (Sensing)
+Serventis organizes instruments into 7 categories across the OODA loop (Observe, Orient, Decide, Act):
 
-**1. Probes** - Communication outcomes
+#### Tool Category (Sensing/Measurement)
+
+| Instrument | Purpose | Key Signals |
+|------------|---------|-------------|
+| **Probes** | Communication outcomes | operation, success, failure |
+| **Sensors** | Environmental measurement | measure, sample, reading |
+| **Counters** | Monotonic counting | increment, overflow, reset |
+| **Gauges** | Bidirectional metrics | increment, decrement, set |
+| **Logs** | Event logging | log, trace, debug, info, warn, error |
+
+#### Data Category (Data Flow)
+
+| Instrument | Purpose | Key Signals |
+|------------|---------|-------------|
+| **Queues** | Queue operations | enqueue, dequeue, overflow, underflow |
+| **Stacks** | Stack operations | push, pop, peek |
+| **Caches** | Cache operations | lookup, hit, miss, store, evict |
+| **Pipelines** | Pipeline flow | input, output, stage, complete |
+
+#### Exec Category (Execution)
+
+| Instrument | Purpose | Key Signals |
+|------------|---------|-------------|
+| **Services** | Service lifecycle | call, succeeded, failed |
+| **Tasks** | Task execution | start, complete, cancel, fail |
+| **Processes** | Process lifecycle | spawn, run, exit, signal |
+| **Transactions** | Transaction state | begin, commit, rollback, abort |
+
+#### Flow Category (Flow Control)
+
+| Instrument | Purpose | Key Signals |
+|------------|---------|-------------|
+| **Valves** | Flow control | open, close, throttle |
+| **Breakers** | Circuit breaker | trip, reset, half-open |
+| **Routers** | Message routing | route, deliver, drop, redirect |
+
+#### Pool Category (Resource Management)
+
+| Instrument | Purpose | Key Signals |
+|------------|---------|-------------|
+| **Resources** | Resource lifecycle | acquire, release, grant, deny |
+| **Pools** | Pool management | borrow, return, create, destroy |
+| **Leases** | Lease management | acquire, renew, release, expire |
+| **Exchanges** | Exchange operations | offer, take, exchange |
+
+#### Sync Category (Synchronization)
+
+| Instrument | Purpose | Key Signals |
+|------------|---------|-------------|
+| **Locks** | Lock operations | acquire, release, contend |
+| **Latches** | Latch operations | await, countdown, release |
+
+#### Role Category (Behavioral)
+
+| Instrument | Purpose | Key Signals |
+|------------|---------|-------------|
+| **Agents** | Promise theory | promise, kept, broken |
+| **Actors** | Speech acts | request, commit, execute, confirm |
+
+#### SDK Category (Meta)
+
+| Instrument | Purpose | Key Signals |
+|------------|---------|-------------|
+| **Statuses** | Health status | stable, degraded, defective, down |
+| **Situations** | Urgency assessment | normal, warning, critical |
+| **Systems** | System-wide | startup, shutdown, checkpoint |
+| **Cycles** | Timing cycles | tick, tock, pulse |
+
+### Example Usage
+
 ```java
-Conduit<Probe, Probes.Signal> probes = circuit.conduit(name, Probes::composer);
-Probe probe = probes.get(cortex().name("kafka.broker-1.network"));
-probe.operation(Operation.CONNECT, Origin.CLIENT, Outcome.SUCCESS);
-```
+// Tool: Counter for request counting
+Conduit<Counter, Counters.Sign> counters = circuit.conduit(
+    cortex().name("counters"), Counters::composer);
+Counter requests = counters.get(cortex().name("api.requests"));
+requests.increment();
 
-**2. Services** - Interaction lifecycle
-```java
-Conduit<Service, Services.Signal> services = circuit.conduit(name, Services::composer);
-Service service = services.get(cortex().name("kafka.broker-1.api"));
-service.call();
-service.succeeded();  // or service.failed()
-```
+// Exec: Service for API calls
+Conduit<Service, Services.Signal> services = circuit.conduit(
+    cortex().name("services"), Services::composer);
+Service api = services.get(cortex().name("kafka.api"));
+api.call();
+api.succeeded();
 
-**3. Queues** - Flow control events
-```java
-Conduit<Queue, Queues.Sign> queues = circuit.conduit(name, Queues::composer);
-Queue queue = queues.get(cortex().name("producer-1.buffer"));
-queue.enqueue();    // Item added to queue
-queue.dequeue();    // Item removed from queue
-queue.overflow();   // Buffer capacity exceeded
-queue.underflow();  // Take from empty queue
-```
+// Flow: Circuit breaker
+Conduit<Breaker, Breakers.Signal> breakers = circuit.conduit(
+    cortex().name("breakers"), Breakers::composer);
+Breaker kafkaBreaker = breakers.get(cortex().name("kafka.breaker"));
+kafkaBreaker.trip();  // Open circuit due to failures
 
-**4. Gauges** - Bidirectional metrics 
-```java
-Conduit<Gauge, Gauges.Sign> gauges = circuit.conduit(name, Gauges::composer);
-Gauge gauge = gauges.get(cortex().name("broker-1.connections"));
-gauge.increment();  // Connections increased
-gauge.decrement();  // Connections decreased
-gauge.overflow();   // Max capacity exceeded
-gauge.underflow();  // Min threshold breached
-gauge.reset();      // Reset to baseline
-```
-
-**5. Counters** - Monotonic metrics 
-```java
-Conduit<Counter, Counters.Sign> counters = circuit.conduit(name, Counters::composer);
-Counter counter = counters.get(cortex().name("broker-1.requests"));
-counter.increment();  // Request count increased
-counter.overflow();   // Counter wrapped around
-counter.underflow();  // Invalid decrement attempted
-counter.reset();      // Explicitly zeroed
-```
-
-**6. Caches** - Hit/miss tracking 
-```java
-Conduit<Cache, Caches.Sign> caches = circuit.conduit(name, Caches::composer);
-Cache cache = caches.get(cortex().name("metadata-cache"));
-cache.lookup();  // Attempt to retrieve entry
-cache.hit();     // Lookup succeeded
-cache.miss();    // Lookup failed
-cache.store();   // Entry added/updated
-cache.evict();   // Automatic removal due to capacity
-cache.expire();  // Removal due to TTL
-cache.remove();  // Explicit invalidation
-```
-
-#### ORIENT Phase (Understanding)
-
-**7. Monitors** - Condition assessment
-```java
-Conduit<Monitor, Monitors.Status> monitors = circuit.conduit(name, Monitors::composer);
-Monitor monitor = monitors.get(cortex().name("broker-1.health"));
-monitor.degraded(Monitors.Confidence.HIGH);  // Convenience method
-// Or: monitor.stable(), .converging(), .diverging(), .erratic(), .defective(), .down()
-// Or generic: monitor.status(Monitors.Condition.DEGRADED, Monitors.Confidence.HIGH)
-```
-
-**8. Resources** - Capacity tracking
-```java
-Conduit<Resource, Resources.Sign> resources = circuit.conduit(name, Resources::composer);
-Resource resource = resources.get(cortex().name("thread-pool"));
-resource.attempt();  // Non-blocking request
-resource.acquire();  // Blocking/wait-based request
-resource.grant();    // Successful allocation
-resource.deny();     // Insufficient capacity
-resource.timeout();  // Wait period exceeded
-resource.release();  // Return granted units
-```
-
-#### DECIDE Phase (Urgency)
-
-**9. Reporters** - Situation assessment
-```java
-Conduit<Reporter, Reporters.Situation> reporters = circuit.conduit(name, Reporters::composer);
-Reporter reporter = reporters.get(cortex().name("cluster-health"));
-reporter.critical();  // Serious situation demanding intervention
-// Or: reporter.normal(), reporter.warning()
-```
-
-#### ACT Phase (Promise Theory & Speech Act Theory)
-
-**10. Agents** - Promise-based autonomy (Promise Theory)
-```java
-Conduit<Agent, Agents.Promise> agents = circuit.conduit(name, Agents::composer);
-Agent agent = agents.get(cortex().name("auto-scaler"));
-agent.promise();   // Agent commits to maintaining a promise
-agent.kept();      // Promise successfully maintained
-agent.broken();    // Promise violated, action needed
-```
-
-**11. Actors** - Message-based interaction (Speech Act Theory)
-```java
-Conduit<Actor, Actors.Act> actors = circuit.conduit(name, Actors::composer);
-Actor actor = actors.get(cortex().name("remediation-service"));
-actor.request();   // Initiate action request
-actor.commit();    // Commit to performing action
-actor.execute();   // Perform the action
-actor.confirm();   // Acknowledge completion
-actor.cancel();    // Cancel pending action
-```
-
-**12. Routers** - Message routing decisions
-```java
-Conduit<Router, Routers.Route> routers = circuit.conduit(name, Routers::composer);
-Router router = routers.get(cortex().name("message-router"));
-router.route();    // Route message to destination
-router.deliver();  // Successful delivery
-router.drop();     // Message dropped
-router.redirect(); // Reroute to alternate path
+// Pool: Connection pool
+Conduit<Pool, Pools.Signal> pools = circuit.conduit(
+    cortex().name("pools"), Pools::composer);
+Pool connections = pools.get(cortex().name("db.connections"));
+connections.borrow();
+connections.return_();
 ```
 
 ### Context Creates Meaning
@@ -216,8 +191,9 @@ This is **semiotic observability** - meaning arises from the interplay between s
 - ✅ **Type-safe event routing** - From producers to consumers via Channels/Pipes
 - ✅ **Transformation pipelines** - Filter, map, reduce, limit, sample emissions with JVM-style fusion
 - ✅ **Dynamic subscription** - Observers subscribe/unsubscribe at runtime
-- ✅ **Precise ordering** - Valve pattern (Virtual CPU core) guarantees FIFO processing
-- ✅ **Event-driven synchronization** - Zero-latency await() with wait/notify (no polling)
+- ✅ **Precise ordering** - Dual-queue pattern (Virtual CPU core) guarantees FIFO processing
+- ✅ **Lazy thread initialization** - Virtual thread starts on first emit (massive await savings)
+- ✅ **Event-driven synchronization** - CountDownLatch-based await() for precise synchronization
 - ✅ **Pipeline optimization** - Automatic fusion of adjacent skip/limit operations
 - ✅ **Hierarchical naming** - Dot-notation organization (kafka.broker.1.metrics)
 - ✅ **Resource lifecycle** - Automatic cleanup with Scope
@@ -231,28 +207,30 @@ This is **semiotic observability** - meaning arises from the interplay between s
 
 ### Architecture Principles
 
-1. **Simplified Design** - Single implementations, no factory abstractions
+1. **Simplified Design** - Flat package structure, single implementations, no factory abstractions
 2. **PREVIEW Sealed Hierarchy** - Type-safe API contracts enforced by sealed interfaces
-3. **Valve Pattern** (William's architecture) - Dual-queue (Ingress + Transit) + Virtual Thread per Circuit
-4. **Event-Driven Synchronization** - Zero-latency await() using wait/notify (no polling)
-5. **Pipeline Fusion** - JVM-style optimization of adjacent transformations
-6. **Immutable State** - Slot-based state management with value semantics
-7. **Resource Lifecycle** - Explicit cleanup via `close()` on all components
-8. **Thread Safety** - Concurrent collections where needed, immutability elsewhere
-9. **Clear Separation** - Public API (interfaces) vs internal implementation (concrete classes)
+3. **JCTools-Based Circuit** - MpscUnboundedArrayQueue for wait-free producer path
+4. **Dual-Queue Architecture** - Ingress (external) + Transit (cascading) with priority ordering
+5. **Lazy Thread Initialization** - Virtual thread starts only on first emission
+6. **Pipeline Fusion** - JVM-style optimization of adjacent transformations
+7. **Immutable State** - Slot-based state management with value semantics
+8. **Resource Lifecycle** - Explicit cleanup via `close()` on all components
+9. **Thread Safety** - Concurrent collections where needed, immutability elsewhere
+10. **Clear Separation** - Public API (interfaces) vs internal implementation (Fs-prefixed classes)
 
 ### What We DO Optimize
 
+✅ **Lazy Thread Start** - Massive wins on await benchmarks (-97% to -100%)
 ✅ **Pipeline Fusion** - Automatic optimization of adjacent skip/limit operations
-✅ **Event-Driven Await** - Zero-latency synchronization (no polling)
-✅ **Name Interning** - InternedName identity-based caching
+✅ **Name Interning** - FsName identity-based caching with cached path generation
+✅ **JCTools MPSC** - Wait-free producer path, chunked allocation
 
 ### What We DON'T Do
 
 ❌ **No premature optimization** - Keep it simple first
 ❌ **No factory abstractions** - Direct component creation
 ❌ **No complex caching** - Simple ConcurrentHashMap patterns
-❌ **No polling loops** - Event-driven synchronization instead
+❌ **No polling loops** - Spin-then-park synchronization
 
 **Philosophy:** Build it simple, build it correct, then optimize hot paths identified by profiling or architectural insight.
 
@@ -288,25 +266,18 @@ The API controls the type hierarchy to prevent incorrect compositions.
 
 ### Impact on Implementation
 
-**internal subscriber management doesn't implement Source:**
+**Our classes extend the non-sealed extension points:**
 
 ```java
-// Source is sealed, so this won't compile:
-public class internal subscriber management<E> implements Source<E> { }  // ❌
+// Circuit is non-sealed, so we can implement it
+public final class FsJctoolsCircuit implements FsInternalCircuit { }  // ✅
 
-// Instead, internal subscriber management is an internal utility:
-public class internal subscriber management<E> {
-    public Subscription subscribe(Subscriber<E> subscriber) { }  // ✅
-}
-```
+// FsInternalCircuit extends Circuit
+interface FsInternalCircuit extends Circuit { }  // ✅
 
-**Circuit/Conduit/Cell extend sealed types:**
-
-```java
-// These extend Context (which extends Source), so they inherit subscribe()
-public class SequentialCircuit implements Circuit { }  // ✅
-public class RoutingConduit<P, E> implements Conduit<P, E> { }  // ✅
-public class CellNode<I, E> implements Cell<I, E> { }  // ✅
+// Conduit and Cell are non-sealed
+public class FsConduit<P extends Percept, E> implements Conduit<P, E> { }  // ✅
+public class FsCell<I, E> implements Cell<I, E> { }  // ✅
 ```
 
 ### Everything is a Subject
@@ -395,16 +366,17 @@ Name brokerName = cortex().name("kafka.broker.1");
 
 **PREVIEW Change:** Cortex is now accessed statically via `Substrates.Cortex`, not instantiated.
 
-**Implementation:**
+**Implementation (FsCortex):**
 
 ```java
-public class CortexRuntime implements Cortex {
+public class FsCortex implements Cortex {
     private final Map<Name, Circuit> circuits = new ConcurrentHashMap<>();
     private final Map<Name, Scope> scopes = new ConcurrentHashMap<>();
 
     @Override
     public Circuit circuit(Name name) {
-        return circuits.computeIfAbsent(name, SequentialCircuit::new);
+        return circuits.computeIfAbsent(name, n ->
+            new FsJctoolsCircuit(new FsSubject<>(n, null, Circuit.class)));
     }
 }
 ```
@@ -417,8 +389,9 @@ public class CortexRuntime implements Cortex {
 
 **Key Features:**
 - Single virtual thread processes events with depth-first execution
+- **Lazy thread initialization** - thread starts only on first emission
 - Contains Conduits and Cells
-- Dual-queue Valve for deterministic ordering
+- JCTools MPSC queue for wait-free producer path
 - Component lifecycle management
 
 ```java
@@ -438,31 +411,42 @@ Cell<Signal, Signal> cell = circuit.cell(
 **Virtual CPU Core Pattern (Dual-Queue Architecture):**
 
 ```
-External Emissions → Ingress Queue (FIFO) →
-                                            → Valve Processor (Virtual Thread)
-Recursive Emissions → Transit Deque (FIFO) →   → Depth-First Execution
-                     (Priority)
+External Emissions → Ingress Queue (MPSC, wait-free) →
+                                                       → Virtual Thread Processor
+Cascading Emissions → Transit Deque (LIFO, priority) →   → Depth-First Execution
 ```
 
 **Guarantees:**
 - Events processed in deterministic order
-- Transit deque has priority (recursive before external)
-- Depth-first execution for nested emissions
-- No race conditions
+- Transit deque has priority (cascading before external)
+- True depth-first execution for nested emissions
+- No race conditions (single-threaded processing)
+- **Lazy start**: Thread not created until first emission
 
-**Implementation:**
+**Implementation (FsJctoolsCircuit):**
 
 ```java
-public class SequentialCircuit implements Circuit {
-    private final Valve valve;  // Dual-queue + Virtual Thread
-    private final Map<Name, Conduit<?, ?>> conduits = new ConcurrentHashMap<>();
+public final class FsJctoolsCircuit implements FsInternalCircuit {
+    // JCTools MPSC queue - wait-free producer, chunked allocation
+    private final MpscUnboundedArrayQueue<Task> ingress = new MpscUnboundedArrayQueue<>(1024);
 
-    public SequentialCircuit(Name name) {
-        this.valve = new Valve("circuit-" + name.part());
-    }
+    // Transit queue for cascading (circuit thread only, LIFO for depth-first)
+    private final ArrayDeque<Runnable> transit = new ArrayDeque<>();
 
-    public void schedule(Runnable task) {
-        valve.submit(task);  // Routes to Ingress or Transit based on thread
+    // Lazy thread initialization
+    private volatile Thread thread;  // Started on first enqueue
+    private volatile boolean started;  // Fast path check
+
+    private void ensureStarted() {
+        if (started) return;  // Fast path - no sync once started
+        synchronized (startLock) {
+            if (thread == null) {
+                thread = Thread.ofVirtual()
+                    .name("circuit-" + subject.name())
+                    .start(this::loop);
+                started = true;
+            }
+        }
     }
 }
 ```
@@ -529,26 +513,26 @@ messages.subscribe(
 );
 ```
 
-**Implementation:**
+**Implementation (FsConduit):**
 
 ```java
-public class RoutingConduit<P, E> implements Conduit<P, E> {
-    private final internal subscriber management<E> source;  // Internal subscriber management
-    private final Map<Name, EmissionChannel<E>> channels = new ConcurrentHashMap<>();
-    private final Consumer<Flow<E>> flowConfigurer;  // Transformations
+public class FsConduit<P extends Percept, E> implements Conduit<P, E> {
+    private final Map<Name, FsChannel<E>> channels = new ConcurrentHashMap<>();
+    private final List<Subscriber<E>> subscribers = new CopyOnWriteArrayList<>();
+    private final FsInternalCircuit circuit;
 
     @Override
-    public P get(Name subject) {
-        EmissionChannel<E> channel = channels.computeIfAbsent(
-            subject,
-            s -> new EmissionChannel<>(s, circuit.scheduler(), source, flowConfigurer)
-        );
-        return (P) channel.pipe();
+    @SuppressWarnings("unchecked")
+    public P get(Name name) {
+        return (P) channels.computeIfAbsent(name, n ->
+            new FsChannel<>(new FsSubject<>(n, parent, Channel.class), circuit, composer, configurer)
+        ).percept();
     }
 
     @Override
     public Subscription subscribe(Subscriber<E> subscriber) {
-        return source.subscribe(subscriber);  // Delegate to internal subscriber management
+        subscribers.add(subscriber);
+        return new FsSubscription(subject, () -> subscribers.remove(subscriber));
     }
 }
 ```
@@ -557,48 +541,41 @@ public class RoutingConduit<P, E> implements Conduit<P, E> {
 
 ### 5. Channel & Pipe (Emission)
 
-**Channel:** Named emission port
+**FsChannel:** Named emission port that creates async pipes
 
 ```java
-public class EmissionChannel<E> implements Channel<E> {
-    private final ProducerPipe<E> cachedPipe;
+public class FsChannel<E> implements Channel<E> {
+    private final FsAsyncPipe<E> pipe;  // Cached async pipe
 
     @Override
     public Pipe<E> pipe() {
-        return cachedPipe;  // Returns cached ProducerPipe
+        return pipe;  // Returns cached FsAsyncPipe
     }
 }
 ```
 
-**ProducerPipe:** Producer-side pipe that emits INTO the conduit system
+**FsAsyncPipe:** Async pipe that routes through the circuit
 
 ```java
-public class ProducerPipe<E> implements Pipe<E> {
-    private final Subject<Channel<E>> channelSubject;
-    private final Consumer<Capture<E, Channel<E>>> subscriberNotifier;
-    private final TransformationPipeline<E> flow;  // Optional transformations
+public class FsAsyncPipe<E> implements Pipe<E> {
+    private final FsInternalCircuit circuit;
+    private final Consumer<Object> receptor;
 
     @Override
     public void emit(E value) {
-        // Apply transformations (if configured)
-        E transformed = flow != null ? flow.apply(value) : value;
-        if (transformed == null) return;  // Filtered out
+        circuit.enqueue(this, value);  // ← Routes to circuit's ingress queue
+    }
 
-        // Post to Circuit queue → notifies subscribers
-        scheduler.schedule(() -> {
-            Capture<E, Channel<E>> capture = new SubjectCapture<>(channelSubject, transformed);
-            subscriberNotifier.accept(capture);
-        });
+    void deliver(Object value) {
+        receptor.accept(value);  // Called by circuit thread
     }
 }
 ```
 
-**Consumer Side:** Lambdas/Observers registered via `Registrar`
-
-The consumer side uses the Registrar API's `register(Observer<E>)` convenience method, which accepts lambdas directly:
+**Consumer Side:** Lambdas registered via `Registrar`
 
 ```java
-// Registrar creates inline Pipe internally - no ConsumerPipe class needed
+// Registrar wraps lambda in FsConsumerPipe
 conduit.subscribe((subject, registrar) -> {
     registrar.register(emission -> {
         // Lambda invoked BY Conduit when emissions arrive
@@ -613,18 +590,18 @@ The `Pipe<E>` interface serves **dual purposes** via a single `emit()` method:
 
 | Side | Implementation | Who Calls `emit()` | What It Does |
 |------|---------------|-------------------|--------------|
-| **Producer** | ProducerPipe | Application code | Posts to circuit queue → notifies subscribers |
-| **Consumer** | Lambda/Observer | Conduit (during dispatch) | Invokes user lambda via Registrar |
+| **Producer** | FsAsyncPipe | Application code | Posts to circuit queue → notifies subscribers |
+| **Consumer** | FsConsumerPipe | Conduit (during dispatch) | Invokes user lambda via Registrar |
 
 ```java
 // PRODUCER SIDE
-ProducerPipe<Long> producer = conduit.get("sensor1");
-producer.emit(42L);  // ← Application calls emit() to produce INTO system
+Pipe<Long> producer = conduit.get(cortex().name("sensor1"));
+producer.emit(42L);  // ← Routes to circuit's ingress queue
 
 // CONSUMER SIDE (registered by subscriber)
-registrar.register(ConsumerPipe.of(value -> {
-    System.out.println(value);  // ← Conduit calls emit() to deliver FROM system
-}));
+registrar.register(value -> {
+    System.out.println(value);  // ← Called by circuit thread during dispatch
+});
 ```
 
 **With Transformations (Flow/Sift):**
@@ -676,24 +653,22 @@ brokerCell.input(jmxClient.fetchStats());
 // Transformed through hierarchy → cluster health emitted
 ```
 
-**Implementation:**
+**Implementation (FsCell):**
 
 ```java
-public class CellNode<I, E> implements Cell<I, E> {
-    private final Function<I, E> transformer;  // I → E transformation
-    private final internal subscriber management<E> source;
-    private final Map<Name, CellNode<E, ?>> children = new ConcurrentHashMap<>();
+public class FsCell<I, E> implements Cell<I, E> {
+    private final FsInternalCircuit circuit;
+    private final Composer<E, Pipe<I>> ingress;
+    private final Composer<E, Pipe<E>> egress;
+    private final Receptor<? super E> receptor;
+    private final Map<Name, FsCell<E, ?>> children = new ConcurrentHashMap<>();
 
     @Override
-    public <O> Cell<E, O> cell(Name name, Function<E, O> transformer) {
+    public <O> Cell<E, O> cell(Name name, Composer<O, Pipe<E>> ingress,
+                                Composer<O, Pipe<O>> egress, Receptor<? super O> receptor) {
         return children.computeIfAbsent(name, n ->
-            new CellNode<>(n, this, transformer, circuit)
+            new FsCell<>(new FsSubject<>(n, subject, Cell.class), circuit, ingress, egress, receptor)
         );
-    }
-
-    public void input(I value) {
-        E transformed = transformer.apply(value);
-        source.emit(transformed);  // Emit to subscribers
     }
 }
 ```
@@ -719,36 +694,7 @@ scope.close();  // Closes all registered resources automatically
 
 ---
 
-### 9. internal subscriber management (Internal Subscriber Management)
-
-**Purpose:** Internal utility for managing subscribers (does NOT implement Source)
-
-```java
-public class internal subscriber management<E> {
-    private final List<Subscriber<E>> subscribers = new CopyOnWriteArrayList<>();
-
-    public Subscription subscribe(Subscriber<E> subscriber) {
-        subscribers.add(subscriber);
-        return () -> subscribers.remove(subscriber);
-    }
-
-    public void emit(E event) {
-        for (Subscriber<E> subscriber : subscribers) {
-            // Notify all subscribers
-        }
-    }
-}
-```
-
-**Why CopyOnWriteArrayList?**
-- Read-heavy workload (many emits, few subscribes)
-- Emissions happen millions/second
-- Subscriptions happen rarely (at startup)
-- No lock contention during hot path
-
----
-
-### 10. State & Slot (Immutable State)
+### 8. State & Slot (Immutable State)
 
 **Purpose:** Thread-safe state management
 
@@ -780,134 +726,156 @@ State newState = state.state(cortex().name("heap-used"), 900_000_000L);
 
 ```
 1. Producer:
-   conduit.get(name) → Returns Pipe
-   pipe.emit(value) → Applies transformations
+   conduit.get(name) → Returns FsAsyncPipe
+   pipe.emit(value) → Routes to circuit
 
-2. Pipe:
-   Transformations applied (sift, limit, sample)
-   Transformed value → internal subscriber management.emit()
+2. FsAsyncPipe:
+   ensureStarted() → Lazy thread start
+   ingress.offer(new Task(pipe, value)) → Wait-free enqueue
 
-3. internal subscriber management:
+3. FsJctoolsCircuit (virtual thread):
+   Drains transit stack (depth-first priority)
+   Drains ingress queue (bulk drain)
+   Calls FsAsyncPipe.deliver(value)
+
+4. FsConduit.dispatch:
    Iterates subscribers (CopyOnWriteArrayList)
-   Calls subscriber callbacks
+   Calls subscriber callbacks with value
 
-4. Subscriber:
-   Receives emission via registered Pipe
+5. Subscriber:
+   Receives emission via registered callback
    Processes event
 ```
 
 ### Virtual CPU Core Pattern
 
 ```
-Circuit Queue (FIFO):
-  [Event 1] → [Event 2] → [Event 3] → ...
-      ↓
-  Single Virtual Thread (daemon)
-      ↓
-  Process in Order (no race conditions)
-      ↓
-  Emit to Subscribers
+FsJctoolsCircuit:
+  Ingress (MpscUnboundedArrayQueue):
+    [Task 1] → [Task 2] → [Task 3] → ...
+        ↓
+  Transit (ArrayDeque, LIFO):
+    [Cascade 1] ← [Cascade 2] ← ...  (priority)
+        ↓
+  Single Virtual Thread (lazy-started)
+        ↓
+  Process in Order (depth-first)
+        ↓
+  Dispatch to Subscribers
 ```
 
 **Critical Insight:**
 - `pipe.emit(value)` returns **immediately** (async boundary)
-- Subscriber callbacks execute **asynchronously** on Queue thread
+- Thread is **lazy-started** on first emission
+- Subscriber callbacks execute **asynchronously** on circuit thread
 - **MUST use `circuit.await()` in tests** to wait for processing
 
 ---
 
-## Valve Pattern (Virtual CPU Core)
+## Circuit Implementation (FsJctoolsCircuit)
 
-**Core Concept:** Each Circuit contains a Valve - a dual-queue architecture (Ingress + Transit) + Virtual Thread that processes emissions with depth-first execution.
+**Core Concept:** Each Circuit uses a JCTools MPSC queue + Transit deque + Virtual Thread that processes emissions with depth-first execution. The thread is **lazily initialized** on first emission.
 
-### What is a Valve?
+### Circuit Architecture
 
 ```java
-public class Valve implements AutoCloseable {
-    private final BlockingQueue<Runnable> ingressQueue;  // External emissions (FIFO)
-    private final BlockingDeque<Runnable> transitDeque;  // Recursive emissions (priority, FIFO)
-    private final Thread processor;                       // Virtual thread
-    private final Object idleLock;                        // Event-driven synchronization
+public final class FsJctoolsCircuit implements FsInternalCircuit {
+    // JCTools MPSC queue - wait-free producer path
+    private final MpscUnboundedArrayQueue<Task> ingress;
 
-    // Emissions → Tasks (routed based on calling thread)
-    public boolean submit(Runnable task);
+    // Transit queue for cascading (LIFO for true depth-first)
+    private final ArrayDeque<Runnable> transit;
 
-    // Event-driven await (zero-latency, no polling)
-    public void await(String contextName);
+    // Lazy-started virtual thread
+    private volatile Thread thread;
+    private volatile boolean started;  // Fast path check
+    private final AtomicBoolean parked = new AtomicBoolean(false);
 }
 ```
 
 ### Architecture
 
 ```
-Circuit
-  └── Valve ("circuit-name")
-        ├── Ingress Queue<Runnable>     (External emissions, FIFO)
-        ├── Transit Deque<Runnable>     (Recursive emissions, FIFO, priority)
-        ├── Virtual Thread              (parks when both empty, unparks on task)
-        └── Object idleLock             (wait/notify synchronization)
+Circuit (FsJctoolsCircuit)
+  ├── Ingress (MpscUnboundedArrayQueue)  (External emissions, MPSC, wait-free)
+  ├── Transit (ArrayDeque)               (Cascading emissions, LIFO, priority)
+  ├── Virtual Thread                     (lazy-started, spin-then-park)
+  └── AtomicBoolean parked               (fast unpark signaling)
 
 Emission Flow:
   External Thread:
     Pipe.emit(value)
-      → Valve.submit(task)              // Route to Ingress
-        → ingressQueue.offer(task)      // FIFO enqueue
+      → ensureStarted()                  // Lazy thread start
+      → ingress.offer(new Task(...))     // Wait-free enqueue
+      → if (parked.get() && parked.CAS)  // Fast path check
+          LockSupport.unpark(thread)
 
-  Circuit Thread (recursive):
-    Pipe.emit(value)
-      → Valve.submit(task)              // Route to Transit
-        → transitDeque.offerLast(task)  // Append to Transit (FIFO within batch)
+  Circuit Thread (cascading):
+    Subscriber callback emits
+      → transit.push(task)               // LIFO for depth-first
 
-  Processor:
-    → transitDeque.pollFirst()          // Check Transit first (priority)
-    → ingressQueue.take()               // If Transit empty, take from Ingress
-      → task.run()                      // Execute
-        → notifyAll()                   // Wake awaiting threads
+  Processor Loop:
+    → drain transit (LIFO - depth-first)
+    → drain ingress (bulk drain)
+        → after each: drain transit again (priority)
+    → spin-then-park if no work
 ```
 
-### Event-Driven Synchronization
+### Lazy Thread Initialization
 
-**Before (Polling):**
+The key optimization that enables massive benchmark wins:
+
 ```java
-// Old approach - polling with Thread.sleep(10)
-while (running && (executing || !queue.isEmpty())) {
-    Thread.sleep(10);  // ❌ 0-10ms latency, CPU waste
-}
-```
-
-**After (Event-Driven):**
-```java
-// New approach - wait/notify
-synchronized (idleLock) {
-    // Check BOTH queues
-    while (running && (executing || !ingressQueue.isEmpty() || !transitDeque.isEmpty())) {
-        idleLock.wait();  // ✅ <1ms latency, zero CPU
-    }
-}
-
-// Processor notifies when idle:
-executing = false;
-if (ingressQueue.isEmpty() && transitDeque.isEmpty()) {
-    synchronized (idleLock) {
-        idleLock.notifyAll();  // Wake all waiters
+private void ensureStarted() {
+    if (started) return;  // Fast path - volatile read only
+    synchronized (startLock) {
+        if (thread == null) {
+            Thread t = Thread.ofVirtual()
+                .name("circuit-" + subject.name())
+                .start(this::loop);
+            thread = t;
+            threadId = t.threadId();  // Cache for fast comparison
+            started = true;
+        }
     }
 }
 ```
 
-**Benefits:**
-- ✅ **Zero latency** - Threads wake immediately when valve is idle
-- ✅ **Zero CPU waste** - No polling loops consuming cycles
-- ✅ **Scalable** - 1000 circuits don't create 1000 polling threads
-- ✅ **Precise** - Deterministic notification vs random 0-10ms delay
+**Benchmark Impact:**
+| Benchmark | Humainary | Fullerstack | Improvement |
+|-----------|-----------|-------------|-------------|
+| create_await_close | 10,730ns | 303ns | **-97%** |
+| hot_await_queue_drain | 5,798ns | 0.96ns | **-100%** |
+| close_idempotent_await | 8,438ns | 35ns | **-100%** |
 
-### Virtual CPU Core Guarantees
+### Await Implementation
 
-1. **Depth-First Execution** - Transit deque has priority over Ingress queue
-2. **Deterministic Ordering** - Tasks execute in predictable order (Transit FIFO, then Ingress FIFO)
+Uses CountDownLatch for precise synchronization:
+
+```java
+public void await() {
+    Thread t = thread;
+    if (t == null) {
+        return;  // Thread never started - nothing to await
+    }
+    if (Thread.currentThread() == t) {
+        throw new IllegalStateException("Cannot await from circuit thread");
+    }
+    // Submit sentinel task - when it runs, all prior work is done (FIFO)
+    var latch = new CountDownLatch(1);
+    submit(latch::countDown);
+    latch.await();
+}
+```
+
+### Circuit Guarantees
+
+1. **Depth-First Execution** - Transit deque processed before ingress queue
+2. **Deterministic Ordering** - Tasks execute in predictable order
 3. **Single-Threaded** - No concurrent execution within Circuit domain
-4. **Thread Isolation** - Each Circuit has independent Valve
-5. **Lock-Free** - Dual-queue handles concurrency, no locks in Circuit code
-6. **Event-Driven** - Parking/unparking via BlockingQueue.take() and wait/notify
+4. **Lazy Start** - Thread only created when first emission occurs
+5. **Wait-Free Producers** - JCTools MPSC queue for external emissions
+6. **Spin-Then-Park** - Brief spin before parking reduces wake-up latency
 
 ---
 
@@ -1092,17 +1060,17 @@ Channel<Metric> milesInB = conduitB.get(cortex().name("Miles"));
 Simple and effective - ConcurrentHashMap everywhere:
 
 ```
-CortexRuntime
+FsCortex
 ├── circuits: ConcurrentHashMap<Name, Circuit>
 └── scopes: ConcurrentHashMap<Name, Scope>
 
-SequentialCircuit
-└── conduits: ConcurrentHashMap<Name, Conduit>
+FsJctoolsCircuit
+└── conduits: created via FsConduit
 
-RoutingConduit
-└── channels: ConcurrentHashMap<Name, Channel>
+FsConduit
+└── channels: ConcurrentHashMap<Name, FsChannel>
 
-CellNode
+FsCell
 └── children: ConcurrentHashMap<Name, Cell>
 ```
 
@@ -1116,19 +1084,33 @@ CellNode
 ### Performance Characteristics
 
 **Test Suite:**
-- 497 tests in ~12 seconds
-- 0 failures, 0 errors
-- Includes 308 tests from official Substrates testkit
+- 381 TCK tests passing (100% compliance)
+- 150 JMH benchmarks across 10 groups
+
+**Benchmark Summary (Fullerstack vs Humainary):**
+- **Fullerstack Wins:** 36 (24%)
+- **Humainary Wins:** 99 (66%)
+- **Ties:** 14 (9%)
+
+**Key Fullerstack Wins:**
+| Category | Benchmark | Improvement |
+|----------|-----------|-------------|
+| Await | create_await_close | -97% |
+| Await | hot_await_queue_drain | -100% |
+| Names | name_compare | -89% |
+| Names | name_path_generation | -96% |
+| Subscriber | close_*_await | -98% to -100% |
 
 **Design Target:**
 - 100k+ metrics @ 1Hz
 - ~2% CPU usage (estimated)
 - ~200-300MB memory
 
-**Per-Operation Costs:**
+**Per-Operation Costs (Fullerstack):**
 - Component lookup: ~5-10ns (ConcurrentHashMap)
-- Pipe emission: ~100-300ns (with transformations)
-- Subscriber notification: ~20-50ns per subscriber
+- Pipe emission: ~17-27ns (async, with flow)
+- Name comparison: ~4ns (identity-based)
+- Path generation: ~1-14ns (cached)
 
 ---
 
@@ -1160,11 +1142,12 @@ All components implement `Resource` with `close()`:
 
 ```
 Scope.close()
-  → Circuit.close()
-    → Conduit.close()
-      → Channel.close()
-    → Valve.close()
-      → Shutdown virtual thread processor
+  → FsScope.close()
+    → Circuit.close() (for each registered)
+      → FsJctoolsCircuit.close()
+        → running = false
+        → LockSupport.unpark(thread)
+        → thread.join()
 ```
 
 **Best Practices:**
@@ -1197,52 +1180,63 @@ try {
 
 ```java
 import static io.humainary.substrates.api.Substrates.*;
-import io.humainary.substrates.ext.serventis.ext.Monitors;
+import io.humainary.substrates.ext.serventis.opt.tool.*;
+import io.humainary.substrates.ext.serventis.opt.exec.*;
+import io.humainary.substrates.ext.serventis.opt.flow.*;
+import io.humainary.substrates.ext.serventis.sdk.*;
 
 // Create Circuit
 Circuit circuit = cortex().circuit(cortex().name("kafka.monitoring"));
 
-// Create Conduit using Serventis Monitors composer
-Conduit<Monitor, Monitors.Status> monitors = circuit.conduit(
-    cortex().name("monitors"),
-    Monitors::composer  // Uses Serventis composer
-);
+// Tool: Counter for request metrics
+Conduit<Counter, Counters.Sign> counters = circuit.conduit(
+    cortex().name("counters"), Counters::composer);
+Counter requests = counters.get(cortex().name("broker-1.requests"));
+requests.increment();
 
-// Get Monitor instrument for JVM heap
-Monitor heapMonitor = monitors.get(cortex().name("broker-1.jvm.heap"));
+// Exec: Service for API health
+Conduit<Service, Services.Signal> services = circuit.conduit(
+    cortex().name("services"), Services::composer);
+Service api = services.get(cortex().name("broker-1.api"));
+api.call();
+api.succeeded();
 
-// Emit status using Monitor methods (no manual signal construction!)
-if (heapUsagePercent > 85) {
-    heapMonitor.degraded(Monitors.Confidence.HIGH);  // Convenience method
-    // Or: heapMonitor.status(Monitors.Condition.DEGRADED, Monitors.Confidence.HIGH);
+// Flow: Circuit breaker for fault tolerance
+Conduit<Breaker, Breakers.Signal> breakers = circuit.conduit(
+    cortex().name("breakers"), Breakers::composer);
+Breaker kafkaBreaker = breakers.get(cortex().name("kafka.breaker"));
+if (errorRate > 0.5) {
+    kafkaBreaker.trip();  // Open circuit
 }
 
-// Subscribe to all monitor statuses
-monitors.subscribe(
-    cortex().subscriber(
-        cortex().name("health-aggregator"),
-        (Subject<Channel<Monitors.Status>> subject, Registrar<Monitors.Status> registrar) -> {
-            registrar.register(status -> {
-                // status is Monitors.Status record with condition and confidence
-                if (status.condition() == Monitors.Condition.DEGRADED) {
-                    log.warn("Degraded: {} (confidence: {})",
-                        subject.name(), status.confidence());
-                }
-            });
+// SDK: Status for health assessment
+Conduit<Status, Statuses.Signal> statuses = circuit.conduit(
+    cortex().name("statuses"), Statuses::composer);
+Status health = statuses.get(cortex().name("broker-1.health"));
+if (heapUsage > 85) {
+    health.degraded();
+}
+
+// Subscribe to health statuses
+statuses.subscribe(cortex().subscriber(
+    cortex().name("health-aggregator"),
+    (subject, registrar) -> registrar.register(status -> {
+        if (status == Statuses.Signal.DEGRADED) {
+            log.warn("Degraded: {}", subject.name());
         }
-    )
-);
+    })
+));
 
 circuit.await();  // Wait for async processing in tests
 circuit.close();
 ```
 
 **Key Points:**
-- Use Serventis composer methods: `Monitors::composer`, `Queues::composer`, etc.
+- Use Serventis composer methods: `Counters::composer`, `Services::composer`, etc.
+- 7 categories: tool, data, exec, flow, pool, sync, role (plus SDK meta)
 - Call instrument methods, don't construct signals manually
-- Instruments emit signs/statuses automatically
-- Subject context comes from `monitors.get(name)` - it's in the Channel
-- Subscribers receive typed signs/statuses, not generic signals
+- Instruments emit typed signs/signals automatically
+- Subject context comes from `conduit.get(name)` - it's in the Channel
 
 ---
 
@@ -1250,14 +1244,21 @@ circuit.close();
 
 **Fullerstack Substrates:**
 
-✅ **Simple** - No complex optimizations, easy to understand
+✅ **Simple** - Flat package structure, Fs-prefixed classes, easy to understand
 ✅ **Correct** - 381/381 TCK tests passing (100% Humainary API compliance)
 ✅ **Lean** - Core implementation only, no application frameworks
-✅ **Thread-Safe** - Dual-queue Valve pattern, proper concurrent collections
+✅ **Optimized** - Lazy thread start, JCTools MPSC, cached name paths
+✅ **Thread-Safe** - Dual-queue pattern, proper concurrent collections
 ✅ **Clean** - Explicit resource lifecycle management
-✅ **Maintainable** - Clear architecture, good documentation
+✅ **Benchmarked** - 150 JMH benchmarks, 24% wins vs Humainary reference
 
-**Philosophy:** Build it simple, build it correct, optimize if needed.
+**Key Optimizations:**
+- **Lazy Thread Start** - Virtual thread created only on first emission (-97% to -100% on await benchmarks)
+- **JCTools MPSC Queue** - Wait-free producer path for external emissions
+- **Cached Path Generation** - Name.path() returns cached string (-96% improvement)
+- **Identity-Based Name Comparison** - Interned names enable fast equality checks (-89%)
+
+**Philosophy:** Build it simple, build it correct, then optimize hot paths identified by profiling.
 
 ---
 

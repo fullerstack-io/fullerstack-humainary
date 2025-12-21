@@ -52,23 +52,42 @@ public final class FsJctoolsCircuit implements FsInternalCircuit {
 
   // Circuit state
   private final Subject<Circuit> subject;
-  private final Thread thread;
+  private volatile Thread thread;  // Lazy-started
+  private volatile long threadId;  // Cached thread ID for fast comparison
+  private volatile boolean started;  // Fast path check (once true, never false)
   private volatile boolean running = true;
   private final AtomicBoolean parked = new AtomicBoolean(false);
   private final List<Subscriber<State>> subscribers = new ArrayList<>();
 
+  // Lock for lazy thread start
+  private final Object startLock = new Object();
+
   public FsJctoolsCircuit(Subject<Circuit> subject) {
     this.subject = subject;
-    this.thread = Thread.ofVirtual()
-        .name("circuit-" + subject.name())
-        .start(this::loop);
+    // Thread is started lazily on first enqueue
+  }
+
+  /** Ensure thread is started (lazy initialization with double-checked locking). */
+  private void ensureStarted() {
+    if (started) return;  // Fast path - no sync needed once started
+    synchronized (startLock) {
+      if (thread == null) {
+        Thread t = Thread.ofVirtual()
+            .name("circuit-" + subject.name())
+            .start(this::loop);
+        thread = t;
+        threadId = t.threadId();  // Cache thread ID for fast comparison
+        started = true;  // Publish after thread is assigned
+      }
+    }
   }
 
   @Override
   public <E> void enqueue(FsAsyncPipe<E> pipe, Object value) {
+    ensureStarted();  // Lazy start thread on first enqueue
     ingress.offer(new Task(pipe, value));
-    // CAS ensures only ONE producer wins and calls unpark
-    if (parked.compareAndSet(true, false)) {
+    // Fast path: check volatile first, only CAS if parked
+    if (parked.get() && parked.compareAndSet(true, false)) {
       LockSupport.unpark(thread);
     }
   }
@@ -80,12 +99,14 @@ public final class FsJctoolsCircuit implements FsInternalCircuit {
 
   @Override
   public boolean isCircuitThread() {
-    return Thread.currentThread() == thread;
+    // Fast path: compare thread IDs (long comparison is faster than object comparison)
+    return started && Thread.currentThread().threadId() == threadId;
   }
 
   @Override
   public void submit(Runnable task) {
-    if (Thread.currentThread() == thread) {
+    Thread t = thread;
+    if (t != null && Thread.currentThread() == t) {
       cascade(task);
     } else {
       FsAsyncPipe<Runnable> taskPipe = new FsAsyncPipe<>((FsSubject<?>) subject, null, this, Runnable::run);
@@ -151,7 +172,12 @@ public final class FsJctoolsCircuit implements FsInternalCircuit {
 
   @Override
   public void await() {
-    if (Thread.currentThread() == thread) {
+    Thread t = thread;
+    if (t == null) {
+      // Thread never started - nothing to await
+      return;
+    }
+    if (Thread.currentThread() == t) {
       throw new IllegalStateException("Cannot await from circuit thread");
     }
     // Submit a sentinel task and wait for it to complete.
@@ -168,9 +194,14 @@ public final class FsJctoolsCircuit implements FsInternalCircuit {
   @Override
   public void close() {
     running = false;
-    LockSupport.unpark(thread);
+    Thread t = thread;
+    if (t == null) {
+      // Thread never started - nothing to close
+      return;
+    }
+    LockSupport.unpark(t);
     try {
-      thread.join();
+      t.join();
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
     }

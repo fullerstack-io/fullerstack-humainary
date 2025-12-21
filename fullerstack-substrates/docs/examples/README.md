@@ -2,12 +2,17 @@
 
 Practical examples demonstrating common Substrates usage patterns.
 
+**Implementation:** Fullerstack Substrates (FsJctoolsCircuit)
+**API Version:** 1.0.0-PREVIEW
+**Java Version:** 25 (Virtual Threads + Preview Features)
+
 ## Quick Start Examples
 
 1. **[Hello Substrates](01-HelloSubstrates.md)** - Simplest producer-consumer example
-2. **[Transformations](02-Transformations.md)** - Using Sequencer for filtering and sampling
+2. **[Transformations](02-Transformations.md)** - Using Flow for filtering and sampling
 3. **[Multiple Subscribers](03-MultipleSubscribers.md)** - Fan-out pattern with multiple consumers
 4. **[Resource Management](04-ResourceManagement.md)** - Lifecycle management with Scope and Closure
+5. **[Semiotic Observability](05-SemioticObservability.md)** - Serventis instruments and context-based meaning
 
 ## Running Examples
 
@@ -95,9 +100,19 @@ try (Scope scope = cortex().scope(cortex().name("request"))) {
 3. **Subscribe early** before emitting to avoid missed events
 4. **Use circuit.await()** to wait for async processing (not Thread.sleep())
 5. **Check Subject.name()** in subscribers for conditional logic
+6. **Cache Pipes** for repeated emissions - don't call conduit.get() in loops
+7. **Lazy thread start** - Virtual thread only starts on first emission
+
+## Key Implementation Details
+
+- **FsJctoolsCircuit** - JCTools MPSC queue for wait-free producer path
+- **Lazy Thread** - Virtual thread starts only on first emission
+- **Depth-First** - Transit stack processed before ingress queue (cascading priority)
+- **CountDownLatch await** - Precise synchronization without polling
 
 ## Next Steps
 
-- Read the [Concepts Guide](../CONCEPTS.md) for deeper understanding
 - Review the [Architecture Guide](../ARCHITECTURE.md) for design details
-- Check the [Substrates API JavaDoc](https://github.com/humainary-io/substrates-api-java)
+- Read [Async Architecture](../ASYNC-ARCHITECTURE.md) for async patterns
+- Understand [Circuit Design](../CIRCUIT-DESIGN.md) for implementation details
+- Check the [Substrates API](https://github.com/humainary-io/substrates-api-java)
