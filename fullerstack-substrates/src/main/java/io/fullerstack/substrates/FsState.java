@@ -56,9 +56,18 @@ final class FsState
 
   @Override
   public Spliterator < Slot < ? > > spliterator () {
-    // Return a SIZED spliterator in most-recent-first order
+    // Return a SIZED spliterator in most-recent-first order (reverse of array)
+    int len = slots.length;
+    if (len == 0) {
+      return java.util.Spliterators.emptySpliterator();
+    }
+    // Create reversed array for spliterator
+    Slot<?>[] reversed = new Slot<?>[len];
+    for (int i = 0; i < len; i++) {
+      reversed[i] = slots[len - 1 - i];
+    }
     return java.util.Spliterators.spliterator (
-      slots,
+      reversed,
       java.util.Spliterator.ORDERED | java.util.Spliterator.SIZED | java.util.Spliterator.IMMUTABLE
     );
   }
@@ -245,10 +254,10 @@ final class FsState
     if ( count == 0 ) {
       return Stream.empty ();
     }
-    // Collect matches into exactly-sized array and stream with SIZED spliterator
+    // Collect matches into exactly-sized array in most-recent-first order (reverse iteration)
     Object[] matches = new Object[count];
     int idx = 0;
-    for ( int i = 0; i < len; i++ ) {
+    for ( int i = len - 1; i >= 0; i-- ) {
       Slot < ? > s = slots[i];
       if ( s.name () == targetName && targetType.isAssignableFrom ( s.type () ) ) {
         matches[idx++] = s.value ();

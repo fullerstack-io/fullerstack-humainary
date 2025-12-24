@@ -39,6 +39,7 @@ public final class FsConduit<P extends Percept, E>
     extends FsSubstrate<Conduit<P, E>> implements Conduit<P, E> {
 
   /// Per-channel state for lazy initialization and cached pipes.
+  /// All fields except channelSubject are only accessed from circuit thread.
   private static final class ChannelState<E> {
     final Subject<Channel<E>> channelSubject;
 
@@ -46,8 +47,9 @@ public final class FsConduit<P extends Percept, E>
     final Map<FsSubscriber<E>, List<Consumer<E>>> subscriberPipes = new IdentityHashMap<>();
 
     // Cached flat array for fast iteration (rebuilt when subscribers change)
-    volatile Consumer<E>[] pipes;
-    volatile int builtVersion = -1;
+    // Non-volatile: only accessed from circuit thread
+    Consumer<E>[] pipes;
+    int builtVersion = -1;
 
     ChannelState(Subject<Channel<E>> channelSubject) {
       this.channelSubject = channelSubject;
@@ -156,27 +158,29 @@ public final class FsConduit<P extends Percept, E>
       // Create channel state
       ChannelState<E> state = new ChannelState<>(channelSubject);
 
-      // The router - captures state, zero allocations on hot path after init
-      Consumer<E> router = emission -> {
-        if (!circuit.isRunning()) {
-          return;
-        }
-        circuit.submit(() -> emitToChannel(state, emission));
-      };
+      // Cast channel subject to pipe subject (same identity, different type param)
+      @SuppressWarnings("unchecked")
+      Subject<Pipe<E>> pipeSubject = (Subject<Pipe<E>>) (Subject<?>) channelSubject;
+
+      // Direct receiver that runs on circuit thread - NO intermediate pipe wrapper
+      // This avoids double-enqueue: channel.pipe().emit() → Task → emitToChannel
+      // Note: No isRunning() check - tasks already queued should complete during shutdown
+      Consumer<E> directReceiver = emission -> emitToChannel(state, emission);
 
       // Apply flow configurer if present
       Consumer<E> channelRouter;
       if (flowConfigurer != null) {
-        // Lazy subject creation - pass channelSubject as parent
-        Pipe<E> basePipe = new FsConsumerPipe<>(channelSubject, name, router);
-        FsFlow<E> flow = new FsFlow<>(channelSubject, name, basePipe);
+        // Flow needs a pipe to wrap - use directReceiver as terminal
+        Pipe<E> basePipe = new FsPipe<>(pipeSubject, circuit, directReceiver);
+        FsFlow<E> flow = new FsFlow<>(pipeSubject, circuit, basePipe);
         flowConfigurer.configure(flow);
         channelRouter = flow.pipe()::emit;
       } else {
-        channelRouter = router;
+        // No flow - use direct receiver (single Task per emission)
+        channelRouter = directReceiver;
       }
 
-      FsChannel<E> channel = new FsChannel<>(channelSubject, channelRouter);
+      FsChannel<E> channel = new FsChannel<>(channelSubject, circuit, channelRouter);
       P percept = composer.apply(channel);
 
       // Copy-on-write: create new maps with this entry
@@ -195,24 +199,24 @@ public final class FsConduit<P extends Percept, E>
 
   /// Emit to channel - called on circuit thread. Lazy init on first emit.
   private void emitToChannel(ChannelState<E> state, E emission) {
-    int currentVersion = this.version;
+    // Single volatile read at start (read-once principle)
+    int v = this.version;
+    Consumer<E>[] cachedPipes = state.pipes;
 
     // Check if we need to rebuild (first emit or subscriber change)
-    if (state.builtVersion != currentVersion) {
-      rebuildChannelPipes(state, currentVersion);
+    if (cachedPipes == null || state.builtVersion != v) {
+      rebuildChannelPipes(state, v);
+      cachedPipes = state.pipes;
+      if (cachedPipes == null) return;  // No subscribers
     }
 
-    // Hot path: iterate cached pipes array - NO ALLOCATIONS
-    Consumer<E>[] cachedPipes = state.pipes;
-    if (cachedPipes != null) {
-      for (Consumer<E> pipe : cachedPipes) {
-        pipe.accept(emission);
-      }
+    // Hot path: index-based loop (no iterator allocation)
+    for (int i = 0, len = cachedPipes.length; i < len; i++) {
+      cachedPipes[i].accept(emission);
     }
   }
 
   /// Empty array constant for no subscribers
-  @SuppressWarnings("unchecked")
   private static final FsSubscriber<?>[] EMPTY_SUBSCRIBERS = new FsSubscriber<?>[0];
 
   /// Get snapshot of current subscribers (creates if invalidated)
@@ -240,13 +244,15 @@ public final class FsConduit<P extends Percept, E>
     // Get current subscribers snapshot
     FsSubscriber<E>[] currentSubs = getSubscribersSnapshot();
 
-    // Remove pipes for unsubscribed subscribers (use identity-based contains)
-    state.subscriberPipes.keySet().removeIf(sub -> {
-      for (FsSubscriber<E> s : currentSubs) {
-        if (s == sub) return false; // Keep it
-      }
-      return true; // Remove it
-    });
+    // Create identity-based set for O(1) lookup instead of O(n) nested loop
+    java.util.Set<FsSubscriber<E>> activeSet =
+        java.util.Collections.newSetFromMap(new IdentityHashMap<>());
+    for (FsSubscriber<E> sub : currentSubs) {
+      activeSet.add(sub);
+    }
+
+    // Remove pipes for unsubscribed subscribers - O(n) instead of O(n*m)
+    state.subscriberPipes.keySet().removeIf(sub -> !activeSet.contains(sub));
 
     // Activate any NEW subscribers for this channel
     for (FsSubscriber<E> subscriber : currentSubs) {
@@ -274,7 +280,6 @@ public final class FsConduit<P extends Percept, E>
   }
 
   @Override
-  @SuppressWarnings("unchecked")
   public Subscription subscribe(Subscriber<E> subscriber) {
     if (subscriber.subject() instanceof FsSubject<?> subSubject) {
       FsSubject<?> subscriberCircuit = subSubject.findCircuitAncestor();

@@ -2,10 +2,10 @@ package io.fullerstack.substrates;
 
 import io.humainary.substrates.api.Substrates.Configurer;
 import io.humainary.substrates.api.Substrates.Flow;
-import io.humainary.substrates.api.Substrates.Name;
 import io.humainary.substrates.api.Substrates.Pipe;
 import io.humainary.substrates.api.Substrates.Receptor;
 import io.humainary.substrates.api.Substrates.Sift;
+import io.humainary.substrates.api.Substrates.Subject;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -28,9 +28,8 @@ import java.util.function.UnaryOperator;
  */
 public final class FsFlow<E> implements Flow<E> {
 
-  // For lazy subject creation in the final pipe
-  private final FsSubject<?> parent;
-  private final Name name;
+  private final Subject<Pipe<E>> subject;
+  private final FsInternalCircuit circuit;
 
   /// The target pipe that receives emissions after all transformations.
   private final Pipe<E> target;
@@ -40,29 +39,40 @@ public final class FsFlow<E> implements Flow<E> {
   private final List<Function<Consumer<E>, Consumer<E>>> operators = new ArrayList<>();
 
   /**
-   * Creates a new flow targeting the given pipe with lazy subject creation.
+   * Creates a new flow targeting the given pipe.
    *
-   * @param parent the parent subject (for hierarchy)
-   * @param name the pipe name (may be null for anonymous pipes)
+   * @param subject the subject identity (passed through from source)
+   * @param circuit the circuit that owns this flow
    * @param target the pipe that receives emissions
    */
-  public FsFlow(FsSubject<?> parent, Name name, Pipe<E> target) {
-    this.parent = parent;
-    this.name = name;
+  public FsFlow(Subject<Pipe<E>> subject, FsInternalCircuit circuit, Pipe<E> target) {
+    this.subject = subject;
+    this.circuit = circuit;
     this.target = target;
   }
 
   /// Returns the pipe that applies this flow's transformations.
   /// Operators are composed in order: first operator wraps second, etc.
   public Pipe<E> pipe() {
-    // Start with the target as the final downstream consumer
-    Consumer<E> consumer = target::emit;
+    // Start with the target's terminal consumer to avoid double-enqueue.
+    // Check target type and extract the appropriate consumer.
+    Consumer<E> consumer;
+    if (target instanceof FsFoldedPipe<E> foldedPipe) {
+      consumer = foldedPipe.receiver();  // Direct consumer for folded
+    } else if (target instanceof FsPipe<E> fsPipe) {
+      consumer = fsPipe.terminalReceiver();  // Direct consumer, no extra enqueue
+    } else {
+      consumer = target::emit;
+    }
     // Apply operators in reverse order so the first-added operator executes first
     for (int i = operators.size() - 1; i >= 0; i--) {
       consumer = operators.get(i).apply(consumer);
     }
-    // Lazy subject creation - pass parent + name to FsConsumerPipe
-    return new FsConsumerPipe<>(parent, name, consumer);
+    // Create appropriate pipe type based on circuit for folded optimization
+    if (circuit instanceof FsFoldedCircuit foldedCircuit) {
+      return new FsFoldedPipe<>(subject, foldedCircuit, consumer);
+    }
+    return new FsPipe<>(subject, circuit, consumer);
   }
 
   @Override

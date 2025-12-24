@@ -10,25 +10,30 @@ import java.util.function.Consumer;
 /// A registrar that collects pipes during subscriber callback.
 ///
 /// @param <E> the emission type
-public final class FsRegistrar < E >
-  implements Registrar < E > {
+public final class FsRegistrar<E> implements Registrar<E> {
 
   /// Pipes registered by the subscriber.
-  private final List < Consumer < E > > pipes = new ArrayList <> ();
+  private final List<Consumer<E>> pipes = new ArrayList<>();
 
   @Override
-  public void register ( Receptor < ? super E > receptor ) {
-    pipes.add ( receptor::receive );
+  public void register(Receptor<? super E> receptor) {
+    // Store receptor directly as Consumer to minimize indirection
+    pipes.add(receptor::receive);
   }
 
   /// Returns the registered pipes.
-  public List < Consumer < E > > pipes () {
+  public List<Consumer<E>> pipes() {
     return pipes;
   }
 
   @Override
-  public void register ( Pipe < ? super E > pipe ) {
-    pipes.add ( pipe::emit );
+  @SuppressWarnings("unchecked")
+  public void register(Pipe<? super E> pipe) {
+    // If pipe is FsPipe, use terminal receiver to avoid double-enqueue
+    if (pipe instanceof FsPipe<?> fsPipe) {
+      pipes.add((Consumer<E>) fsPipe.terminalReceiver());
+    } else {
+      pipes.add(pipe::emit);
+    }
   }
-
 }

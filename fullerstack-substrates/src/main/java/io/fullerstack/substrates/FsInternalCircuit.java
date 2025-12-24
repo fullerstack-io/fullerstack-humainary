@@ -1,17 +1,15 @@
 package io.fullerstack.substrates;
 
 import io.humainary.substrates.api.Substrates.Circuit;
+import java.util.function.Consumer;
 
 /**
  * Internal interface for circuit implementations to support FsConduit/FsCell and async pipes.
  *
- * <p>This interface exposes the internal methods needed by FsConduit, FsCell, and FsAsyncPipe to
+ * <p>This interface exposes the internal methods needed by FsConduit, FsCell, and FsPipe to
  * function correctly with any Circuit implementation.
  */
 public interface FsInternalCircuit extends Circuit {
-
-  /** Submits a task to be executed on the circuit thread. */
-  void submit(Runnable task);
 
   /** Returns true if the circuit is still running. */
   boolean isRunning();
@@ -20,24 +18,14 @@ public interface FsInternalCircuit extends Circuit {
   boolean isCircuitThread();
 
   /**
-   * Enqueues a value to the ingress queue for async processing.
+   * Enqueues a task for execution on the circuit thread.
    *
-   * <p>This method queues the emission to the circuit's ingress queue for processing by the
-   * circuit thread. The pipe's deliver() method will be called on the circuit thread.
+   * <p>If called from the circuit thread, adds to transit queue (cascading). If called from
+   * external thread, adds to ingress queue.
    *
-   * @param pipe the pipe that is emitting
-   * @param value the value to emit
-   * @param <E> the emission type
+   * @param receiver the consumer to invoke with the value
+   * @param value the value to pass to the receiver
    */
-  <E> void enqueue(FsAsyncPipe<E> pipe, Object value);
+  void enqueue(Consumer<?> receiver, Object value);
 
-  /**
-   * Adds a task to the transit queue for cascading (depth-first) processing.
-   *
-   * <p>This method should only be called from the circuit thread. Tasks added here have priority
-   * over the ingress queue, ensuring depth-first processing of cascading emissions.
-   *
-   * @param task the task to cascade
-   */
-  void cascade(Runnable task);
 }

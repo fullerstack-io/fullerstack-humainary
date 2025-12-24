@@ -23,6 +23,10 @@ final class FsCortex implements Cortex {
   /// Cached Name for anonymous circuits.
   static final Name CIRCUIT_NAME = FsName.intern("circuit");
 
+  /// System property to select circuit implementation.
+  /// Values: "jctools" (default), "folded"
+  private static final String CIRCUIT_TYPE_PROPERTY = "fullerstack.circuit.type";
+
   private final Subject<Cortex> subject;
 
   /// ThreadLocal cache for Current instances - each thread gets one stable Current.
@@ -32,8 +36,13 @@ final class FsCortex implements Cortex {
     this.subject = new FsSubject <> ( FsName.intern ( "cortex" ), Cortex.class );
     this.currentCache = ThreadLocal.withInitial ( () -> {
       Thread t = Thread.currentThread ();
+      String threadName = t.getName();
+      // Handle empty thread names (common with virtual threads)
+      if (threadName == null || threadName.isEmpty()) {
+        threadName = "vt-" + t.threadId();
+      }
       FsSubject < Current > currentSubject = new FsSubject <> (
-        FsName.parse ( "thread." + t.getName () ),
+        FsName.parse ( "thread." + threadName ),
         (FsSubject < ? >) subject,
         Current.class
       );
@@ -57,7 +66,12 @@ final class FsCortex implements Cortex {
     FsSubject < Circuit > circuitSubject = new FsSubject <> (
       name, (FsSubject < ? >) subject, Circuit.class
     );
-    return new FsJctoolsCircuit(circuitSubject);
+    // Select circuit implementation based on system property
+    String circuitType = System.getProperty(CIRCUIT_TYPE_PROPERTY, "jctools");
+    return switch (circuitType) {
+      case "folded" -> new FsFoldedCircuit(circuitSubject);
+      default -> new FsJctoolsCircuit(circuitSubject);
+    };
   }
 
   @Override

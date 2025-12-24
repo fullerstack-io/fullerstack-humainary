@@ -19,36 +19,37 @@ import io.humainary.substrates.api.Substrates.State;
 import io.humainary.substrates.api.Substrates.Subject;
 import io.humainary.substrates.api.Substrates.Subscriber;
 import io.humainary.substrates.api.Substrates.Subscription;
-import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.ArrayDeque;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.LockSupport;
 import java.util.function.BiConsumer;
-import org.jctools.queues.MpscUnboundedArrayQueue;
+import java.util.function.Consumer;
+import org.jctools.queues.MpscUnboundedXaddArrayQueue;
 
 /**
- * Circuit using JCTools MpscUnboundedArrayQueue.
+ * Circuit using JCTools MpscUnboundedXaddArrayQueue.
  *
- * <p>MpscUnboundedArrayQueue is optimized for MPSC pattern:
- * - Wait-free offer for producers
- * - Uses linked chunks (less allocation than CLQ)
- * - Better cache locality than CLQ
+ * <p>MpscUnboundedXaddArrayQueue uses XADD instead of CAS loop for reduced
+ * contention, and pooled chunks for reduced allocation overhead.
  */
 public final class FsJctoolsCircuit implements FsInternalCircuit {
 
+  /** Task record holding receiver and value - faster than lambda closure. */
+  private record Task(Consumer<?> receiver, Object value) {}
+
   private static final int SPIN_TRIES = 1000;
-  private static final int CHUNK_SIZE = 1024;  // Chunk size for unbounded queue
+  private static final int CHUNK_SIZE = 256;   // Smaller chunks for XADD variant
+  private static final int POOL_SIZE = 4;      // Pooled chunks to reduce allocation
 
-  // Task record - still allocates but JCTools doesn't allocate Node
-  private record Task(FsAsyncPipe<?> pipe, Object value) {}
+  // JCTools MPSC queue with XADD and pooled chunks
+  private final MpscUnboundedXaddArrayQueue<Task> ingress =
+      new MpscUnboundedXaddArrayQueue<>(CHUNK_SIZE, POOL_SIZE);
 
-  // JCTools MPSC queue - unbounded, chunked allocation
-  private final MpscUnboundedArrayQueue<Task> ingress = new MpscUnboundedArrayQueue<>(CHUNK_SIZE);
-
-  // Transit queue for cascading (consumer thread only)
-  private final ArrayDeque<Runnable> transit = new ArrayDeque<>();
+  // ArrayDeque for circuit-thread only (no memory barriers needed)
+  private final ArrayDeque<Task> transit = new ArrayDeque<>();
 
   // Circuit state
   private final Subject<Circuit> subject;
@@ -83,35 +84,25 @@ public final class FsJctoolsCircuit implements FsInternalCircuit {
   }
 
   @Override
-  public <E> void enqueue(FsAsyncPipe<E> pipe, Object value) {
-    ensureStarted();  // Lazy start thread on first enqueue
-    ingress.offer(new Task(pipe, value));
-    // Fast path: check volatile first, only CAS if parked
-    if (parked.get() && parked.compareAndSet(true, false)) {
-      LockSupport.unpark(thread);
+  public void enqueue(Consumer<?> receiver, Object value) {
+    Task task = new Task(receiver, value);
+    if (isCircuitThread()) {
+      // Transit path: direct to ArrayDeque (single-threaded, no barriers)
+      transit.offer(task);
+    } else {
+      // External path: through MPSC queue
+      ensureStarted();
+      ingress.offer(task);
+      if (parked.get() && parked.compareAndSet(true, false)) {
+        LockSupport.unpark(thread);
+      }
     }
-  }
-
-  @Override
-  public void cascade(Runnable task) {
-    transit.push(task);  // LIFO - most recent first (true depth-first)
   }
 
   @Override
   public boolean isCircuitThread() {
     // Fast path: compare thread IDs (long comparison is faster than object comparison)
     return started && Thread.currentThread().threadId() == threadId;
-  }
-
-  @Override
-  public void submit(Runnable task) {
-    Thread t = thread;
-    if (t != null && Thread.currentThread() == t) {
-      cascade(task);
-    } else {
-      FsAsyncPipe<Runnable> taskPipe = new FsAsyncPipe<>((FsSubject<?>) subject, null, this, Runnable::run);
-      enqueue(taskPipe, task);
-    }
   }
 
   @Override
@@ -125,20 +116,20 @@ public final class FsJctoolsCircuit implements FsInternalCircuit {
     for (;;) {
       boolean didWork = false;
 
-      // 1. Drain transit stack (LIFO - depth-first)
-      Runnable r;
-      while ((r = transit.poll()) != null) {
-        try { r.run(); } catch (Exception ignored) {}
+      // 1. Drain transit queue first (cascading emissions have priority)
+      Task task;
+      while ((task = transit.poll()) != null) {
+        runTask(task);
         didWork = true;
       }
 
-      // 2. Drain ingress using bulk drain
-      int drained = ingress.drain(task -> {
-        try { task.pipe.deliver(task.value); } catch (Exception ignored) {}
-        // Drain transit stack after each (cascading has priority)
-        Runnable tr;
+      // 2. Drain ingress, interleaving transit after each
+      int drained = ingress.drain(t -> {
+        runTask(t);
+        // Drain transit after each ingress task (cascading has priority)
+        Task tr;
         while ((tr = transit.poll()) != null) {
-          try { tr.run(); } catch (Exception ignored) {}
+          runTask(tr);
         }
       });
       if (drained > 0) didWork = true;
@@ -165,6 +156,15 @@ public final class FsJctoolsCircuit implements FsInternalCircuit {
     }
   }
 
+  /** Execute a task, swallowing exceptions. */
+  @SuppressWarnings("unchecked")
+  private void runTask(Task task) {
+    try {
+      ((Consumer<Object>) task.receiver()).accept(task.value());
+    } catch (Exception ignored) {
+    }
+  }
+
   @Override
   public Subject<Circuit> subject() {
     return subject;
@@ -178,12 +178,21 @@ public final class FsJctoolsCircuit implements FsInternalCircuit {
       return;
     }
     if (Thread.currentThread() == t) {
-      throw new IllegalStateException("Cannot await from circuit thread");
+      throw new IllegalStateException("Cannot call Circuit::await from within a circuit's thread");
     }
-    // Submit a sentinel task and wait for it to complete.
+    if (!running) {
+      // Circuit is closed - wait for thread to finish draining queues
+      try {
+        t.join();
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+      }
+      return;
+    }
+    // Enqueue a sentinel task and wait for it to complete.
     // When it runs, all prior work is done (FIFO ordering).
     var latch = new CountDownLatch(1);
-    submit(latch::countDown);
+    enqueue(ignored -> latch.countDown(), null);
     try {
       latch.await();
     } catch (InterruptedException e) {
@@ -199,12 +208,9 @@ public final class FsJctoolsCircuit implements FsInternalCircuit {
       // Thread never started - nothing to close
       return;
     }
+    // Just signal shutdown - don't block waiting for completion
+    // Use await() if you need to wait for pending emissions to complete
     LockSupport.unpark(t);
-    try {
-      t.join();
-    } catch (InterruptedException e) {
-      Thread.currentThread().interrupt();
-    }
   }
 
   @Override
@@ -238,52 +244,81 @@ public final class FsJctoolsCircuit implements FsInternalCircuit {
   @Override
   public <E> Pipe<E> pipe(Pipe<E> target) {
     requireNonNull(target);
-    return new FsAsyncPipe<>((FsSubject<?>) subject, null, this, target::emit);
+    // Chain: use fast-path constructor if target is FsPipe
+    if (target instanceof FsPipe<E> fsPipe) {
+      return new FsPipe<>(target.subject(), this, fsPipe);
+    }
+    return new FsPipe<>(target.subject(), this, target::emit);
   }
 
   @Override
   public <E> Pipe<E> pipe(Receptor<E> receptor) {
-    return new FsAsyncPipe<>((FsSubject<?>) subject, null, this, receptor::receive);
+    // No source pipe - create a new subject
+    Subject<Pipe<E>> pipeSubject = new FsSubject<>(null, (FsSubject<?>) subject, Pipe.class);
+    return new FsPipe<>(pipeSubject, this, receptor::receive);
   }
 
   @Override
   public <E> Pipe<E> pipe(Pipe<E> target, Configurer<Flow<E>> configurer) {
-    FsAsyncPipe<E> asyncPipe = new FsAsyncPipe<>((FsSubject<?>) subject, null, this, target::emit);
-    FsFlow<E> flow = new FsFlow<>((FsSubject<?>) subject, null, asyncPipe);
+    // Chain with flow: use fast-path constructor if target is FsPipe
+    FsPipe<E> asyncPipe;
+    if (target instanceof FsPipe<E> fsPipe) {
+      asyncPipe = new FsPipe<>(target.subject(), this, fsPipe);
+    } else {
+      asyncPipe = new FsPipe<>(target.subject(), this, target::emit);
+    }
+    FsFlow<E> flow = new FsFlow<>(target.subject(), this, asyncPipe);
     configurer.configure(flow);
     return flow.pipe();
   }
 
   @Override
   public <E> Pipe<E> pipe(Receptor<E> receptor, Configurer<Flow<E>> configurer) {
-    FsAsyncPipe<E> asyncPipe = new FsAsyncPipe<>((FsSubject<?>) subject, null, this, receptor::receive);
-    FsFlow<E> flow = new FsFlow<>((FsSubject<?>) subject, null, asyncPipe);
+    // No source pipe - create a new subject
+    Subject<Pipe<E>> pipeSubject = new FsSubject<>(null, (FsSubject<?>) subject, Pipe.class);
+    FsPipe<E> asyncPipe = new FsPipe<>(pipeSubject, this, receptor::receive);
+    FsFlow<E> flow = new FsFlow<>(pipeSubject, this, asyncPipe);
     configurer.configure(flow);
     return flow.pipe();
   }
 
   @Override
   public <E> Pipe<E> pipe(Name name, Pipe<E> target) {
-    return new FsAsyncPipe<>((FsSubject<?>) subject, name, this, target::emit);
+    requireNonNull(target);
+    // Named chain: use fast-path constructor if target is FsPipe
+    if (target instanceof FsPipe<E> fsPipe) {
+      return new FsPipe<>(target.subject(), this, fsPipe);
+    }
+    return new FsPipe<>(target.subject(), this, target::emit);
   }
 
   @Override
   public <E> Pipe<E> pipe(Name name, Receptor<E> receptor) {
-    return new FsAsyncPipe<>((FsSubject<?>) subject, name, this, receptor::receive);
+    // Named pipe from receptor - create subject with name
+    Subject<Pipe<E>> pipeSubject = new FsSubject<>(name, (FsSubject<?>) subject, Pipe.class);
+    return new FsPipe<>(pipeSubject, this, receptor::receive);
   }
 
   @Override
   public <E> Pipe<E> pipe(Name name, Pipe<E> target, Configurer<Flow<E>> configurer) {
-    FsAsyncPipe<E> asyncPipe = new FsAsyncPipe<>((FsSubject<?>) subject, name, this, target::emit);
-    FsFlow<E> flow = new FsFlow<>((FsSubject<?>) subject, name, asyncPipe);
+    // Named chain with flow: use fast-path constructor if target is FsPipe
+    FsPipe<E> asyncPipe;
+    if (target instanceof FsPipe<E> fsPipe) {
+      asyncPipe = new FsPipe<>(target.subject(), this, fsPipe);
+    } else {
+      asyncPipe = new FsPipe<>(target.subject(), this, target::emit);
+    }
+    FsFlow<E> flow = new FsFlow<>(target.subject(), this, asyncPipe);
     configurer.configure(flow);
     return flow.pipe();
   }
 
   @Override
   public <E> Pipe<E> pipe(Name name, Receptor<E> receptor, Configurer<Flow<E>> configurer) {
-    FsAsyncPipe<E> asyncPipe = new FsAsyncPipe<>((FsSubject<?>) subject, name, this, receptor::receive);
-    FsFlow<E> flow = new FsFlow<>((FsSubject<?>) subject, name, asyncPipe);
+    // Named pipe from receptor - create subject with name
+    Subject<Pipe<E>> pipeSubject = new FsSubject<>(name, (FsSubject<?>) subject, Pipe.class);
+    FsPipe<E> asyncPipe = new FsPipe<>(pipeSubject, this, receptor::receive);
+    FsFlow<E> flow = new FsFlow<>(pipeSubject, this, asyncPipe);
     configurer.configure(flow);
     return flow.pipe();
   }
@@ -299,6 +334,13 @@ public final class FsJctoolsCircuit implements FsInternalCircuit {
   @SuppressWarnings("unchecked")
   public Subscription subscribe(Subscriber<State> subscriber) {
     requireNonNull(subscriber);
+    // Check for cross-circuit subscription
+    if (subscriber.subject() instanceof FsSubject<?> subSubject) {
+      FsSubject<?> subscriberCircuit = subSubject.findCircuitAncestor();
+      if (subscriberCircuit != null && subscriberCircuit != subject) {
+        throw new FsException("Subscriber belongs to a different circuit");
+      }
+    }
     subscribers.add(subscriber);
     return new FsSubscription((Subject<Subscription>) (Subject<?>) subject, () -> subscribers.remove(subscriber));
   }

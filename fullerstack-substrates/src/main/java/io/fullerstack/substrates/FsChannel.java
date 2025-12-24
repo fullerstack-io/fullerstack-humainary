@@ -21,15 +21,20 @@ final class FsChannel<E> implements Channel<E> {
   /// The subject identity for this channel.
   private final Subject<Channel<E>> subject;
 
+  /// The circuit that owns this channel.
+  private final FsInternalCircuit circuit;
+
   /// The emission consumer for routing emissions to subscribers.
   private final Consumer<E> router;
 
   /// Creates a new channel with the given subject and emission router.
   ///
   /// @param subject the subject identity for this channel
+  /// @param circuit the circuit that owns this channel
   /// @param router the consumer that routes emissions to subscribers
-  FsChannel(Subject<Channel<E>> subject, Consumer<E> router) {
+  FsChannel(Subject<Channel<E>> subject, FsInternalCircuit circuit, Consumer<E> router) {
     this.subject = subject;
+    this.circuit = circuit;
     this.router = router;
   }
 
@@ -42,26 +47,29 @@ final class FsChannel<E> implements Channel<E> {
   }
 
   /// Returns a new pipe for emitting to this channel.
-  /// Each call creates a new Pipe instance with a new Subject/Id (@New contract).
+  /// The pipe has its own subject with the channel as parent.
   ///
   /// @return A new pipe routing to this channel
   @Override
   public Pipe<E> pipe() {
-    // Lazy subject creation - pass parent and name, FsConsumerPipe creates subject on demand
-    return new FsConsumerPipe<>((FsSubject<?>) subject, subject.name(), router);
+    // Create pipe subject with channel as parent (same name, channel as parent)
+    Subject<Pipe<E>> pipeSubject = new FsSubject<>(
+        subject.name(), (FsSubject<?>) subject, Pipe.class);
+    return new FsPipe<>(pipeSubject, circuit, router);
   }
 
   /// Returns a new pipe with custom flow configuration.
+  /// The pipe has its own subject with the channel as parent.
   ///
   /// @param configurer A configurer responsible for configuring flow
   /// @return A new pipe instance with the configured flow
   @Override
   public Pipe<E> pipe(Configurer<Flow<E>> configurer) {
-    // Lazy subject creation - pass parent and name
-    FsSubject<?> parent = (FsSubject<?>) subject;
-    Pipe<E> basePipe = new FsConsumerPipe<>(parent, subject.name(), router);
-    // Apply flow configuration
-    FsFlow<E> flow = new FsFlow<>(parent, subject.name(), basePipe);
+    // Create pipe subject with channel as parent (same name, channel as parent)
+    Subject<Pipe<E>> pipeSubject = new FsSubject<>(
+        subject.name(), (FsSubject<?>) subject, Pipe.class);
+    Pipe<E> basePipe = new FsPipe<>(pipeSubject, circuit, router);
+    FsFlow<E> flow = new FsFlow<>(pipeSubject, circuit, basePipe);
     configurer.configure(flow);
     return flow.pipe();
   }

@@ -57,8 +57,3 @@ mvn test \
     -Dio.humainary.substrates.spi.provider=io.fullerstack.substrates.FsCortexProvider \
     "$@"
 
-echo ""
-echo "=========================================="
-echo "TCK Complete!"
-echo "Expected: 383 tests, 0 failures, 0 errors"
-echo "=========================================="

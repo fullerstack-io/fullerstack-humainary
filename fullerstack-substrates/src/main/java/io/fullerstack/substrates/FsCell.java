@@ -66,6 +66,9 @@ public final class FsCell<I, E> implements Cell<I, E> {
   /// The pipe that processes input (receives I, transforms to E).
   private final Pipe<I> ingressPipe;
 
+  /// Async pipe for receive() - single cascade/enqueue, avoids submit() overhead.
+  private final FsPipe<I> receivePipe;
+
   /// The receptor for final output.
   private final Receptor<? super E> receptor;
 
@@ -95,16 +98,22 @@ public final class FsCell<I, E> implements Cell<I, E> {
     Subject<Channel<E>> channelSubject = (Subject<Channel<E>>) (Subject<?>) subject;
 
     // The router consumer: delivers to receptor and notifies subscribers
-    this.internalChannel = new FsChannel<>(channelSubject, this::routeEmission);
+    this.internalChannel = new FsChannel<>(channelSubject, circuit, this::routeEmission);
 
     // Create egress pipe (processes E before final delivery)
     Pipe<E> egressPipe = egress.compose(internalChannel);
 
     // Create a channel that delivers to egress (using egressPipe::emit as the router)
-    FsChannel<E> egressChannel = new FsChannel<>(channelSubject, egressPipe::emit);
+    FsChannel<E> egressChannel = new FsChannel<>(channelSubject, circuit, egressPipe::emit);
 
     // Create ingress pipe (receives I, transforms to E, sends to egress)
     this.ingressPipe = ingress.compose(egressChannel);
+
+    // Create receive pipe - single cascade/enqueue, no double cascade via submit()
+    // Cast cell subject to pipe subject (same identity, different type param)
+    @SuppressWarnings("unchecked")
+    Subject<Pipe<I>> pipeSubject = (Subject<Pipe<I>>) (Subject<?>) subject;
+    this.receivePipe = new FsPipe<>(pipeSubject, circuit, ingressPipe::emit);
   }
 
   /// Creates a child cell that routes emissions to parent.
@@ -128,10 +137,16 @@ public final class FsCell<I, E> implements Cell<I, E> {
     // Child's router consumer sends to parent's internal handling
     Consumer<E> childRouter = e -> parentCell.handleChildEmission(childName, e);
 
-    this.internalChannel = new FsChannel<>(channelSubject, childRouter);
+    this.internalChannel = new FsChannel<>(channelSubject, circuit, childRouter);
 
-    // For children, ingress is a pipe that routes to the channel (lazy subject creation)
-    this.ingressPipe = (Pipe<I>) (Pipe<?>) new FsConsumerPipe<>((FsSubject<?>) subject, childName, childRouter);
+    // For children, ingress is a pipe that routes to the channel
+    // Child cells have I=E, so cast subject to Pipe<E> and then to Pipe<I>
+    Subject<Pipe<E>> childPipeSubjectE = (Subject<Pipe<E>>) (Subject<?>) subject;
+    this.ingressPipe = (Pipe<I>) (Pipe<?>) new FsPipe<>(childPipeSubjectE, circuit, childRouter);
+
+    // Create receive pipe - single cascade/enqueue, no double cascade via submit()
+    Subject<Pipe<I>> childPipeSubjectI = (Subject<Pipe<I>>) (Subject<?>) subject;
+    this.receivePipe = new FsPipe<>(childPipeSubjectI, circuit, ingressPipe::emit);
   }
 
   /// Routes an emission to receptor and subscribers.
@@ -202,8 +217,8 @@ public final class FsCell<I, E> implements Cell<I, E> {
 
   @Override
   public void receive(I emission) {
-    // Route input through circuit queue for async processing
-    circuit.submit(() -> ingressPipe.emit(emission));
+    // Route through async pipe - single cascade/enqueue, no submit() overhead
+    receivePipe.emit(emission);
   }
 
   @Override
