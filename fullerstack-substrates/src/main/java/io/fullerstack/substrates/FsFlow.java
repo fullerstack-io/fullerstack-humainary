@@ -2,7 +2,9 @@ package io.fullerstack.substrates;
 
 import io.humainary.substrates.api.Substrates.Configurer;
 import io.humainary.substrates.api.Substrates.Flow;
+import io.humainary.substrates.api.Substrates.Fluent;
 import io.humainary.substrates.api.Substrates.Pipe;
+import io.humainary.substrates.api.Substrates.Provided;
 import io.humainary.substrates.api.Substrates.Receptor;
 import io.humainary.substrates.api.Substrates.Sift;
 import io.humainary.substrates.api.Substrates.Subject;
@@ -26,10 +28,11 @@ import java.util.function.UnaryOperator;
  *
  * @param <E> the class type of emitted value
  */
+@Provided
 public final class FsFlow<E> implements Flow<E> {
 
   private final Subject<Pipe<E>> subject;
-  private final FsInternalCircuit circuit;
+  private final FsCircuit circuit;
 
   /// The target pipe that receives emissions after all transformations.
   private final Pipe<E> target;
@@ -45,7 +48,7 @@ public final class FsFlow<E> implements Flow<E> {
    * @param circuit the circuit that owns this flow
    * @param target the pipe that receives emissions
    */
-  public FsFlow(Subject<Pipe<E>> subject, FsInternalCircuit circuit, Pipe<E> target) {
+  public FsFlow(Subject<Pipe<E>> subject, FsCircuit circuit, Pipe<E> target) {
     this.subject = subject;
     this.circuit = circuit;
     this.target = target;
@@ -54,13 +57,10 @@ public final class FsFlow<E> implements Flow<E> {
   /// Returns the pipe that applies this flow's transformations.
   /// Operators are composed in order: first operator wraps second, etc.
   public Pipe<E> pipe() {
-    // Start with the target's terminal consumer to avoid double-enqueue.
-    // Check target type and extract the appropriate consumer.
+    // Start with the target's receiver to avoid double-enqueue.
     Consumer<E> consumer;
-    if (target instanceof FsFoldedPipe<E> foldedPipe) {
-      consumer = foldedPipe.receiver();  // Direct consumer for folded
-    } else if (target instanceof FsPipe<E> fsPipe) {
-      consumer = fsPipe.terminalReceiver();  // Direct consumer, no extra enqueue
+    if (target instanceof FsPipe<E> fsPipe) {
+      consumer = fsPipe.receiver();
     } else {
       consumer = target::emit;
     }
@@ -68,13 +68,10 @@ public final class FsFlow<E> implements Flow<E> {
     for (int i = operators.size() - 1; i >= 0; i--) {
       consumer = operators.get(i).apply(consumer);
     }
-    // Create appropriate pipe type based on circuit for folded optimization
-    if (circuit instanceof FsFoldedCircuit foldedCircuit) {
-      return new FsFoldedPipe<>(subject, foldedCircuit, consumer);
-    }
     return new FsPipe<>(subject, circuit, consumer);
   }
 
+  @Fluent
   @Override
   public Flow<E> diff() {
     operators.add(downstream -> {
@@ -89,6 +86,7 @@ public final class FsFlow<E> implements Flow<E> {
     return this;
   }
 
+  @Fluent
   @Override
   public Flow<E> diff(E initial) {
     operators.add(downstream -> {
@@ -103,6 +101,7 @@ public final class FsFlow<E> implements Flow<E> {
     return this;
   }
 
+  @Fluent
   @Override
   public Flow<E> guard(Predicate<? super E> predicate) {
     operators.add(
@@ -116,6 +115,7 @@ public final class FsFlow<E> implements Flow<E> {
     return this;
   }
 
+  @Fluent
   @Override
   public Flow<E> guard(E initial, BiPredicate<? super E, ? super E> predicate) {
     operators.add(downstream -> {
@@ -132,11 +132,13 @@ public final class FsFlow<E> implements Flow<E> {
     return this;
   }
 
+  @Fluent
   @Override
   public Flow<E> limit(int limit) {
     return limit((long) limit);
   }
 
+  @Fluent
   @Override
   public Flow<E> limit(long limit) {
     operators.add(downstream -> {
@@ -151,6 +153,7 @@ public final class FsFlow<E> implements Flow<E> {
     return this;
   }
 
+  @Fluent
   @Override
   public Flow<E> peek(Receptor<? super E> receptor) {
     operators.add(
@@ -163,6 +166,7 @@ public final class FsFlow<E> implements Flow<E> {
     return this;
   }
 
+  @Fluent
   @Override
   public Flow<E> reduce(E initial, BinaryOperator<E> operator) {
     operators.add(downstream -> {
@@ -178,12 +182,14 @@ public final class FsFlow<E> implements Flow<E> {
     return this;
   }
 
+  @Fluent
   @Override
   public Flow<E> replace(UnaryOperator<E> transformer) {
     operators.add(downstream -> v -> downstream.accept(transformer.apply(v)));
     return this;
   }
 
+  @Fluent
   @Override
   public Flow<E> sample(int sample) {
     operators.add(downstream -> {
@@ -199,6 +205,7 @@ public final class FsFlow<E> implements Flow<E> {
     return this;
   }
 
+  @Fluent
   @Override
   public Flow<E> sample(double probability) {
     operators.add(
@@ -212,6 +219,7 @@ public final class FsFlow<E> implements Flow<E> {
     return this;
   }
 
+  @Fluent
   @Override
   public Flow<E> sift(Comparator<? super E> comparator, Configurer<Sift<E>> configurer) {
     FsSift<E> sift = new FsSift<>(comparator);
@@ -228,6 +236,7 @@ public final class FsFlow<E> implements Flow<E> {
     return this;
   }
 
+  @Fluent
   @Override
   public Flow<E> skip(long n) {
     operators.add(downstream -> {

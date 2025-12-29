@@ -2,34 +2,20 @@
 description: Run SubscriberOps JMH benchmarks comparing Fullerstack vs Humainary
 ---
 
-**IMPORTANT: ALWAYS run the bash command with `run_in_background: true` to prevent interruption.**
+Run SubscriberOps JMH benchmarks using Humainary's official jmh.sh with Fullerstack as the SPI provider.
 
-Run SubscriberOps JMH benchmarks comparing Fullerstack vs Humainary implementation.
+## Instructions
 
-## Steps
-
-1. Run the benchmark script:
+**Run with `run_in_background: true`. Do NOT block waiting - just report the task ID.**
 
 ```bash
-/workspaces/fullerstack-humainary/scripts/benchmark.sh SubscriberOps
+cd /workspaces/fullerstack-humainary/fullerstack-substrates && \
+source /usr/local/sdkman/bin/sdkman-init.sh && sdk use java 25.0.1-open && \
+mvn clean install -DskipTests -q && \
+cd /workspaces/fullerstack-humainary/substrates-api-java && \
+SPI_GROUP=io.fullerstack SPI_ARTIFACT=fullerstack-substrates SPI_VERSION=1.0.0-RC1 \
+./jmh.sh SubscriberOps
 ```
 
-2. Present comparison table using Humainary baselines from BENCHMARKS.md:
-
-| Benchmark | Humainary (ns) | Fullerstack (ns) | Diff | Winner |
-|-----------|---------------:|----------------:|-----:|:------:|
-| close_five_conduits_await | 8,696 | X | X% | ? |
-| close_five_subscriptions_await | 8,631 | X | X% | ? |
-| close_idempotent_await | 8,438 | X | X% | ? |
-| close_idempotent_batch_await | 17.2 | X | X% | ? |
-| close_no_subscriptions_await | 8,450 | X | X% | ? |
-| close_no_subscriptions_batch_await | 14.2 | X | X% | ? |
-| close_one_subscription_await | 8,438 | X | X% | ? |
-| close_one_subscription_batch_await | 34.9 | X | X% | ? |
-| close_ten_conduits_await | 8,515 | X | X% | ? |
-| close_ten_subscriptions_await | 8,727 | X | X% | ? |
-| close_with_pending_emissions_await | 8,713 | X | X% | ? |
-
-**Summary:** X/11 Fullerstack wins, X/11 Humainary wins
-
-Diff = ((Fullerstack - Humainary) / Humainary * 100). Winner = lower time (faster).
+When complete, present comparison table using Humainary baselines from BENCHMARKS.md.
+Diff = ((Fullerstack - Humainary) / Humainary * 100). Winner = lower time.

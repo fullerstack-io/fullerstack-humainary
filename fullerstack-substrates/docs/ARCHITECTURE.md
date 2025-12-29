@@ -216,7 +216,7 @@ This is **semiotic observability** - meaning arises from the interplay between s
 
 1. **Simplified Design** - Flat package structure, single implementations, no factory abstractions
 2. **PREVIEW Sealed Hierarchy** - Type-safe API contracts enforced by sealed interfaces
-3. **JCTools-Based Circuit** - MpscUnboundedArrayQueue for wait-free producer path
+3. **Configurable Circuit Implementation** - JCtools (default) or Folded circuit via system property
 4. **Dual-Queue Architecture** - Ingress (external) + Transit (cascading) with priority ordering
 5. **Lazy Thread Initialization** - Virtual thread starts only on first emission
 6. **Pipeline Fusion** - JVM-style optimization of adjacent transformations
@@ -224,6 +224,23 @@ This is **semiotic observability** - meaning arises from the interplay between s
 8. **Resource Lifecycle** - Explicit cleanup via `close()` on all components
 9. **Thread Safety** - Concurrent collections where needed, immutability elsewhere
 10. **Clear Separation** - Public API (interfaces) vs internal implementation (Fs-prefixed classes)
+
+### Circuit Type Configuration
+
+Select the circuit implementation via system property:
+
+```bash
+# JCtools Circuit (default) - MpscUnboundedArrayQueue for wait-free producer path
+-Dfullerstack.circuit.type=jctools
+
+# Folded Circuit - Linked job cascading for optimized deep chains
+-Dfullerstack.circuit.type=folded
+```
+
+| Circuit | Best For | Architecture |
+|---------|----------|--------------|
+| **JCtools** (default) | General workloads | MPSC queue + ArrayDeque transit |
+| **Folded** | Deep cascade chains (10+ levels) | Linked job lists, inline emit |
 
 ### What We DO Optimize
 
@@ -548,33 +565,35 @@ public class FsConduit<P extends Percept, E> implements Conduit<P, E> {
 
 ### 5. Channel & Pipe (Emission)
 
-**FsChannel:** Named emission port that creates async pipes
+**FsChannel:** Named emission port that creates pipes
 
 ```java
-public class FsChannel<E> implements Channel<E> {
-    private final FsAsyncPipe<E> pipe;  // Cached async pipe
+final class FsChannel<E> implements Channel<E> {
+    private final Subject<Channel<E>> subject;
+    private final FsInternalCircuit circuit;
+    private final Consumer<E> router;
 
     @Override
     public Pipe<E> pipe() {
-        return pipe;  // Returns cached FsAsyncPipe
+        Subject<Pipe<E>> pipeSubject = new FsSubject<>(
+            subject.name(), (FsSubject<?>) subject, Pipe.class);
+        return new FsPipe<>(pipeSubject, circuit, router);
     }
 }
 ```
 
-**FsAsyncPipe:** Async pipe that routes through the circuit
+**FsPipe:** Async pipe that routes through the circuit
 
 ```java
-public class FsAsyncPipe<E> implements Pipe<E> {
+public final class FsPipe<E> implements Pipe<E> {
+    private final Subject<Pipe<E>> subject;
     private final FsInternalCircuit circuit;
-    private final Consumer<Object> receptor;
+    private final Consumer<E> receiver;
 
     @Override
-    public void emit(E value) {
-        circuit.enqueue(this, value);  // ← Routes to circuit's ingress queue
-    }
-
-    void deliver(Object value) {
-        receptor.accept(value);  // Called by circuit thread
+    public void emit(E emission) {
+        if (!circuit.isRunning()) return;
+        circuit.enqueue(receiver, emission);  // ← Routes to circuit's ingress queue
     }
 }
 ```
@@ -597,8 +616,8 @@ The `Pipe<E>` interface serves **dual purposes** via a single `emit()` method:
 
 | Side | Implementation | Who Calls `emit()` | What It Does |
 |------|---------------|-------------------|--------------|
-| **Producer** | FsAsyncPipe | Application code | Posts to circuit queue → notifies subscribers |
-| **Consumer** | FsConsumerPipe | Conduit (during dispatch) | Invokes user lambda via Registrar |
+| **Producer** | FsPipe / FsFoldedPipe | Application code | Posts to circuit queue → notifies subscribers |
+| **Consumer** | Lambda via Registrar | Conduit (during dispatch) | Invokes user callback |
 
 ```java
 // PRODUCER SIDE
@@ -733,17 +752,16 @@ State newState = state.state(cortex().name("heap-used"), 900_000_000L);
 
 ```
 1. Producer:
-   conduit.get(name) → Returns FsAsyncPipe
+   channel.pipe() → Returns FsPipe (or FsFoldedPipe)
    pipe.emit(value) → Routes to circuit
 
-2. FsAsyncPipe:
-   ensureStarted() → Lazy thread start
-   ingress.offer(new Task(pipe, value)) → Wait-free enqueue
+2. FsPipe:
+   circuit.enqueue(receiver, emission) → Wait-free enqueue to ingress
 
 3. FsJctoolsCircuit (virtual thread):
-   Drains transit stack (depth-first priority)
+   Drains transit deque (depth-first priority)
    Drains ingress queue (bulk drain)
-   Calls FsAsyncPipe.deliver(value)
+   Invokes receiver.accept(value)
 
 4. FsConduit.dispatch:
    Iterates subscribers (CopyOnWriteArrayList)

@@ -3,6 +3,9 @@ package io.fullerstack.substrates;
 import static io.humainary.substrates.api.Substrates.cortex;
 
 import io.humainary.substrates.api.Substrates.Name;
+import io.humainary.substrates.api.Substrates.New;
+import io.humainary.substrates.api.Substrates.NotNull;
+import io.humainary.substrates.api.Substrates.Provided;
 import io.humainary.substrates.api.Substrates.Slot;
 import io.humainary.substrates.api.Substrates.State;
 import java.util.Iterator;
@@ -12,6 +15,7 @@ import java.util.stream.Stream;
 
 /// An immutable collection of slots using raw array for performance.
 /// Stack semantics: most recent slot at end (highest index).
+@Provided
 final class FsState
   implements State {
 
@@ -72,6 +76,8 @@ final class FsState
     );
   }
 
+  @New
+  @NotNull
   @Override
   public State compact () {
     // Early exit if no duplicates possible
@@ -124,70 +130,90 @@ final class FsState
     return new FsState ( newSlots );
   }
 
+  @New
+  @NotNull
   @Override
   @SuppressWarnings ( "unchecked" )
-  public State state ( Name name, int value ) {
+  public State state ( @NotNull Name name, int value ) {
     Objects.requireNonNull ( name, "name must not be null" );
     return addSlot ( new FsSlot <> ( name, value, (Class < Integer >) (Class < ? >) int.class ) );
   }
 
+  @New
+  @NotNull
   @Override
   @SuppressWarnings ( "unchecked" )
-  public State state ( Name name, long value ) {
+  public State state ( @NotNull Name name, long value ) {
     Objects.requireNonNull ( name, "name must not be null" );
     return addSlot ( new FsSlot <> ( name, value, (Class < Long >) (Class < ? >) long.class ) );
   }
 
+  @New
+  @NotNull
   @Override
   @SuppressWarnings ( "unchecked" )
-  public State state ( Name name, float value ) {
+  public State state ( @NotNull Name name, float value ) {
     Objects.requireNonNull ( name, "name must not be null" );
     return addSlot ( new FsSlot <> ( name, value, (Class < Float >) (Class < ? >) float.class ) );
   }
 
+  @New
+  @NotNull
   @Override
   @SuppressWarnings ( "unchecked" )
-  public State state ( Name name, double value ) {
+  public State state ( @NotNull Name name, double value ) {
     Objects.requireNonNull ( name, "name must not be null" );
     return addSlot ( new FsSlot <> ( name, value, (Class < Double >) (Class < ? >) double.class ) );
   }
 
+  @New
+  @NotNull
   @Override
   @SuppressWarnings ( "unchecked" )
-  public State state ( Name name, boolean value ) {
+  public State state ( @NotNull Name name, boolean value ) {
     Objects.requireNonNull ( name, "name must not be null" );
     return addSlot ( new FsSlot <> ( name, value, (Class < Boolean >) (Class < ? >) boolean.class ) );
   }
 
+  @New
+  @NotNull
   @Override
-  public State state ( Name name, String value ) {
+  public State state ( @NotNull Name name, @NotNull String value ) {
     Objects.requireNonNull ( name, "name must not be null" );
     Objects.requireNonNull ( value, "value must not be null" );
     return addSlot ( new FsSlot <> ( name, value, String.class ) );
   }
 
+  @New
+  @NotNull
   @Override
-  public State state ( Name name, Name value ) {
+  public State state ( @NotNull Name name, @NotNull Name value ) {
     Objects.requireNonNull ( name, "name must not be null" );
     Objects.requireNonNull ( value, "value must not be null" );
     return addSlot ( new FsSlot <> ( name, value, Name.class ) );
   }
 
+  @New
+  @NotNull
   @Override
-  public State state ( Name name, State value ) {
+  public State state ( @NotNull Name name, @NotNull State value ) {
     Objects.requireNonNull ( name, "name must not be null" );
     Objects.requireNonNull ( value, "value must not be null" );
     return addSlot ( new FsSlot <> ( name, value, State.class ) );
   }
 
+  @New
+  @NotNull
   @Override
-  public State state ( Slot < ? > slot ) {
+  public State state ( @NotNull Slot < ? > slot ) {
     Objects.requireNonNull ( slot, "slot must not be null" );
     return addSlot ( slot );
   }
 
+  @New
+  @NotNull
   @Override
-  public State state ( Enum < ? > value ) {
+  public State state ( @NotNull Enum < ? > value ) {
     Objects.requireNonNull ( value, "value must not be null" );
     // Name is derived from the enum's declaring class canonical name (uses . not $)
     Class < ? > declClass = value.getDeclaringClass ();

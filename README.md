@@ -11,7 +11,7 @@ This repository provides concrete runtime implementations of Humainary's observa
 A **fully compliant implementation** of the [Humainary Substrates API](https://github.com/humainary-io/substrates-api-java) (version 1.0.0-PREVIEW).
 
 **Status:** Production-ready
-**TCK Compliance:** ✅ 381/381 tests passing (100%)
+**TCK Compliance:** ✅ 383/383 tests passing (100%)
 **Java Version:** 25 (Virtual Threads)
 
 Substrates provides the infrastructure for building observable, event-driven systems with deterministic event ordering and semiotic signal interpretation.
@@ -21,14 +21,14 @@ Substrates provides the infrastructure for building observable, event-driven sys
 - **Dynamic Routing** - On-demand channel creation and flow transformations
 - **Hierarchical Computation** - Cell-based bidirectional type transformation
 - **SPI-Based Loading** - Automatic provider discovery via ServiceLoader
-- **Full TCK Compliance** - Passes all 381 Humainary specification tests
+- **Full TCK Compliance** - Passes all 383 Humainary specification tests
 
 **Quick Start:**
 ```xml
 <dependency>
     <groupId>io.fullerstack</groupId>
     <artifactId>fullerstack-substrates</artifactId>
-    <version>1.0.0-SNAPSHOT</version>
+    <version>1.0.0-RC1</version>
 </dependency>
 ```
 
@@ -90,10 +90,10 @@ mvn test \
   -Dtck \
   -Dtck.spi.groupId=io.fullerstack \
   -Dtck.spi.artifactId=fullerstack-substrates \
-  -Dtck.spi.version=1.0.0-SNAPSHOT
+  -Dtck.spi.version=1.0.0-RC1
 ```
 
-**Expected:** 381 tests, 0 failures, 0 errors
+**Expected:** 383 tests, 0 failures, 0 errors
 
 ## Requirements
 

@@ -6,6 +6,9 @@ import io.humainary.substrates.api.Substrates.Circuit;
 import io.humainary.substrates.api.Substrates.Cortex;
 import io.humainary.substrates.api.Substrates.Current;
 import io.humainary.substrates.api.Substrates.Name;
+import io.humainary.substrates.api.Substrates.New;
+import io.humainary.substrates.api.Substrates.NotNull;
+import io.humainary.substrates.api.Substrates.Provided;
 import io.humainary.substrates.api.Substrates.Scope;
 import io.humainary.substrates.api.Substrates.Slot;
 import io.humainary.substrates.api.Substrates.State;
@@ -16,16 +19,13 @@ import java.util.Objects;
 import java.util.function.Function;
 
 /// The entry point for creating substrates.
+@Provided
 final class FsCortex implements Cortex {
 
   /// Cached Name for anonymous scopes - avoid repeated HashMap lookup.
   static final Name SCOPE_NAME = FsName.intern("scope");
   /// Cached Name for anonymous circuits.
   static final Name CIRCUIT_NAME = FsName.intern("circuit");
-
-  /// System property to select circuit implementation.
-  /// Values: "jctools" (default), "folded"
-  private static final String CIRCUIT_TYPE_PROPERTY = "fullerstack.circuit.type";
 
   private final Subject<Cortex> subject;
 
@@ -55,23 +55,22 @@ final class FsCortex implements Cortex {
     return subject;
   }
 
+  @New
+  @NotNull
   @Override
   public Circuit circuit () {
     return circuit ( CIRCUIT_NAME );
   }
 
+  @New
+  @NotNull
   @Override
-  public Circuit circuit ( Name name ) {
+  public Circuit circuit ( @NotNull Name name ) {
     requireNonNull ( name, "name must not be null" );
     FsSubject < Circuit > circuitSubject = new FsSubject <> (
       name, (FsSubject < ? >) subject, Circuit.class
     );
-    // Select circuit implementation based on system property
-    String circuitType = System.getProperty(CIRCUIT_TYPE_PROPERTY, "jctools");
-    return switch (circuitType) {
-      case "folded" -> new FsFoldedCircuit(circuitSubject);
-      default -> new FsJctoolsCircuit(circuitSubject);
-    };
+    return new FsCircuit(circuitSubject);
   }
 
   @Override
@@ -123,8 +122,10 @@ final class FsCortex implements Cortex {
     return FsName.fromMember ( member );
   }
 
+  @New
+  @NotNull
   @Override
-  public Scope scope ( Name name ) {
+  public Scope scope ( @NotNull Name name ) {
     requireNonNull ( name, "name must not be null" );
     FsSubject < Scope > scopeSubject = new FsSubject <> (
       name, (FsSubject < ? >) subject, Scope.class
@@ -132,55 +133,71 @@ final class FsCortex implements Cortex {
     return new FsScope ( scopeSubject );
   }
 
+  @New
+  @NotNull
   @Override
   public Scope scope () {
     return scope ( SCOPE_NAME );
   }
 
+  @New
+  @NotNull
   @Override
   @SuppressWarnings ( "unchecked" )
-  public Slot < Boolean > slot ( Name name, boolean value ) {
+  public Slot < Boolean > slot ( @NotNull Name name, boolean value ) {
     Objects.requireNonNull ( name, "name must not be null" );
     return new FsSlot <> ( name, value, (Class < Boolean >) (Class < ? >) boolean.class );
   }
 
+  @New
+  @NotNull
   @Override
   @SuppressWarnings ( "unchecked" )
-  public Slot < Integer > slot ( Name name, int value ) {
+  public Slot < Integer > slot ( @NotNull Name name, int value ) {
     Objects.requireNonNull ( name, "name must not be null" );
     return new FsSlot <> ( name, value, (Class < Integer >) (Class < ? >) int.class );
   }
 
+  @New
+  @NotNull
   @Override
   @SuppressWarnings ( "unchecked" )
-  public Slot < Long > slot ( Name name, long value ) {
+  public Slot < Long > slot ( @NotNull Name name, long value ) {
     Objects.requireNonNull ( name, "name must not be null" );
     return new FsSlot <> ( name, value, (Class < Long >) (Class < ? >) long.class );
   }
 
+  @New
+  @NotNull
   @Override
   @SuppressWarnings ( "unchecked" )
-  public Slot < Double > slot ( Name name, double value ) {
+  public Slot < Double > slot ( @NotNull Name name, double value ) {
     Objects.requireNonNull ( name, "name must not be null" );
     return new FsSlot <> ( name, value, (Class < Double >) (Class < ? >) double.class );
   }
 
+  @New
+  @NotNull
   @Override
   @SuppressWarnings ( "unchecked" )
-  public Slot < Float > slot ( Name name, float value ) {
+  public Slot < Float > slot ( @NotNull Name name, float value ) {
     Objects.requireNonNull ( name, "name must not be null" );
     return new FsSlot <> ( name, value, (Class < Float >) (Class < ? >) float.class );
   }
 
+  @New
+  @NotNull
   @Override
-  public Slot < String > slot ( Name name, String value ) {
+  public Slot < String > slot ( @NotNull Name name, @NotNull String value ) {
     Objects.requireNonNull ( name, "name must not be null" );
     Objects.requireNonNull ( value, "value must not be null" );
     return new FsSlot <> ( name, value, String.class );
   }
 
+  @New
+  @NotNull
   @Override
-  public Slot < Name > slot ( Enum < ? > value ) {
+  public Slot < Name > slot ( @NotNull Enum < ? > value ) {
     Objects.requireNonNull ( value, "value must not be null" );
     Name slotName = name ( value.getDeclaringClass () );
     // Value is the full enum name: DeclaringClass.name
@@ -188,20 +205,26 @@ final class FsCortex implements Cortex {
     return new FsSlot <> ( slotName, slotValue, Name.class );
   }
 
+  @New
+  @NotNull
   @Override
-  public Slot < Name > slot ( Name name, Name value ) {
+  public Slot < Name > slot ( @NotNull Name name, @NotNull Name value ) {
     Objects.requireNonNull ( name, "name must not be null" );
     Objects.requireNonNull ( value, "value must not be null" );
     return new FsSlot <> ( name, value, Name.class );
   }
 
+  @New
+  @NotNull
   @Override
-  public Slot < State > slot ( Name name, State value ) {
+  public Slot < State > slot ( @NotNull Name name, @NotNull State value ) {
     Objects.requireNonNull ( name, "name must not be null" );
     Objects.requireNonNull ( value, "value must not be null" );
     return new FsSlot <> ( name, value, State.class );
   }
 
+  @New
+  @NotNull
   @Override
   public State state () {
     return FsState.create ();

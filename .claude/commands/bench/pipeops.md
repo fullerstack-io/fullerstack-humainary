@@ -2,36 +2,20 @@
 description: Run PipeOps JMH benchmarks comparing Fullerstack vs Humainary
 ---
 
-**IMPORTANT: ALWAYS run the bash command with `run_in_background: true` to prevent interruption.**
+Run PipeOps JMH benchmarks using Humainary's official jmh.sh with Fullerstack as the SPI provider.
 
-Run PipeOps JMH benchmarks comparing Fullerstack vs Humainary implementation.
+## Instructions
 
-## Steps
-
-1. Run the benchmark script:
+**Run with `run_in_background: true`. Do NOT block waiting - just report the task ID.**
 
 ```bash
-/workspaces/fullerstack-humainary/scripts/benchmark.sh PipeOps
+cd /workspaces/fullerstack-humainary/fullerstack-substrates && \
+source /usr/local/sdkman/bin/sdkman-init.sh && sdk use java 25.0.1-open && \
+mvn clean install -DskipTests -q && \
+cd /workspaces/fullerstack-humainary/substrates-api-java && \
+SPI_GROUP=io.fullerstack SPI_ARTIFACT=fullerstack-substrates SPI_VERSION=1.0.0-RC1 \
+./jmh.sh PipeOps
 ```
 
-2. Present comparison table using Humainary baselines from BENCHMARKS.md:
-
-| Benchmark | Humainary (ns) | Fullerstack (ns) | Diff | Winner |
-|-----------|---------------:|----------------:|-----:|:------:|
-| async_emit_batch | 11.8 | X | X% | ? |
-| async_emit_batch_await | 16.9 | X | X% | ? |
-| async_emit_chained_await | 16.9 | X | X% | ? |
-| async_emit_fanout_await | 18.7 | X | X% | ? |
-| async_emit_single | 10.6 | X | X% | ? |
-| async_emit_single_await | 5,478 | X | X% | ? |
-| async_emit_with_flow_await | 21.2 | X | X% | ? |
-| baseline_blackhole | 0.27 | X | X% | ? |
-| baseline_counter | 1.62 | X | X% | ? |
-| baseline_receptor | 0.26 | X | X% | ? |
-| pipe_create | 8.75 | X | X% | ? |
-| pipe_create_chained | 0.86 | X | X% | ? |
-| pipe_create_with_flow | 13.2 | X | X% | ? |
-
-**Summary:** X/13 Fullerstack wins, X/13 Humainary wins
-
-Diff = ((Fullerstack - Humainary) / Humainary * 100). Winner = lower time (faster).
+When complete, present comparison table using Humainary baselines from BENCHMARKS.md.
+Diff = ((Fullerstack - Humainary) / Humainary * 100). Winner = lower time.

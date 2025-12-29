@@ -616,7 +616,7 @@ FsName:             ~64 bytes
 FsJctoolsCircuit:   ~1KB (includes JCTools queue)
 FsConduit:          ~512 bytes
 FsChannel:          ~256 bytes
-FsAsyncPipe:        ~128 bytes
+FsPipe:             ~128 bytes
 
 Per Metric (Pipe):  ~1KB
 ```

@@ -1,6 +1,7 @@
 package io.fullerstack.substrates;
 
 import io.humainary.substrates.api.Substrates.Channel;
+import io.humainary.substrates.api.Substrates.Provided;
 import io.humainary.substrates.api.Substrates.Registrar;
 import io.humainary.substrates.api.Substrates.Subject;
 import io.humainary.substrates.api.Substrates.Subscriber;
@@ -16,6 +17,7 @@ import java.util.function.BiConsumer;
 /// registering pipes to receive emissions.
 ///
 /// @param <E> the emission type
+@Provided
 public final class FsSubscriber < E >
   implements Subscriber < E > {
 

@@ -2,45 +2,20 @@
 description: Run ScopeOps JMH benchmarks comparing Fullerstack vs Humainary
 ---
 
-**IMPORTANT: ALWAYS run the bash command with `run_in_background: true` to prevent interruption.**
+Run ScopeOps JMH benchmarks using Humainary's official jmh.sh with Fullerstack as the SPI provider.
 
-Run ScopeOps JMH benchmarks comparing Fullerstack vs Humainary implementation.
+## Instructions
 
-## Steps
-
-1. Run the benchmark script:
+**Run with `run_in_background: true`. Do NOT block waiting - just report the task ID.**
 
 ```bash
-/workspaces/fullerstack-humainary/scripts/benchmark.sh ScopeOps
+cd /workspaces/fullerstack-humainary/fullerstack-substrates && \
+source /usr/local/sdkman/bin/sdkman-init.sh && sdk use java 25.0.1-open && \
+mvn clean install -DskipTests -q && \
+cd /workspaces/fullerstack-humainary/substrates-api-java && \
+SPI_GROUP=io.fullerstack SPI_ARTIFACT=fullerstack-substrates SPI_VERSION=1.0.0-RC1 \
+./jmh.sh ScopeOps
 ```
 
-2. Present comparison table using Humainary baselines from BENCHMARKS.md:
-
-| Benchmark | Humainary (ns) | Fullerstack (ns) | Diff | Winner |
-|-----------|---------------:|----------------:|-----:|:------:|
-| scope_child_anonymous | 18.2 | X | X% | ? |
-| scope_child_anonymous_batch | 17.7 | X | X% | ? |
-| scope_child_named | 17.1 | X | X% | ? |
-| scope_child_named_batch | 19.4 | X | X% | ? |
-| scope_close_idempotent | 2.39 | X | X% | ? |
-| scope_close_idempotent_batch | 0.03 | X | X% | ? |
-| scope_closure | 286.1 | X | X% | ? |
-| scope_closure_batch | 307.4 | X | X% | ? |
-| scope_complex | 917.0 | X | X% | ? |
-| scope_create_and_close | 2.43 | X | X% | ? |
-| scope_create_and_close_batch | 0.03 | X | X% | ? |
-| scope_create_named | 2.43 | X | X% | ? |
-| scope_create_named_batch | 0.03 | X | X% | ? |
-| scope_hierarchy | 27.3 | X | X% | ? |
-| scope_hierarchy_batch | 26.6 | X | X% | ? |
-| scope_parent_closes_children | 43.5 | X | X% | ? |
-| scope_parent_closes_children_batch | 42.3 | X | X% | ? |
-| scope_register_multiple | 1,450 | X | X% | ? |
-| scope_register_multiple_batch | 1,398 | X | X% | ? |
-| scope_register_single | 287.1 | X | X% | ? |
-| scope_register_single_batch | 283.1 | X | X% | ? |
-| scope_with_resources | 581.9 | X | X% | ? |
-
-**Summary:** X/22 Fullerstack wins, X/22 Humainary wins
-
-Diff = ((Fullerstack - Humainary) / Humainary * 100). Winner = lower time (faster).
+When complete, present comparison table using Humainary baselines from BENCHMARKS.md.
+Diff = ((Fullerstack - Humainary) / Humainary * 100). Winner = lower time.

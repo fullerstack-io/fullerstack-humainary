@@ -2,7 +2,9 @@ package io.fullerstack.substrates;
 
 import io.humainary.substrates.api.Substrates.Circuit;
 import io.humainary.substrates.api.Substrates.Id;
+import io.humainary.substrates.api.Substrates.Identity;
 import io.humainary.substrates.api.Substrates.Name;
+import io.humainary.substrates.api.Substrates.Provided;
 import io.humainary.substrates.api.Substrates.State;
 import io.humainary.substrates.api.Substrates.Subject;
 import io.humainary.substrates.api.Substrates.Substrate;
@@ -10,6 +12,8 @@ import java.util.Optional;
 
 /// The identity of a substrate.
 /// Supports null name for anonymous subjects - delegates to parent's name.
+@Identity
+@Provided
 @SuppressWarnings ( { "unchecked" } )
 public final class FsSubject < S extends Substrate < S > >
   implements Subject < S >, Id {

@@ -1,6 +1,7 @@
 package io.fullerstack.substrates;
 
 import io.humainary.substrates.api.Substrates.Pipe;
+import io.humainary.substrates.api.Substrates.Provided;
 import io.humainary.substrates.api.Substrates.Receptor;
 import io.humainary.substrates.api.Substrates.Registrar;
 import java.util.ArrayList;
@@ -10,6 +11,7 @@ import java.util.function.Consumer;
 /// A registrar that collects pipes during subscriber callback.
 ///
 /// @param <E> the emission type
+@Provided
 public final class FsRegistrar<E> implements Registrar<E> {
 
   /// Pipes registered by the subscriber.
@@ -27,13 +29,7 @@ public final class FsRegistrar<E> implements Registrar<E> {
   }
 
   @Override
-  @SuppressWarnings("unchecked")
   public void register(Pipe<? super E> pipe) {
-    // If pipe is FsPipe, use terminal receiver to avoid double-enqueue
-    if (pipe instanceof FsPipe<?> fsPipe) {
-      pipes.add((Consumer<E>) fsPipe.terminalReceiver());
-    } else {
-      pipes.add(pipe::emit);
-    }
+    pipes.add(pipe::emit);
   }
 }

@@ -22,10 +22,58 @@ PROJECT_ROOT = SCRIPT_DIR.parent
 HUMAINARY_BENCHMARKS = PROJECT_ROOT / "substrates-api-java" / "BENCHMARKS.md"
 COMPARISON_FILE = PROJECT_ROOT / "fullerstack-substrates" / "docs" / "BENCHMARK-COMPARISON.md"
 
-# All known benchmark groups
-ALL_GROUPS = [
+# Benchmark group organization
+SUBSTRATES_CORE = [
     "CircuitOps", "ConduitOps", "CortexOps", "FlowOps", "NameOps",
     "PipeOps", "ReservoirOps", "ScopeOps", "StateOps", "SubscriberOps"
+]
+
+# Serventis modules organized by semiotic layer
+SERVENTIS_SDK = [  # Universal Primitives
+    "CycleOps", "OperationOps", "OutcomeOps", "SignalSetOps",
+    "SituationOps", "StatusOps", "SurveyOps", "SystemOps", "TrendOps"
+]
+SERVENTIS_TOOL = [  # Measurement Instruments
+    "CounterOps", "GaugeOps", "LogOps", "ProbeOps", "SensorOps"
+]
+SERVENTIS_DATA = [  # Data Structures
+    "CacheOps", "PipelineOps", "QueueOps", "StackOps"
+]
+SERVENTIS_FLOW = [  # Flow Control
+    "BreakerOps", "FlowOps", "RouterOps", "ValveOps"
+]
+SERVENTIS_SYNC = [  # Synchronization
+    "AtomicOps", "LatchOps", "LockOps"
+]
+SERVENTIS_POOL = [  # Resource Management
+    "ExchangeOps", "LeaseOps", "PoolOps", "ResourceOps"
+]
+SERVENTIS_EXEC = [  # Execution
+    "ProcessOps", "ServiceOps", "TaskOps", "TimerOps", "TransactionOps"
+]
+SERVENTIS_ROLE = [  # Coordination
+    "ActorOps", "AgentOps"
+]
+
+# All Serventis groups combined
+SERVENTIS_ALL = (SERVENTIS_SDK + SERVENTIS_TOOL + SERVENTIS_DATA +
+                 SERVENTIS_FLOW + SERVENTIS_SYNC + SERVENTIS_POOL +
+                 SERVENTIS_EXEC + SERVENTIS_ROLE)
+
+# All groups for legacy compatibility
+ALL_GROUPS = SUBSTRATES_CORE + SERVENTIS_ALL
+
+# Section definitions for markdown output
+SECTIONS = [
+    ("Substrates Core", SUBSTRATES_CORE),
+    ("Serventis SDK (Universal Primitives)", SERVENTIS_SDK),
+    ("Serventis Tool (Measurement)", SERVENTIS_TOOL),
+    ("Serventis Data (Data Structures)", SERVENTIS_DATA),
+    ("Serventis Flow (Flow Control)", SERVENTIS_FLOW),
+    ("Serventis Sync (Synchronization)", SERVENTIS_SYNC),
+    ("Serventis Pool (Resource Management)", SERVENTIS_POOL),
+    ("Serventis Exec (Execution)", SERVENTIS_EXEC),
+    ("Serventis Role (Coordination)", SERVENTIS_ROLE),
 ]
 
 
@@ -158,105 +206,172 @@ def format_score(score: float) -> str:
         return f"{score:.1f}"
 
 
+def get_qualified_name(group: str, benchmark: str) -> str:
+    """Get fully qualified benchmark name: Category.Module.Group.test"""
+    test_name = benchmark.split(".")[-1]
+
+    if group in SUBSTRATES_CORE:
+        return f"Substrates.{group}.{test_name}"
+    elif group in SERVENTIS_SDK:
+        return f"Serventis.SDK.{group}.{test_name}"
+    elif group in SERVENTIS_TOOL:
+        return f"Serventis.Tool.{group}.{test_name}"
+    elif group in SERVENTIS_DATA:
+        return f"Serventis.Data.{group}.{test_name}"
+    elif group in SERVENTIS_FLOW:
+        return f"Serventis.Flow.{group}.{test_name}"
+    elif group in SERVENTIS_SYNC:
+        return f"Serventis.Sync.{group}.{test_name}"
+    elif group in SERVENTIS_POOL:
+        return f"Serventis.Pool.{group}.{test_name}"
+    elif group in SERVENTIS_EXEC:
+        return f"Serventis.Exec.{group}.{test_name}"
+    elif group in SERVENTIS_ROLE:
+        return f"Serventis.Role.{group}.{test_name}"
+    else:
+        return f"Other.{group}.{test_name}"
+
+
 def generate_comparison_table(
-    fullerstack_results: Dict[str, float],
+    jctools_results: Dict[str, float],
+    folded_results: Dict[str, float],
     humainary_baselines: Dict[str, float]
 ) -> Tuple[str, Dict[str, int]]:
-    """Generate markdown comparison table."""
+    """Generate markdown comparison table with fully qualified benchmark names."""
 
     lines = []
-    stats = {"fullerstack_wins": 0, "humainary_wins": 0, "ties": 0, "total": 0}
+    stats = {"jctools_wins": 0, "folded_wins": 0, "humainary_wins": 0, "ties": 0, "total": 0}
 
     # Header
-    lines.append("| Benchmark | Humainary (ns) | Fullerstack (ns) | Diff | Winner |")
-    lines.append("|-----------|---------------:|----------------:|-----:|:------:|")
+    lines.append("| Benchmark | Humainary (ns) | JCtools (ns) | Folded (ns) | Best Fullerstack | vs Humainary |")
+    lines.append("|-----------|---------------:|-------------:|------------:|:----------------:|:------------:|")
+
+    # Collect all benchmark names from both result sets
+    all_names = set(jctools_results.keys()) | set(folded_results.keys())
 
     # Group benchmarks by category
     grouped = {}
-    for name in fullerstack_results:
+    for name in all_names:
         group = name.split(".")[0]
         if group not in grouped:
             grouped[group] = []
         grouped[group].append(name)
 
-    # Sort groups by predefined order, then alphabetically for unknown groups
+    # Sort groups by predefined order
     def group_sort_key(g):
         if g in ALL_GROUPS:
             return (0, ALL_GROUPS.index(g))
         return (1, g)
 
     for group in sorted(grouped.keys(), key=group_sort_key):
-        # Add group header
-        lines.append(f"| **{group}** | | | | |")
-
         for name in sorted(grouped[group]):
-            fs_score = fullerstack_results[name]
+            jc_score = jctools_results.get(name)
+            fold_score = folded_results.get(name)
             hum_score = humainary_baselines.get(name)
+            qualified_name = get_qualified_name(group, name)
 
-            benchmark_short = name.split(".")[-1]
+            # Format scores
+            jc_str = format_score(jc_score) if jc_score is not None else "-"
+            fold_str = format_score(fold_score) if fold_score is not None else "-"
+            hum_str = format_score(hum_score) if hum_score is not None else "N/A"
 
-            if hum_score is not None:
-                diff, winner = calculate_diff(fs_score, hum_score)
-
-                if "Fullerstack" in winner:
-                    stats["fullerstack_wins"] += 1
-                elif "Humainary" in winner:
-                    stats["humainary_wins"] += 1
+            # Determine best Fullerstack (lower is better)
+            if jc_score is not None and fold_score is not None:
+                if jc_score < fold_score * 0.95:  # JCtools is >5% faster
+                    best_fs = "**JCtools**"
+                    best_score = jc_score
+                    stats["jctools_wins"] += 1
+                elif fold_score < jc_score * 0.95:  # Folded is >5% faster
+                    best_fs = "**Folded**"
+                    best_score = fold_score
+                    stats["folded_wins"] += 1
                 else:
+                    best_fs = "Tie"
+                    best_score = min(jc_score, fold_score)
                     stats["ties"] += 1
-                stats["total"] += 1
-
-                lines.append(
-                    f"| {benchmark_short} | {format_score(hum_score)} | {format_score(fs_score)} | {diff} | {winner} |"
-                )
+            elif jc_score is not None:
+                best_fs = "JCtools"
+                best_score = jc_score
+            elif fold_score is not None:
+                best_fs = "Folded"
+                best_score = fold_score
             else:
-                lines.append(
-                    f"| {benchmark_short} | N/A | {format_score(fs_score)} | - | - |"
-                )
+                best_fs = "-"
+                best_score = None
+
+            # Compare best Fullerstack vs Humainary
+            if best_score is not None and hum_score is not None:
+                diff, winner = calculate_diff(best_score, hum_score)
                 stats["total"] += 1
+            else:
+                diff = "-"
+                winner = "-"
+
+            lines.append(
+                f"| {qualified_name} | {hum_str} | {jc_str} | {fold_str} | {best_fs} | {diff} {winner} |"
+            )
 
     return "\n".join(lines), stats
 
 
 def generate_full_report(
-    fullerstack_results: Dict[str, float],
+    jctools_results: Dict[str, float],
+    folded_results: Dict[str, float],
     humainary_baselines: Dict[str, float],
     updated_groups: Set[str]
 ) -> str:
     """Generate full markdown report."""
 
-    table, stats = generate_comparison_table(fullerstack_results, humainary_baselines)
+    table, stats = generate_comparison_table(jctools_results, folded_results, humainary_baselines)
 
     date_str = datetime.now().strftime("%Y-%m-%d %H:%M")
     groups_str = ", ".join(sorted(updated_groups)) if updated_groups else "All"
+
+    # Calculate Fullerstack vs Humainary stats
+    fs_wins = stats.get('fullerstack_wins', 0)
+    hum_wins = stats.get('humainary_wins', 0)
+    total = stats['total']
 
     report = f"""# Benchmark Comparison: Fullerstack vs Humainary
 
 **Last Updated:** {date_str}
 **Groups Updated:** {groups_str}
-**JDK:** 25.0.1, OpenJDK 64-Bit Server VM
+
+## Hardware Configuration
+
+| | Humainary | Fullerstack |
+|---|-----------|-------------|
+| **Platform** | Apple M4 Mac | Azure VM (GitHub Codespaces) |
+| **CPU** | Apple M4 (10 cores) | Intel Xeon (shared vCPUs) |
+| **Memory** | 16GB unified | 8GB |
+| **JDK** | 25.0.1 OpenJDK | 25.0.1 OpenJDK |
+
+> **Note:** Direct performance comparisons are not meaningful due to different hardware.
+> These benchmarks are useful for comparing **relative performance** between circuit types
+> and identifying **performance characteristics** of each implementation.
 
 ## Summary
 
+### Circuit Comparison (JCtools vs Folded)
+
 | Metric | Count | % |
 |--------|------:|--:|
-| **Fullerstack Wins** | {stats['fullerstack_wins']} | {stats['fullerstack_wins']*100//max(stats['total'],1)}% |
-| **Humainary Wins** | {stats['humainary_wins']} | {stats['humainary_wins']*100//max(stats['total'],1)}% |
-| **Ties** | {stats['ties']} | {stats['ties']*100//max(stats['total'],1)}% |
-| **Total** | {stats['total']} | 100% |
+| **JCtools Wins** | {stats['jctools_wins']} | {stats['jctools_wins']*100//max(total,1)}% |
+| **Folded Wins** | {stats['folded_wins']} | {stats['folded_wins']*100//max(total,1)}% |
+| **Ties** | {stats['ties']} | {stats['ties']*100//max(total,1)}% |
+| **Total** | {total} | 100% |
 
-## Full Comparison Table
-
+## Benchmarks
 {table}
 
 ---
 
 **Legend:**
-- **Diff** = ((Fullerstack - Humainary) / Humainary x 100)
-- **Winner** = Lower time (faster) wins
+- **JCtools** = MPSC queue with wait-free producer path (default circuit)
+- **Folded** = Linked job cascading for deep chains
+- **Best Fullerstack** = Which circuit is faster (>5% difference = win)
+- **vs Humainary** = Best Fullerstack result compared to Humainary baseline
 - Bold values indicate significant wins (>5% difference)
-
-**Note:** Humainary benchmarks run on Apple M4 (10 cores, 16GB). Fullerstack on Azure VM. Hardware differences may affect comparisons.
 """
     return report
 
@@ -286,19 +401,19 @@ def merge_results(
 
 
 def update_comparison_md(
-    new_results: Dict[str, float],
+    jctools_results: Dict[str, float],
+    folded_results: Dict[str, float],
     humainary_baselines: Dict[str, float]
 ):
-    """Update BENCHMARK-COMPARISON.md, merging with existing data."""
+    """Update BENCHMARK-COMPARISON.md with both circuit results."""
 
-    # Parse existing results
-    existing_results = parse_existing_comparison(COMPARISON_FILE)
-
-    # Merge new results with existing
-    merged_results, updated_groups = merge_results(new_results, existing_results)
+    # Get all updated groups from both result sets
+    jc_groups = get_groups_from_results(jctools_results)
+    fold_groups = get_groups_from_results(folded_results)
+    updated_groups = jc_groups | fold_groups
 
     # Generate report
-    report = generate_full_report(merged_results, humainary_baselines, updated_groups)
+    report = generate_full_report(jctools_results, folded_results, humainary_baselines, updated_groups)
 
     # Ensure parent directory exists
     COMPARISON_FILE.parent.mkdir(parents=True, exist_ok=True)
@@ -306,9 +421,10 @@ def update_comparison_md(
     with open(COMPARISON_FILE, 'w') as f:
         f.write(report)
 
+    total_benchmarks = len(set(jctools_results.keys()) | set(folded_results.keys()))
     print(f"Updated {COMPARISON_FILE}")
     print(f"  Updated groups: {', '.join(sorted(updated_groups))}")
-    print(f"  Total benchmarks: {len(merged_results)}")
+    print(f"  Total benchmarks: {total_benchmarks}")
 
 
 def print_summary(stats: Dict[str, int]):
@@ -318,50 +434,88 @@ def print_summary(stats: Dict[str, int]):
         print("No benchmarks compared.")
         return
 
+    jc_wins = stats.get('jctools_wins', 0)
+    fold_wins = stats.get('folded_wins', 0)
+    ties = stats.get('ties', 0)
+
     print("\n" + "=" * 60)
-    print("BENCHMARK COMPARISON SUMMARY")
+    print("CIRCUIT COMPARISON SUMMARY (JCtools vs Folded)")
     print("=" * 60)
-    print(f"  Fullerstack Wins: {stats['fullerstack_wins']:3d} ({stats['fullerstack_wins']*100//total}%)")
-    print(f"  Humainary Wins:   {stats['humainary_wins']:3d} ({stats['humainary_wins']*100//total}%)")
-    print(f"  Ties:             {stats['ties']:3d} ({stats['ties']*100//total}%)")
-    print(f"  Total:            {stats['total']:3d}")
+    print(f"  JCtools Wins:     {jc_wins:3d} ({jc_wins*100//max(total,1)}%)")
+    print(f"  Folded Wins:      {fold_wins:3d} ({fold_wins*100//max(total,1)}%)")
+    print(f"  Ties:             {ties:3d} ({ties*100//max(total,1)}%)")
+    print(f"  Total:            {total:3d}")
     print("=" * 60)
 
 
 def main():
     if len(sys.argv) < 2:
-        print("Usage: generate-comparison.py <json_results_file> [--update-md] [--print-table]")
+        print("Usage: generate-comparison.py --jctools <file> --folded <file> [--update-md] [--print-table]")
+        print("       generate-comparison.py <json_file> [--update-md] [--print-table]  (legacy single-file mode)")
         sys.exit(1)
 
     # Parse arguments
     update_md = "--update-md" in sys.argv
     print_table = "--print-table" in sys.argv
-    json_file = None
 
-    for arg in sys.argv[1:]:
-        if not arg.startswith("--"):
-            json_file = Path(arg)
-            break
+    jctools_file = None
+    folded_file = None
+    legacy_file = None
 
-    if not json_file or not json_file.exists():
-        print(f"Error: JSON file not found: {json_file}")
+    args = sys.argv[1:]
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        if arg == "--jctools" and i + 1 < len(args):
+            jctools_file = Path(args[i + 1])
+            i += 2
+        elif arg == "--folded" and i + 1 < len(args):
+            folded_file = Path(args[i + 1])
+            i += 2
+        elif not arg.startswith("--"):
+            legacy_file = Path(arg)
+            i += 1
+        else:
+            i += 1
+
+    # Handle legacy single-file mode
+    if legacy_file and not jctools_file and not folded_file:
+        jctools_file = legacy_file
+        print("(Legacy mode: treating single file as JCtools results)")
+
+    # Parse results
+    jctools_results = {}
+    folded_results = {}
+
+    if jctools_file and jctools_file.exists():
+        print(f"Parsing JCtools results from {jctools_file}...")
+        jctools_results = parse_jmh_json(jctools_file)
+        print(f"  Found {len(jctools_results)} benchmarks")
+    elif jctools_file:
+        print(f"Warning: JCtools file not found: {jctools_file}")
+
+    if folded_file and folded_file.exists():
+        print(f"Parsing Folded results from {folded_file}...")
+        folded_results = parse_jmh_json(folded_file)
+        print(f"  Found {len(folded_results)} benchmarks")
+    elif folded_file:
+        print(f"Warning: Folded file not found: {folded_file}")
+
+    if not jctools_results and not folded_results:
+        print("Error: No valid result files provided")
         sys.exit(1)
 
-    # Parse new results
-    print(f"Parsing Fullerstack results from {json_file}...")
-    new_results = parse_jmh_json(json_file)
-    print(f"  Found {len(new_results)} benchmarks")
-
     # Get updated groups
-    updated_groups = get_groups_from_results(new_results)
+    all_results = {**jctools_results, **folded_results}
+    updated_groups = get_groups_from_results(all_results)
     print(f"  Groups: {', '.join(sorted(updated_groups))}")
 
     print(f"Parsing Humainary baselines from {HUMAINARY_BENCHMARKS}...")
     humainary_baselines = parse_humainary_baselines(HUMAINARY_BENCHMARKS)
     print(f"  Found {len(humainary_baselines)} baselines")
 
-    # For display, show only the new results
-    table, stats = generate_comparison_table(new_results, humainary_baselines)
+    # Generate table
+    table, stats = generate_comparison_table(jctools_results, folded_results, humainary_baselines)
 
     if print_table:
         print("\n" + table)
@@ -369,7 +523,7 @@ def main():
     print_summary(stats)
 
     if update_md:
-        update_comparison_md(new_results, humainary_baselines)
+        update_comparison_md(jctools_results, folded_results, humainary_baselines)
     else:
         print(f"\nTo update {COMPARISON_FILE}, run with --update-md flag")
 

@@ -1,7 +1,9 @@
 package io.fullerstack.substrates;
 
 import io.humainary.substrates.api.Substrates.Current;
+import io.humainary.substrates.api.Substrates.Provided;
 import io.humainary.substrates.api.Substrates.Subject;
+import io.humainary.substrates.api.Substrates.Temporal;
 
 /// Represents the execution context from which substrate operations originate.
 ///
@@ -16,6 +18,8 @@ import io.humainary.substrates.api.Substrates.Subject;
 ///
 /// @see FsCortex#current()
 /// @see Subject
+@Provided
+@Temporal
 final class FsCurrent
   implements Current {
 

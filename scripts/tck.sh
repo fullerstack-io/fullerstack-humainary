@@ -1,12 +1,12 @@
 #!/bin/bash
 #
-# Central TCK runner for Fullerstack Substrates
+# TCK runner for Fullerstack Substrates
 #
-# Runs all 383 TCK tests against the Fullerstack implementation.
+# This script wraps Humainary's tck.sh with Fullerstack as the SPI provider.
+# Runs all 383 TCK tests to verify API compliance.
 #
 # Usage:
 #   ./scripts/tck.sh              # Run all TCK tests
-#   ./scripts/tck.sh -Dtest=Name  # Run specific test (passed to Maven)
 #
 
 set -e
@@ -34,26 +34,22 @@ echo ""
 echo "=== Fullerstack TCK Test Runner ==="
 echo ""
 
-# Build Step 1: Install Humainary API
-echo "=== Building Humainary API ==="
-mvn -f "${HUMAINARY_ROOT}/pom.xml" clean install -DskipTests -q
-
-# Build Step 2: Install Fullerstack
+# Build Fullerstack first (must be installed to local repo)
 echo "=== Building Fullerstack Substrates ==="
 mvn -f "${FULLERSTACK_ROOT}/pom.xml" clean install -DskipTests -q
 
-# Run TCK tests with Fullerstack SPI
+# Run TCK using Humainary's tck.sh with Fullerstack SPI
 echo ""
-echo "=== Running TCK Tests against Fullerstack ==="
+echo "=== Running TCK Tests via Humainary tck.sh ==="
 echo ""
 
-cd "${HUMAINARY_ROOT}/tck"
+cd "${HUMAINARY_ROOT}"
+SPI_GROUP=io.fullerstack \
+SPI_ARTIFACT=fullerstack-substrates \
+SPI_VERSION=1.0.0-RC1 \
+./tck.sh
 
-mvn test \
-    -Dtck \
-    -Dsubstrates.spi.groupId=io.fullerstack \
-    -Dsubstrates.spi.artifactId=fullerstack-substrates \
-    -Dsubstrates.spi.version=1.0.0-SNAPSHOT \
-    -Dio.humainary.substrates.spi.provider=io.fullerstack.substrates.FsCortexProvider \
-    "$@"
-
+echo ""
+echo "=========================================="
+echo "TCK Complete!"
+echo "=========================================="

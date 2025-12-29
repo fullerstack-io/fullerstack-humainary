@@ -1,21 +1,23 @@
 #!/bin/bash
 #
-# Central benchmark runner for Fullerstack Substrates
+# Benchmark runner for Fullerstack Substrates
+#
+# This script wraps Humainary's jmh.sh with Fullerstack as the SPI provider.
+# Results are saved to benchmark-results/ directory.
 #
 # Usage:
-#   ./scripts/benchmark.sh                    # Run ALL benchmarks
+#   ./scripts/benchmark.sh                    # Run ALL Substrates benchmarks
 #   ./scripts/benchmark.sh PipeOps            # Run specific benchmark group
-#   ./scripts/benchmark.sh CircuitOps valve   # Run with specific circuit type
 #   ./scripts/benchmark.sh "Pipe|Circuit"     # Regex pattern for multiple groups
+#   ./scripts/benchmark.sh -l                 # List available benchmarks
 #
-# Environment Variables:
-#   CIRCUIT_TYPE    - Circuit implementation (default: experimental)
-#   JMH_OPTS        - Additional JMH options (default: "-f 1 -wi 2 -i 3 -t 1")
+# JMH Options (passed through to jmh.sh):
+#   ./scripts/benchmark.sh -wi 5 -i 10 -f 2   # Custom warmup/iterations/forks
 #
 # Available Benchmark Groups:
-#   CircuitOps, ConduitOps, CortexOps, FlowOps, NameOps,
-#   PipeOps, ReservoirOps, ScopeOps, StateOps, SubscriberOps
-#   (Serventis: CacheOps, CounterOps, GaugeOps, ProbeOps, etc.)
+#   Substrates: CircuitOps, ConduitOps, CortexOps, FlowOps, NameOps,
+#               PipeOps, ReservoirOps, ScopeOps, StateOps, SubscriberOps
+#   Serventis:  CacheOps, CounterOps, GaugeOps, ProbeOps, etc.
 #
 
 set -e
@@ -26,31 +28,6 @@ PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 HUMAINARY_ROOT="${PROJECT_ROOT}/substrates-api-java"
 FULLERSTACK_ROOT="${PROJECT_ROOT}/fullerstack-substrates"
 RESULTS_DIR="${PROJECT_ROOT}/benchmark-results"
-
-# Parse arguments
-BENCHMARK_PATTERN="${1:-}"
-CIRCUIT_TYPE="${2:-${CIRCUIT_TYPE:-experimental}}"
-JMH_OPTS="${JMH_OPTS:--f 1 -wi 2 -i 3 -t 1}"
-
-# If no pattern given, run all Substrates benchmarks
-if [[ -z "${BENCHMARK_PATTERN}" ]]; then
-    BENCHMARK_PATTERN="io.humainary.substrates.jmh.*"
-    PATTERN_NAME="substrates-all"
-else
-    # Derive output filename from pattern
-    PATTERN_NAME=$(echo "${BENCHMARK_PATTERN}" | tr '|' '-' | tr '[:upper:]' '[:lower:]')
-fi
-
-TIMESTAMP=$(date +%Y%m%d-%H%M%S)
-
-# Only include circuit type in filename if not the default
-if [[ "${CIRCUIT_TYPE}" == "experimental" ]]; then
-    JSON_FILE="${RESULTS_DIR}/${PATTERN_NAME}-${TIMESTAMP}.json"
-    TXT_FILE="${RESULTS_DIR}/${PATTERN_NAME}-${TIMESTAMP}.txt"
-else
-    JSON_FILE="${RESULTS_DIR}/${PATTERN_NAME}-${CIRCUIT_TYPE}-${TIMESTAMP}.json"
-    TXT_FILE="${RESULTS_DIR}/${PATTERN_NAME}-${CIRCUIT_TYPE}-${TIMESTAMP}.txt"
-fi
 
 # Setup Java 25
 echo "=== Setting up Java 25 ==="
@@ -65,73 +42,46 @@ else
     exit 1
 fi
 
-echo ""
-echo "=== Configuration ==="
-echo "  Benchmark Pattern: ${BENCHMARK_PATTERN}"
-echo "  Circuit Type:      ${CIRCUIT_TYPE}"
-echo "  Results JSON:      ${JSON_FILE}"
-echo "  Results Text:      ${TXT_FILE}"
-echo ""
-
 # Create results directory
 mkdir -p "${RESULTS_DIR}"
 
-# Build Step 1: Install Humainary API
-echo "=== Building Humainary API ==="
-mvn -f "${HUMAINARY_ROOT}/pom.xml" clean install -DskipTests -q
-
-# Build Step 2: Install Fullerstack to local repo (must be install, not package)
+# Build Fullerstack first (must be installed to local repo)
+echo ""
 echo "=== Building Fullerstack Substrates ==="
 mvn -f "${FULLERSTACK_ROOT}/pom.xml" clean install -DskipTests -q
 
-# Build Step 3: Build JMH jar with Fullerstack SPI
-echo "=== Building JMH Benchmarks with Fullerstack SPI ==="
-mvn -f "${HUMAINARY_ROOT}/jmh/pom.xml" clean package -DskipTests -q \
-    -Dsubstrates.spi.groupId=io.fullerstack \
-    -Dsubstrates.spi.artifactId=fullerstack-substrates \
-    -Dsubstrates.spi.version=1.0.0-SNAPSHOT
-
-# Construct classpath with Fullerstack dependencies
-JMH_JAR="${HUMAINARY_ROOT}/jmh/target/humainary-substrates-jmh-1.0.0-PREVIEW-jar-with-dependencies.jar"
-DEPS_DIR="${FULLERSTACK_ROOT}/target/dependency"
-
-# Build classpath from dependency directory
-EXTRA_CP=""
-if [[ -d "${DEPS_DIR}" ]]; then
-    for jar in "${DEPS_DIR}"/*.jar; do
-        if [[ -f "${jar}" ]]; then
-            EXTRA_CP="${EXTRA_CP}:${jar}"
-        fi
-    done
+# Generate output filenames
+TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+if [[ -z "$1" ]] || [[ "$1" == -* ]]; then
+    PATTERN_NAME="all"
+else
+    PATTERN_NAME=$(echo "$1" | tr '|' '-' | tr '[:upper:]' '[:lower:]')
 fi
-
-# Full classpath: JMH jar + Fullerstack dependencies
-CLASSPATH="${JMH_JAR}${EXTRA_CP}"
+JSON_FILE="${RESULTS_DIR}/${PATTERN_NAME}-${TIMESTAMP}.json"
+TXT_FILE="${RESULTS_DIR}/${PATTERN_NAME}-${TIMESTAMP}.txt"
 
 echo ""
-echo "=== Running Benchmarks ==="
-echo "  Circuit Type: ${CIRCUIT_TYPE}"
-echo "  Pattern: ${BENCHMARK_PATTERN}"
+echo "=== Configuration ==="
+echo "  Results JSON: ${JSON_FILE}"
+echo "  Results Text: ${TXT_FILE}"
 echo ""
 
-# Run JMH with proper classpath
-java --enable-preview \
-    -cp "${CLASSPATH}" \
-    -Dfullerstack.circuit.type="${CIRCUIT_TYPE}" \
-    org.openjdk.jmh.Main \
-    ${JMH_OPTS} \
-    -rf json -rff "${JSON_FILE}" \
-    "${BENCHMARK_PATTERN}" 2>&1 | tee "${TXT_FILE}"
+# Run benchmarks using Humainary's jmh.sh with Fullerstack SPI
+echo "=== Running Benchmarks via Humainary jmh.sh ==="
+cd "${HUMAINARY_ROOT}"
+SPI_GROUP=io.fullerstack \
+SPI_ARTIFACT=fullerstack-substrates \
+SPI_VERSION=1.0.0-RC1 \
+./jmh.sh -rf json -rff "${JSON_FILE}" "$@" 2>&1 | tee "${TXT_FILE}"
 
 echo ""
 echo "=========================================="
 echo "Benchmark Complete!"
-echo "  Circuit Type: ${CIRCUIT_TYPE}"
 echo "  JSON Results: ${JSON_FILE}"
 echo "  Text Results: ${TXT_FILE}"
 echo "=========================================="
 
-# Generate comparison table and update BENCHMARK-COMPARISON.md
+# Generate comparison table if script exists
 COMPARISON_SCRIPT="${SCRIPT_DIR}/generate-comparison.py"
 if [[ -f "${COMPARISON_SCRIPT}" ]] && [[ -f "${JSON_FILE}" ]]; then
     echo ""

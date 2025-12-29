@@ -1,6 +1,9 @@
 package io.fullerstack.substrates;
 
+import io.humainary.substrates.api.Substrates.Fluent;
+import io.humainary.substrates.api.Substrates.Provided;
 import io.humainary.substrates.api.Substrates.Sift;
+import io.humainary.substrates.api.Substrates.Temporal;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -14,6 +17,8 @@ import java.util.function.Predicate;
 /// - Stateful extrema tracking: high, low
 ///
 /// @param <E> the class type of emitted values
+@Provided
+@Temporal
 final class FsSift < E >
   implements Sift < E > {
 
@@ -37,18 +42,21 @@ final class FsSift < E >
     };
   }
 
+  @Fluent
   @Override
   public Sift < E > above ( E lower ) {
     filters.add ( v -> comparator.compare ( v, lower ) > 0 );
     return this;
   }
 
+  @Fluent
   @Override
   public Sift < E > below ( E upper ) {
     filters.add ( v -> comparator.compare ( v, upper ) < 0 );
     return this;
   }
 
+  @Fluent
   @Override
   public Sift < E > high () {
     Object[] currentHigh = { null };
@@ -66,6 +74,7 @@ final class FsSift < E >
     return this;
   }
 
+  @Fluent
   @Override
   public Sift < E > low () {
     Object[] currentLow = { null };
@@ -83,18 +92,21 @@ final class FsSift < E >
     return this;
   }
 
+  @Fluent
   @Override
   public Sift < E > max ( E max ) {
     filters.add ( v -> comparator.compare ( v, max ) <= 0 );
     return this;
   }
 
+  @Fluent
   @Override
   public Sift < E > min ( E min ) {
     filters.add ( v -> comparator.compare ( v, min ) >= 0 );
     return this;
   }
 
+  @Fluent
   @Override
   public Sift < E > range ( E lower, E upper ) {
     filters.add ( v -> comparator.compare ( v, lower ) >= 0 && comparator.compare ( v, upper ) <= 0 );

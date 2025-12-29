@@ -2,6 +2,8 @@ package io.fullerstack.substrates;
 
 import io.humainary.substrates.api.Substrates.Capture;
 import io.humainary.substrates.api.Substrates.Channel;
+import io.humainary.substrates.api.Substrates.Idempotent;
+import io.humainary.substrates.api.Substrates.Provided;
 import io.humainary.substrates.api.Substrates.Reservoir;
 import io.humainary.substrates.api.Substrates.Subject;
 import java.util.ArrayList;
@@ -16,6 +18,7 @@ import java.util.stream.Stream;
 ///
 /// @param <E> the class type of the emitted value
 /// @see Capture
+@Provided
 public final class FsReservoir < E >
   implements Reservoir < E > {
 
@@ -64,6 +67,7 @@ public final class FsReservoir < E >
   }
 
   /// Closes this reservoir, releasing the captured emissions buffer.
+  @Idempotent
   @Override
   public void close () {
     buffer.clear ();

@@ -1,6 +1,8 @@
 package io.fullerstack.substrates;
 
+import io.humainary.substrates.api.Substrates.Identity;
 import io.humainary.substrates.api.Substrates.Name;
+import io.humainary.substrates.api.Substrates.Provided;
 import java.lang.reflect.Member;
 import java.util.Iterator;
 import java.util.Objects;
@@ -11,6 +13,8 @@ import java.util.function.Function;
 /// A hierarchical dot-separated name using path-less interning.
 /// No path field stored - toString() computed lazily and cached.
 /// Memory-efficient: only stores segment + parent reference.
+@Identity
+@Provided
 public final class FsName
   implements Name {
 

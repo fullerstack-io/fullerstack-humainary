@@ -2,13 +2,12 @@
 
 **Status**: Core Design Principle
 **Applies To**: All emissions, subscriber callbacks, and event processing
-**Key Optimization**: Lazy thread initialization (thread starts on first emit)
 
 ## Executive Summary
 
 Substrates uses an **async-first** design where ALL emissions flow through the Circuit Queue asynchronously. This differs fundamentally from reactive frameworks like RxJava which are **synchronous by default**.
 
-**Key Insight**: When you call `pipe.emit(value)`, the emission does NOT execute immediately. Instead, it posts a Script to the Circuit Queue and returns immediately. The actual processing happens later when the Queue's single virtual thread executes the Script.
+**Key Insight**: When you call `pipe.emit(value)`, the emission does NOT execute immediately. Instead, it posts a Task to the Circuit's ingress queue and returns immediately. The actual processing happens later when the Circuit's virtual thread executes the Task.
 
 ## Async vs Sync: RxJava Comparison
 
@@ -55,7 +54,7 @@ conduit.subscribe(cortex().subscriber(
 ));
 
 Pipe<String> pipe = conduit.get(cortex().name("channel"));
-pipe.emit("hello");  // ← Returns IMMEDIATELY (posts Script to Queue)
+pipe.emit("hello");  // ← Returns IMMEDIATELY (enqueues Task to circuit)
 
 // ❌ WRONG: received.get() is still NULL (async hasn't executed yet)
 assertNull(received.get());
@@ -69,20 +68,41 @@ assertEquals("hello", received.get());  // Now it's available
 ```
 pipe.emit("hello")
   ↓
-FsAsyncPipe.emit() → ensureStarted() (lazy thread start)
+FsPipe.emit() → circuit.enqueue(receiver, emission)
   ↓
-ingress.offer(new Task(pipe, value))  // ← Returns immediately (async boundary)
+ingress.offer(Task(receiver, emission))  // ← Returns immediately (async boundary)
   ↓
 [Time passes - task queued, emitter continues]
   ↓
-Circuit virtual thread: ingress.drain(task -> ...)
+Circuit virtual thread: drains ingress queue
   ↓
-FsConduit.dispatch(subject, value)
+receiver.accept(value) → conduit.dispatch(subject, value)
   ↓
 subscriber callback executes
   ↓
 received.set("hello")
 ```
+
+## Circuit Type Configuration
+
+Fullerstack provides two circuit implementations, selectable via system property:
+
+```bash
+# JCtools Circuit (default) - MPSC queue with wait-free producer path
+-Dfullerstack.circuit.type=jctools
+
+# Folded Circuit - Linked job cascading for optimized deep chains
+-Dfullerstack.circuit.type=folded
+```
+
+| Circuit | Best For | Architecture |
+|---------|----------|--------------|
+| **JCtools** (default) | General workloads, high-throughput | MPSC queue + ArrayDeque transit |
+| **Folded** | Deep cascade chains (10+ levels) | Linked job lists, inline emit |
+
+Both circuits pass all 383 TCK tests and provide identical semantics.
+
+---
 
 ## Circuit Queue Architecture - FsJctoolsCircuit
 
@@ -129,6 +149,64 @@ Circuit processes tasks with depth-first execution:
   → Spin-then-park if no work
 ```
 
+---
+
+## Circuit Queue Architecture - FsFoldedCircuit
+
+### Linked Job Cascading Implementation
+
+The Folded Circuit uses a **linked job list** approach optimized for deep cascade chains:
+
+**Implementation (FsFoldedCircuit):**
+```java
+public final class FsFoldedCircuit implements FsInternalCircuit {
+    // JCTools MPSC queue for external emissions
+    private final MpscUnboundedArrayQueue<Job> ingress;
+
+    // Job pool for reuse (reduces allocations)
+    private final ConcurrentLinkedQueue<Job> pool;
+
+    // Lazy-started virtual thread
+    private volatile Thread thread;
+    private volatile boolean started;
+    private final AtomicBoolean parked;
+
+    // Job linking for cascade chains
+    static final class Job implements Runnable {
+        private Runnable task;
+        private Job next;  // Linked list for cascading
+    }
+}
+```
+
+**Architecture**:
+```
+Circuit (FsFoldedCircuit)
+  ├─ Ingress (MpscUnboundedArrayQueue<Job>)  (External emissions, MPSC)
+  ├─ Job Pool (ConcurrentLinkedQueue<Job>)   (Reusable job objects)
+  ├─ Virtual Thread                          (LAZY - starts on first emit)
+  └─ Job Linking                             (Cascade chains as linked lists)
+
+External Thread:
+  emit(task) → Job job = acquireJob() → job.task = task
+            → ingress.offer(job) → wakeIfParked()
+
+Circuit Thread (processing):
+  Job head = drain ingress (batch)
+            → reverse to maintain FIFO
+            → process each job
+            → for cascade: job.next = currentHead; currentHead = job (inline)
+```
+
+**Key Difference from JCtools Circuit:**
+- **JCtools**: Uses separate ArrayDeque for transit (cascade) emissions
+- **Folded**: Links jobs together in a chain, avoiding transit queue overhead
+
+**When Folded Excels:**
+- Deep cascade chains (10+ subscriber levels)
+- Systems with heavy recursive/cascade emissions
+- Scenarios where transit queue contention matters
+
 ### Benefits of Async-First Design
 
 1. **Depth-First Execution** - Transit deque has priority for recursive emissions
@@ -146,14 +224,14 @@ Circuit processes tasks with depth-first execution:
      ├─→ pipe.emit(value)                    // User emits to Pipe
      │        │
      │        ↓
-     │   [FsAsyncPipe.emit()]
+     │   [FsPipe.emit()]
      │        │
-     │        ├─→ ensureStarted()             // Lazy thread start (first emit only)
+     │        ├─→ circuit.isRunning()?        // Check circuit not closed
      │        │
-     │        ├─→ flow.apply(value)?          // Optional: Apply transformations
+     │        ├─→ circuit.enqueue(receiver, emission)
      │        │
      │        ↓
-     │   ingress.offer(new Task(pipe, value))
+     │   ingress.offer(Task(receiver, emission))
      │        │
      │        ├─→ if (parked) unpark(thread)  // Wake processor if sleeping
      │        │
@@ -168,9 +246,7 @@ Circuit processes tasks with depth-first execution:
      │        ├─→ ingress.drain(task -> ...)  // Then drain ingress (bulk)
      │        │
      │        ↓
-     │   [FsAsyncPipe.deliver(value)]
-     │        │
-     │        ├─→ receptor.receive(value)     // Call configured receptor
+     │   [receiver.accept(value)]
      │        │
      │        ↓
      │   [FsConduit.dispatch(subject, value)]
@@ -183,23 +259,22 @@ Circuit processes tasks with depth-first execution:
      │            [Subscriber Logic]          // User's consumption logic
 ```
 
-## circuit.await() - CountDownLatch Synchronization
+## circuit.await() - Synchronization
 
 ### Purpose
 
 `circuit.await()` blocks the calling thread until all pending work is complete.
 
-**Key Insight:** With lazy thread initialization, if the thread was never started, await() returns immediately - there's nothing to wait for!
-
 ### Implementation - CountDownLatch Sentinel
+
+The await mechanism uses a CountDownLatch sentinel pattern:
 
 ```java
 // FsJctoolsCircuit.java - CountDownLatch-based await
 public void await() {
     Thread t = thread;
     if (t == null) {
-        // Thread never started - nothing to await
-        return;  // ✅ Massive optimization for unused circuits
+        return;  // No thread started yet, nothing to await
     }
     if (Thread.currentThread() == t) {
         throw new IllegalStateException("Cannot await from circuit thread");
@@ -217,44 +292,11 @@ public void await() {
 }
 ```
 
-### Lazy Thread Start - The Key Optimization
-
-```java
-private void ensureStarted() {
-    if (started) return;  // Fast path - volatile read only
-    synchronized (startLock) {
-        if (thread == null) {
-            Thread t = Thread.ofVirtual()
-                .name("circuit-" + subject.name())
-                .start(this::loop);
-            thread = t;
-            threadId = t.threadId();  // Cache for fast comparison
-            started = true;
-        }
-    }
-}
-```
-
-**Benchmark Impact:**
-
-| Benchmark | Humainary | Fullerstack | Improvement |
-|-----------|-----------|-------------|-------------|
-| create_await_close | 10,730ns | 303ns | **-97%** |
-| hot_await_queue_drain | 5,798ns | 0.96ns | **-100%** |
-| close_idempotent_await | 8,438ns | 35ns | **-100%** |
-| close_*_conduits_await | ~8,500ns | ~125-200ns | **-98%** |
-
-**Why This Works:**
-- Humainary starts the virtual thread immediately on Circuit creation
-- Fullerstack delays thread creation until first emission
-- If you create a Circuit, await(), and close() without emitting, the thread is **never created**
-- This is the common pattern in benchmarks that create/close circuits rapidly
-
-**Benefits:**
-- ✅ **Zero-cost await for unused circuits** - If no emissions, no thread, instant return
-- ✅ **Precise synchronization** - CountDownLatch guarantees FIFO ordering
-- ✅ **No polling** - Latch blocks efficiently until countdown
-- ✅ **Thread-safe** - No race conditions in sentinel pattern
+**How It Works:**
+- A sentinel task (`latch::countDown`) is submitted to the circuit queue
+- The caller blocks on `latch.await()` until the sentinel executes
+- FIFO ordering guarantees all prior tasks complete before the sentinel
+- Zero-polling - efficient blocking with CountDownLatch
 
 ### When to Use circuit.await()
 
@@ -384,7 +426,7 @@ void testEmission_CORRECT() throws Exception {
 
     pipe.emit("hello");
 
-    // Wait for Circuit Queue to process all pending Scripts
+    // Wait for Circuit to process all pending Tasks
     circuit.await();
 
     // Now safe to assert
@@ -429,10 +471,9 @@ void testConcurrentAccess() throws Exception {
 ### Async Queue Overhead
 
 **Cost of async boundary**:
-- Script creation: ~5-10ns
-- Queue.post(): ~15-20ns (offer to LinkedBlockingQueue)
+- Task enqueue: ~15-25ns (offer to JCTools MPSC queue)
 - Context switch: ~50-100ns (virtual thread)
-- **Total overhead**: ~70-130ns per emission
+- **Total overhead**: ~65-125ns per emission
 
 **Benefits**:
 - No blocking on emit() - emitter continues immediately
@@ -442,14 +483,14 @@ void testConcurrentAccess() throws Exception {
 
 ### Benchmark Results
 
-From `SubstratesLoadBenchmark.java`:
+From JMH benchmarks:
 
 | Operation | Latency | Notes |
 |-----------|---------|-------|
-| Pipe.emit() (hot path) | ~500ns | Includes Script creation + post |
-| Full path (lookup + emit) | ~1μs | circuit → conduit → pipe → emit |
-| Subscriber callback | ~1μs | End-to-end: emit → queue → callback |
-| Multi-threaded emission (4 threads) | Linear scaling | No lock contention (virtual threads) |
+| Pipe.emit() (hot path) | ~17-27ns | Async enqueue (JCTools MPSC) |
+| Full path (lookup + emit) | ~100-300ns | conduit → channel → pipe → emit |
+| Subscriber callback | ~50-100ns | End-to-end: emit → queue → callback |
+| Multi-threaded emission | Linear scaling | Wait-free producers (MPSC queue) |
 
 ## Cell Hierarchical Architecture and Async
 
@@ -470,7 +511,7 @@ partition0.emit(metric);  // ← Returns immediately (async)
 // 1. partition0 transforms metric → alert
 // 2. Emits to broker1's Source
 // 3. Emits to cluster's Source
-// All via Circuit Queue Scripts
+// All via Circuit Tasks
 
 circuit.await();  // Wait for async processing
 ```
@@ -482,8 +523,8 @@ circuit.await();  // Wait for async processing
 broker1.emit(metric);  // ← Returns immediately
 
 // Async flow:
-// 1. Script posted to Circuit Queue
-// 2. Queue processes: broadcast to all child Cells
+// 1. Task posted to Circuit's ingress queue
+// 2. Circuit processes: broadcast to all child Cells
 // 3. Each child transforms metric → alert (async)
 // 4. Each child emits to broker1's Source (async)
 
@@ -541,8 +582,8 @@ assertEquals("hello", received.get());  // Works - async completed
 // Pipe implementation
 pipe.emit(value);  // Log: "Emitting: value"
 
-// Queue processor
-script.exec(current);  // Log: "Executing script"
+// Circuit processor
+receiver.accept(value);  // Log: "Executing task"
 
 // Subscriber callback
 registrar.register(value -> {
@@ -552,29 +593,25 @@ registrar.register(value -> {
 
 **Timeline**:
 ```
-T+0ms:   emit("hello") - posts Script
+T+0ms:   emit("hello") - enqueues Task
 T+0ms:   emit() returns (immediate)
-T+10ms:  Queue picks up Script
-T+10ms:  conduit.processEmission()
-T+10ms:  Subscriber receives "hello"
+T+10μs:  Circuit picks up Task
+T+10μs:  conduit.dispatch(subject, value)
+T+10μs:  Subscriber receives "hello"
 ```
 
 ### Verifying Queue Processing
 
 ```java
-// Check if queue is processing
-Circuit circuit = cortex().circuit();
-Queue queue = circuit.queue();
+Circuit circuit = cortex().circuit(cortex().name("test"));
 
 pipe.emit("value");
 
-// Queue should NOT be empty immediately
-// (Script is in queue, not yet executed)
+// Task is queued, not yet executed
 
-circuit.await();  // Block until empty
+circuit.await();  // Block until all pending tasks complete
 
-// Now queue IS empty
-// (All Scripts executed)
+// Now all tasks are executed
 ```
 
 ## Summary Table
@@ -584,11 +621,10 @@ circuit.await();  // Block until empty
 | **emit() behavior** | Blocks until subscribers complete | Returns immediately |
 | **Subscriber callbacks** | Execute on calling thread | Execute on Circuit virtual thread |
 | **Ordering** | Not guaranteed (multi-threaded) | Depth-first guarantee (dual-queue) |
-| **Backpressure** | Manual (Flowable) | Built-in (queue monitoring) |
+| **Backpressure** | Manual (Flowable) | Built-in (queue capacity) |
 | **Testing pattern** | No special handling | Must use circuit.await() |
-| **Threading model** | Configurable schedulers | Single virtual thread per Circuit (lazy-started) |
+| **Threading model** | Configurable schedulers | Single virtual thread per Circuit |
 | **Concurrency** | Locks needed for safety | Lock-free (single-threaded) |
-| **Thread start** | Immediate | On first emission (lazy) |
 
 ## Best Practices
 
@@ -610,15 +646,11 @@ circuit.await();  // Block until empty
 
 ## References
 
-- **Queue Architecture**: [queues-scripts-currents.md](archive/alignment/queues-scripts-currents.md)
-- **Circuit Architecture**: [CIRCUIT_QUEUE_ARCHITECTURE_ISSUE.md](archive/CIRCUIT_QUEUE_ARCHITECTURE_ISSUE.md)
-- **Cell Implementation**: [CELL_HIERARCHICAL_ARCHITECTURE.md](/workspaces/fullerstack-java/CELL_HIERARCHICAL_ARCHITECTURE.md)
-- **Performance Analysis**: [PERFORMANCE.md](PERFORMANCE.md)
+- **Architecture Overview**: [ARCHITECTURE.md](ARCHITECTURE.md)
+- **Developer Guide**: [DEVELOPER-GUIDE.md](DEVELOPER-GUIDE.md)
 - **Humainary Circuits Article**: https://humainary.io/blog/observability-x-circuits/
 - **Humainary Queues Article**: https://humainary.io/blog/observability-x-queues-scripts-and-currents/
 
 ## Key Takeaway
 
-**Substrates is async-first by design**. Every emission posts a task to the Circuit's JCTools MPSC queue and returns immediately. Subscriber callbacks execute asynchronously on the Circuit's lazily-started virtual thread with depth-first execution. Use `circuit.await()` in tests to synchronize with async processing, but don't use it after every emit() in production code - leverage the async dual-queue for performance.
-
-**Key Optimization:** The virtual thread is only created on first emission. If you create a circuit, await(), and close() without emitting, the thread is **never created**. This is why Fullerstack shows -97% to -100% improvements on await benchmarks compared to Humainary.
+**Substrates is async-first by design**. Every emission posts a Task to the Circuit's ingress queue and returns immediately. Subscriber callbacks execute asynchronously on the Circuit's virtual thread with depth-first execution. Use `circuit.await()` in tests to synchronize with async processing, but avoid using it after every emit() in production - leverage the async dual-queue architecture for throughput.

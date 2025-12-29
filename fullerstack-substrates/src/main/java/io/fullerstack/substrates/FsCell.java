@@ -6,7 +6,10 @@ import io.humainary.substrates.api.Substrates.Cell;
 import io.humainary.substrates.api.Substrates.Channel;
 import io.humainary.substrates.api.Substrates.Composer;
 import io.humainary.substrates.api.Substrates.Name;
+import io.humainary.substrates.api.Substrates.New;
+import io.humainary.substrates.api.Substrates.NotNull;
 import io.humainary.substrates.api.Substrates.Pipe;
+import io.humainary.substrates.api.Substrates.Provided;
 import io.humainary.substrates.api.Substrates.Receptor;
 import io.humainary.substrates.api.Substrates.Reservoir;
 import io.humainary.substrates.api.Substrates.Subject;
@@ -40,13 +43,14 @@ import java.util.function.Consumer;
 ///
 /// @param <I> input type received by the cell
 /// @param <E> emission type output by the cell
+@Provided
 public final class FsCell<I, E> implements Cell<I, E> {
 
   /// The subject identity for this cell.
   private final Subject<Cell<I, E>> subject;
 
   /// The circuit that owns this cell.
-  private final FsInternalCircuit circuit;
+  private final FsCircuit circuit;
 
   /// Parent cell (null for root cells).
   private final FsCell<?, E> parentCell;
@@ -84,7 +88,7 @@ public final class FsCell<I, E> implements Cell<I, E> {
   /// @param receptor final destination for E values
   public FsCell(
       Subject<Cell<I, E>> subject,
-      FsInternalCircuit circuit,
+      FsCircuit circuit,
       Composer<E, Pipe<I>> ingress,
       Composer<E, Pipe<E>> egress,
       Receptor<? super E> receptor) {
@@ -123,7 +127,7 @@ public final class FsCell<I, E> implements Cell<I, E> {
   @SuppressWarnings("unchecked")
   FsCell(
       Subject<Cell<I, E>> subject,
-      FsInternalCircuit circuit,
+      FsCircuit circuit,
       FsCell<?, E> parentCell,
       Name childName) {
     this.subject = subject;
@@ -221,9 +225,10 @@ public final class FsCell<I, E> implements Cell<I, E> {
     receivePipe.emit(emission);
   }
 
+  @NotNull
   @Override
   @SuppressWarnings("unchecked")
-  public Cell<I, E> percept(Name name) {
+  public Cell<I, E> percept(@NotNull Name name) {
     // Child cells have type Cell<E, E> - parent's output becomes child's input/output
     return (Cell<I, E>) (Cell<?, ?>) children.computeIfAbsent(name, n -> {
       FsSubject<Cell<E, E>> childSubject = new FsSubject<>(n, (FsSubject<?>) subject, Cell.class);
@@ -231,8 +236,10 @@ public final class FsCell<I, E> implements Cell<I, E> {
     });
   }
 
+  @New
+  @NotNull
   @Override
-  public Subscription subscribe(Subscriber<E> subscriber) {
+  public Subscription subscribe(@NotNull Subscriber<E> subscriber) {
     subscribers.add(subscriber);
     FsSubject<Subscription> subSubject = new FsSubject<>(subscriber.subject().name(), (FsSubject<?>) subject, Subscription.class);
     return new FsSubscription(subSubject, () -> {
@@ -242,6 +249,8 @@ public final class FsCell<I, E> implements Cell<I, E> {
     });
   }
 
+  @New
+  @NotNull
   @Override
   public Reservoir<E> reservoir() {
     FsSubject<Reservoir<E>> resSubject = new FsSubject<>(cortex().name("reservoir"), (FsSubject<?>) subject, Reservoir.class);

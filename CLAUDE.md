@@ -86,24 +86,28 @@ mvn spotless:apply
 mvn spotless:check
 ```
 
-**Run benchmarks:**
+**Run benchmarks (using Humainary's jmh.sh):**
 ```bash
-mvn clean package
-java -jar target/benchmarks.jar
+# Build Fullerstack first
+cd fullerstack-substrates && mvn clean install -DskipTests -q
+
+# Run benchmarks via Humainary's jmh.sh with Fullerstack SPI
+cd substrates-api-java
+SPI_GROUP=io.fullerstack SPI_ARTIFACT=fullerstack-substrates SPI_VERSION=1.0.0-RC1 ./jmh.sh
+
+# Or run specific benchmark group
+SPI_GROUP=io.fullerstack SPI_ARTIFACT=fullerstack-substrates SPI_VERSION=1.0.0-RC1 ./jmh.sh PipeOps
 ```
 
-**Run TCK (Test Compatibility Kit) tests:**
+**Run TCK (using Humainary's tck.sh):**
 ```bash
-# From the substrates-api-java/tck directory
-cd /path/to/substrates-api-java/tck
-mvn test \
-  -Dtck \
-  -Dtck.spi.groupId=io.fullerstack \
-  -Dtck.spi.artifactId=fullerstack-substrates \
-  -Dtck.spi.version=1.0.0-SNAPSHOT
-```
+# Build Fullerstack first
+cd fullerstack-substrates && mvn clean install -DskipTests -q
 
-Expected: 383 tests, 0 failures, 0 errors (100% compliance)
+# Run TCK via Humainary's tck.sh with Fullerstack SPI
+cd substrates-api-java
+SPI_GROUP=io.fullerstack SPI_ARTIFACT=fullerstack-substrates SPI_VERSION=1.0.0-RC1 ./tck.sh
+```
 
 ## Architecture Overview
 
@@ -124,21 +128,27 @@ Think of it like `java.util.List` (interface) vs `ArrayList` (implementation).
 6. **Cell** - Hierarchical computational cell with type transformation (I → E)
 7. **Valve** - Dual-queue architecture (Ingress + Transit) + Virtual Thread per Circuit
 
-### Virtual CPU Core Pattern (Valve)
+### Circuit Architecture
 
-Each Circuit uses a **Valve** for deterministic event ordering:
+Fullerstack uses a single consolidated circuit implementation (`FsCircuit`) with an intrusive MPSC linked list queue:
+
+**Key design:**
+- External emissions: create job, submit to MPSC queue via `getAndSet`
+- Cascade emissions (on circuit thread): direct call, no job allocation
+- Park/unpark for efficient thread synchronization
 
 ```
-External Emissions → Ingress Queue (FIFO) →
-                                            → Virtual Thread Processor
-Recursive Emissions → Transit Deque (FIFO, priority) →   → Depth-First Execution
+External Emissions → MPSC Queue (intrusive linked list) →
+                                                          → Virtual Thread
+Cascade Emissions → Direct call (no job allocation) →       → Sequential Execution
 ```
 
 **Key guarantees:**
-- Transit deque has priority over Ingress queue (true depth-first processing)
 - Single virtual thread per Circuit eliminates race conditions
-- Event-driven synchronization via wait/notify (no polling)
-- Deterministic ordering with FIFO processing
+- Wait-free producer path via atomic `getAndSet`
+- Park/unpark synchronization (no busy-spinning)
+- Cascade optimization: same-thread emissions bypass queue entirely
+- Passes all 383 TCK tests
 
 ### Package Structure
 
@@ -245,27 +255,35 @@ scope.close();  // Closes all registered resources
 
 ### Serventis Integration (PREVIEW)
 
-Serventis extends Substrates with 12 typed instrument APIs for semiotic observability:
+Serventis extends Substrates with semantic signaling instruments organized by **semiotic ascent**:
 
-**OBSERVE Phase:** Probes, Services, Queues, Gauges, Counters, Caches
-**ORIENT Phase:** Monitors, Resources
-**DECIDE Phase:** Reporters
-**ACT Phase:** Agents, Actors, Routers
+**Layered Architecture:** Raw Signs → Systems → Statuses → Situations → Actions
+
+**Module Structure:**
+- **sdk/** (Universal): Systems, Statuses, Situations, Outcomes, Operations, Trends, Surveys
+- **tool/** (Measurement): Counters, Gauges, Probes, Sensors, Logs
+- **data/** (Data Structures): Queues, Stacks, Caches, Pipelines
+- **flow/** (Flow Control): Valves, Breakers, Routers, Flows
+- **sync/** (Synchronization): Locks, Atomics, Latches
+- **pool/** (Resources): Resources, Pools, Leases, Exchanges
+- **exec/** (Execution): Tasks, Services, Processes, Timers, Transactions
+- **role/** (Coordination): Agents, Actors
 
 **Example:**
 ```java
-import io.humainary.substrates.ext.serventis.ext.Monitors;
+import io.humainary.serventis.sdk.*;
+import io.humainary.serventis.opt.tool.*;
 
-Conduit<Monitor, Monitors.Status> monitors = circuit.conduit(
-    cortex().name("monitors"),
-    Monitors::composer  // Use Serventis composer
-);
+// Raw Signs: Counter for request counting
+var counters = circuit.conduit(cortex().name("requests"), Counters::composer);
+counters.get(cortex().name("http.requests")).increment();
 
-Monitor monitor = monitors.get(cortex().name("broker-1.health"));
-monitor.degraded(Monitors.Confidence.HIGH);  // Emit status
+// Behavioral Condition: Status assessment
+var statuses = circuit.conduit(cortex().name("health"), Statuses::composer);
+statuses.get(cortex().name("api")).degraded(Statuses.Confidence.MEASURED);
 ```
 
-**Key insight:** The same signal means different things based on Subject context (semiotic observability).
+**Key insight:** The same signal means different things based on Subject context (semiotic observability). See [SERVENTIS.md](fullerstack-substrates/docs/SERVENTIS.md) for full documentation.
 
 ## TCK Compliance
 
@@ -298,13 +316,16 @@ The TCK tests are maintained by Humainary and verify that implementations correc
 ## Key Documentation
 
 - **README.md** - Project overview and quick start
-- **fullerstack-substrates/docs/ARCHITECTURE.md** - Detailed architecture (sealed hierarchy, Valve pattern, data flow)
+- **fullerstack-substrates/docs/ARCHITECTURE.md** - Detailed architecture (sealed hierarchy, circuit types, data flow)
 - **fullerstack-substrates/docs/ASYNC-ARCHITECTURE.md** - Virtual CPU Core and event-driven synchronization
 - **fullerstack-substrates/docs/DEVELOPER-GUIDE.md** - Best practices, performance tips, testing strategies
+- **fullerstack-substrates/docs/USE-CASES.md** - Problem domains where Substrates excels
+- **fullerstack-substrates/docs/SERVENTIS.md** - Semiotic observability and Serventis instruments
 
 **External Resources:**
 - [Humainary Substrates API](https://github.com/humainary-io/substrates-api-java) - Official API specification
 - [Observability X Blog](https://humainary.io/blog/category/observability-x/) - William Louth's architectural vision
+- [Serventis: Big Things Have Small Beginnings](https://humainary.io/blog/serventis-big-things-have-small-beginnings/) - Semiotic ascent philosophy
 
 ## Critical Reminders
 

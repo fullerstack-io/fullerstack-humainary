@@ -2,36 +2,20 @@
 description: Run CircuitOps JMH benchmarks comparing Fullerstack vs Humainary
 ---
 
-**IMPORTANT: ALWAYS run the bash command with `run_in_background: true` to prevent interruption.**
+Run CircuitOps JMH benchmarks using Humainary's official jmh.sh with Fullerstack as the SPI provider.
 
-Run CircuitOps JMH benchmarks comparing Fullerstack vs Humainary implementation.
+## Instructions
 
-## Steps
-
-1. Run the benchmark script:
+**Run with `run_in_background: true`. Do NOT block waiting - just report the task ID.**
 
 ```bash
-/workspaces/fullerstack-humainary/scripts/benchmark.sh CircuitOps
+cd /workspaces/fullerstack-humainary/fullerstack-substrates && \
+source /usr/local/sdkman/bin/sdkman-init.sh && sdk use java 25.0.1-open && \
+mvn clean install -DskipTests -q && \
+cd /workspaces/fullerstack-humainary/substrates-api-java && \
+SPI_GROUP=io.fullerstack SPI_ARTIFACT=fullerstack-substrates SPI_VERSION=1.0.0-RC1 \
+./jmh.sh CircuitOps
 ```
 
-2. Present comparison table using Humainary baselines from BENCHMARKS.md:
-
-| Benchmark | Humainary (ns) | Fullerstack (ns) | Diff | Winner |
-|-----------|---------------:|----------------:|-----:|:------:|
-| conduit_create_close | 281.7 | X | X% | ? |
-| conduit_create_named | 282.0 | X | X% | ? |
-| conduit_create_with_flow | 280.1 | X | X% | ? |
-| create_and_close | 337.3 | X | X% | ? |
-| create_await_close | 10,731 | X | X% | ? |
-| hot_await_queue_drain | 5,799 | X | X% | ? |
-| hot_conduit_create | 19.1 | X | X% | ? |
-| hot_conduit_create_named | 19.1 | X | X% | ? |
-| hot_conduit_create_with_flow | 21.9 | X | X% | ? |
-| hot_pipe_async | 8.5 | X | X% | ? |
-| hot_pipe_async_with_flow | 10.7 | X | X% | ? |
-| pipe_async | 309.1 | X | X% | ? |
-| pipe_async_with_flow | 320.4 | X | X% | ? |
-
-**Summary:** X/13 Fullerstack wins, X/13 Humainary wins
-
-Diff = ((Fullerstack - Humainary) / Humainary * 100). Winner = lower time (faster).
+When complete, present comparison table using Humainary baselines from BENCHMARKS.md.
+Diff = ((Fullerstack - Humainary) / Humainary * 100). Winner = lower time.

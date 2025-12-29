@@ -1,7 +1,11 @@
 package io.fullerstack.substrates;
 
 import io.humainary.substrates.api.Substrates.Closure;
+import io.humainary.substrates.api.Substrates.Idempotent;
 import io.humainary.substrates.api.Substrates.Name;
+import io.humainary.substrates.api.Substrates.New;
+import io.humainary.substrates.api.Substrates.NotNull;
+import io.humainary.substrates.api.Substrates.Provided;
 import io.humainary.substrates.api.Substrates.Resource;
 import io.humainary.substrates.api.Substrates.Scope;
 import io.humainary.substrates.api.Substrates.Subject;
@@ -25,6 +29,7 @@ import java.util.Optional;
 /// - **Idempotent close**: Safe to call close() multiple times
 ///
 /// @see Resource
+@Provided
 final class FsScope
   implements Scope {
 
@@ -86,9 +91,11 @@ final class FsScope
     return Optional.ofNullable ( parent );
   }
 
+  @New
+  @NotNull
   @Override
   @SuppressWarnings ( "unchecked" )
-  public < R extends Resource > Closure < R > closure ( R resource ) {
+  public < R extends Resource > Closure < R > closure ( @NotNull R resource ) {
     java.util.Objects.requireNonNull ( resource, "resource must not be null" );
     if ( closed ) {
       throw new IllegalStateException ( "Scope is closed" );
@@ -114,8 +121,9 @@ final class FsScope
     return closure;
   }
 
+  @NotNull
   @Override
-  public < R extends Resource > R register ( R resource ) {
+  public < R extends Resource > R register ( @NotNull R resource ) {
     java.util.Objects.requireNonNull ( resource, "resource must not be null" );
     if ( closed ) {
       throw new IllegalStateException ( "Scope is closed" );
@@ -128,6 +136,8 @@ final class FsScope
     return resource;
   }
 
+  @New
+  @NotNull
   @Override
   public Scope scope () {
     if ( closed ) {
@@ -145,8 +155,10 @@ final class FsScope
     return child;
   }
 
+  @New
+  @NotNull
   @Override
-  public Scope scope ( Name name ) {
+  public Scope scope ( @NotNull Name name ) {
     java.util.Objects.requireNonNull ( name, "name must not be null" );
     if ( closed ) {
       throw new IllegalStateException ( "Scope is closed" );
@@ -163,6 +175,7 @@ final class FsScope
     return child;
   }
 
+  @Idempotent
   @Override
   public void close () {
     if ( closed ) {

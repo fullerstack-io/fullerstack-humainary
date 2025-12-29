@@ -7,13 +7,17 @@ import io.humainary.substrates.api.Substrates.Conduit;
 import io.humainary.substrates.api.Substrates.Configurer;
 import io.humainary.substrates.api.Substrates.Flow;
 import io.humainary.substrates.api.Substrates.Name;
+import io.humainary.substrates.api.Substrates.New;
+import io.humainary.substrates.api.Substrates.NotNull;
 import io.humainary.substrates.api.Substrates.Percept;
 import io.humainary.substrates.api.Substrates.Pipe;
+import io.humainary.substrates.api.Substrates.Provided;
 import io.humainary.substrates.api.Substrates.Reservoir;
 import io.humainary.substrates.api.Substrates.Subject;
 import io.humainary.substrates.api.Substrates.Subscriber;
 import io.humainary.substrates.api.Substrates.Subscription;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
@@ -35,6 +39,7 @@ import java.util.function.Function;
 ///
 /// @param <P> the percept type (extends Percept)
 /// @param <E> the emission type
+@Provided
 public final class FsConduit<P extends Percept, E>
     extends FsSubstrate<Conduit<P, E>> implements Conduit<P, E> {
 
@@ -68,14 +73,18 @@ public final class FsConduit<P extends Percept, E>
 
   private final Function<Channel<E>, P> composer;
   private final Configurer<Flow<E>> flowConfigurer;
-  private final FsInternalCircuit circuit;
+  private final FsCircuit circuit;
 
   /// Cache of percepts by name - copy-on-write for fast reads.
-  /// Using IdentityHashMap since FsName uses identity-based equals.
+  /// Using IdentityHashMap since FsName is interned (same path = same object).
   /// Reads are lock-free via volatile; writes synchronize and replace.
-  /// Lazily allocated on first percept access.
-  private volatile Map<Name, P> percepts;  // Lazy
+  private volatile Map<Name, P> percepts = new IdentityHashMap<>();
   private final Object perceptLock = new Object();
+
+  /// Last lookup cache - optimizes repeated lookups of the same name.
+  /// Not volatile: benign race (worst case: extra map lookup).
+  private Name lastLookupName;
+  private P lastLookupPercept;
 
   /// Channel states by name - copy-on-write for fast reads.
   /// Lazily allocated on first percept creation.
@@ -91,11 +100,27 @@ public final class FsConduit<P extends Percept, E>
   /// Version counter - incremented on subscribe/unsubscribe.
   private volatile int version = 0;
 
+  /// Fast-path flag for no-subscriber optimization.
+  /// When false AND no flowConfigurer, pipes can skip enqueue entirely.
+  private volatile boolean hasSubscribers = false;
+
+  /// Returns true if this conduit has any subscribers.
+  /// Used by pipes for fast-path optimization when no flowConfigurer.
+  boolean hasSubscribers() {
+    return hasSubscribers;
+  }
+
+  /// Returns true if this conduit has a flow configurer (transformations).
+  /// When true, emissions must always be processed (operators may have side effects).
+  boolean hasFlowConfigurer() {
+    return flowConfigurer != null;
+  }
+
   public FsConduit(
       FsSubject<?> parent,
       Name name,
       Function<Channel<E>, P> composer,
-      FsInternalCircuit circuit) {
+      FsCircuit circuit) {
     this(parent, name, composer, circuit, null);
   }
 
@@ -103,7 +128,7 @@ public final class FsConduit<P extends Percept, E>
       FsSubject<?> parent,
       Name name,
       Function<Channel<E>, P> composer,
-      FsInternalCircuit circuit,
+      FsCircuit circuit,
       Configurer<Flow<E>> flowConfigurer) {
     super(parent, name);
     this.composer = composer;
@@ -121,35 +146,44 @@ public final class FsConduit<P extends Percept, E>
     return lazySubject();
   }
 
+  @NotNull
   @Override
-  public P percept(Name name) {
-    // Inline null check is faster than Objects.requireNonNull
-    if (name == null) throw new NullPointerException("name must not be null");
-    // Fast path: volatile read of HashMap - no synchronization
-    Map<Name, P> current = percepts;
-    if (current != null) {
-      P cached = current.get(name);
-      if (cached != null) {
-        return cached;
-      }
+  public P percept(@NotNull Name name) {
+    // Fast path: same name as last lookup (identity check, ~2ns)
+    // Check lastLookupName != null to handle initial state and null argument
+    Name last = lastLookupName;
+    if (last != null && name == last) {
+      return lastLookupPercept;
     }
+
+    // Null check (only reached on cache miss or first call)
+    if (name == null) {
+      throw new NullPointerException("name must not be null");
+    }
+
+    // Normal path: map lookup (~7ns)
+    P cached = percepts.get(name);
+    if (cached != null) {
+      lastLookupName = name;
+      lastLookupPercept = cached;
+      return cached;
+    }
+
+    // Slow path: create and cache
     return createAndCachePercept(name);
   }
 
   private P createAndCachePercept(Name name) {
     synchronized (perceptLock) {
-      // Lazy init maps if needed
-      Map<Name, P> currentPercepts = percepts;
-      if (currentPercepts == null) {
-        currentPercepts = new IdentityHashMap<>();
-        percepts = currentPercepts;
-        channelStates = new IdentityHashMap<>();
-      }
-
       // Double-check under lock
-      P cached = currentPercepts.get(name);
+      P cached = percepts.get(name);
       if (cached != null) {
         return cached;
+      }
+
+      // Lazy init channelStates if needed
+      if (channelStates == null) {
+        channelStates = new IdentityHashMap<>();
       }
 
       FsSubject<Channel<E>> channelSubject =
@@ -169,22 +203,24 @@ public final class FsConduit<P extends Percept, E>
 
       // Apply flow configurer if present
       Consumer<E> channelRouter;
+      FsChannel<E> channel;
       if (flowConfigurer != null) {
         // Flow needs a pipe to wrap - use directReceiver as terminal
         Pipe<E> basePipe = new FsPipe<>(pipeSubject, circuit, directReceiver);
         FsFlow<E> flow = new FsFlow<>(pipeSubject, circuit, basePipe);
         flowConfigurer.configure(flow);
         channelRouter = flow.pipe()::emit;
+        // With flow configurer: always process (operators may have side effects)
+        channel = new FsChannel<>(channelSubject, circuit, channelRouter);
       } else {
         // No flow - use direct receiver (single Task per emission)
         channelRouter = directReceiver;
+        channel = new FsChannel<>(channelSubject, circuit, channelRouter);
       }
-
-      FsChannel<E> channel = new FsChannel<>(channelSubject, circuit, channelRouter);
       P percept = composer.apply(channel);
 
       // Copy-on-write: create new maps with this entry
-      Map<Name, P> newPercepts = new IdentityHashMap<>(currentPercepts);
+      Map<Name, P> newPercepts = new IdentityHashMap<>(percepts);
       newPercepts.put(name, percept);
       Map<Name, ChannelState<E>> newStates = new IdentityHashMap<>(channelStates);
       newStates.put(name, state);
@@ -192,6 +228,10 @@ public final class FsConduit<P extends Percept, E>
       // Publish atomically via volatile write
       channelStates = newStates;
       percepts = newPercepts;
+
+      // Update last lookup cache
+      lastLookupName = name;
+      lastLookupPercept = percept;
 
       return percept;
     }
@@ -201,14 +241,16 @@ public final class FsConduit<P extends Percept, E>
   private void emitToChannel(ChannelState<E> state, E emission) {
     // Single volatile read at start (read-once principle)
     int v = this.version;
-    Consumer<E>[] cachedPipes = state.pipes;
 
-    // Check if we need to rebuild (first emit or subscriber change)
-    if (cachedPipes == null || state.builtVersion != v) {
+    // Check if we need to rebuild (version changed since last build)
+    // Note: builtVersion starts at -1, so first emit always rebuilds
+    if (state.builtVersion != v) {
       rebuildChannelPipes(state, v);
-      cachedPipes = state.pipes;
-      if (cachedPipes == null) return;  // No subscribers
     }
+
+    // Get cached pipes (may be null if no subscribers)
+    Consumer<E>[] cachedPipes = state.pipes;
+    if (cachedPipes == null) return;  // No subscribers
 
     // Hot path: index-based loop (no iterator allocation)
     for (int i = 0, len = cachedPipes.length; i < len; i++) {
@@ -274,13 +316,16 @@ public final class FsConduit<P extends Percept, E>
       if (subscribersList != null) {
         subscribersList.remove(subscriber);
         subscribersSnapshot = null; // Invalidate snapshot
+        hasSubscribers = !subscribersList.isEmpty(); // Update fast-path flag
       }
     }
     version++; // Trigger rebuild on next emit
   }
 
+  @New
+  @NotNull
   @Override
-  public Subscription subscribe(Subscriber<E> subscriber) {
+  public Subscription subscribe(@NotNull Subscriber<E> subscriber) {
     if (subscriber.subject() instanceof FsSubject<?> subSubject) {
       FsSubject<?> subscriberCircuit = subSubject.findCircuitAncestor();
       FsSubject<?> conduitCircuit = parent().findCircuitAncestor();
@@ -302,6 +347,7 @@ public final class FsConduit<P extends Percept, E>
       }
       subscribersList.add(fs);
       subscribersSnapshot = null; // Invalidate snapshot
+      hasSubscribers = true; // Enable processing path
     }
     version++; // Trigger rebuild on next emit
 
@@ -313,6 +359,8 @@ public final class FsConduit<P extends Percept, E>
     return subscription;
   }
 
+  @New
+  @NotNull
   @Override
   public Reservoir<E> reservoir() {
     FsSubject<Reservoir<E>> resSubject =

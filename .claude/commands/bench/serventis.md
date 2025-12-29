@@ -1,41 +1,41 @@
 ---
-description: Run all Serventis JMH benchmarks comparing Fullerstack vs Humainary
+description: Run ALL Serventis JMH benchmarks comparing Fullerstack vs Humainary
 ---
 
-**IMPORTANT: ALWAYS run the bash command with `run_in_background: true` to prevent interruption.**
+Run Serventis JMH benchmarks using Humainary's official jmh.sh with Fullerstack as the SPI provider.
 
-Run all Serventis instrument JMH benchmarks comparing Fullerstack vs Humainary implementation.
+## Usage
 
-## Steps
+- `/bench:serventis` - Run ALL Serventis benchmarks (~60+ minutes)
+- `/bench:serventis CacheOps` - Run specific benchmark
 
-1. Run the benchmark script with Serventis pattern:
+## Instructions
+
+**Run with `run_in_background: true`. Do NOT block waiting - just report the task ID.**
+
+Use the pattern from $ARGUMENTS, or if empty use `io.humainary.serventis.jmh` for all Serventis benchmarks.
 
 ```bash
-/workspaces/fullerstack-humainary/scripts/benchmark.sh "CacheOps|CounterOps|GaugeOps|ProbeOps|ServiceOps|QueueOps|MonitorOps|ResourceOps|ReporterOps|AgentOps|ActorOps|RouterOps|PipelineOps"
+cd /workspaces/fullerstack-humainary/fullerstack-substrates && \
+source /usr/local/sdkman/bin/sdkman-init.sh && sdk use java 25.0.1-open && \
+mvn clean install -DskipTests -q && \
+cd /workspaces/fullerstack-humainary/substrates-api-java && \
+SPI_GROUP=io.fullerstack SPI_ARTIFACT=fullerstack-substrates SPI_VERSION=1.0.0-RC1 \
+./jmh.sh $ARGUMENTS
 ```
 
-2. Present results grouped by OODA phase:
+When complete, present comparison table using Humainary baselines from BENCHMARKS.md.
+Diff = ((Fullerstack - Humainary) / Humainary * 100). Winner = lower time.
 
-### OBSERVE Phase (Probes, Services, Queues, Gauges, Counters, Caches)
-| Benchmark | Humainary (ns) | Fullerstack (ns) | Diff | Winner |
-|-----------|---------------:|----------------:|-----:|:------:|
-| ... | X | X | X% | ? |
+## Serventis Modules
 
-### ORIENT Phase (Monitors, Resources)
-| Benchmark | Humainary (ns) | Fullerstack (ns) | Diff | Winner |
-|-----------|---------------:|----------------:|-----:|:------:|
-| ... | X | X | X% | ? |
-
-### DECIDE Phase (Reporters)
-| Benchmark | Humainary (ns) | Fullerstack (ns) | Diff | Winner |
-|-----------|---------------:|----------------:|-----:|:------:|
-| ... | X | X | X% | ? |
-
-### ACT Phase (Agents, Actors, Routers)
-| Benchmark | Humainary (ns) | Fullerstack (ns) | Diff | Winner |
-|-----------|---------------:|----------------:|-----:|:------:|
-| ... | X | X | X% | ? |
-
-Get Humainary baselines from: /workspaces/fullerstack-humainary/substrates-api-java/BENCHMARKS.md
-
-Diff = ((Fullerstack - Humainary) / Humainary * 100). Winner = lower time (faster).
+| Module | Instruments |
+|--------|-------------|
+| **sdk** | CycleOps, OperationOps, OutcomeOps, SignalSetOps, SituationOps, StatusOps, SurveyOps, SystemOps, TrendOps |
+| **opt/tool** | CounterOps, GaugeOps, LogOps, ProbeOps, SensorOps |
+| **opt/data** | CacheOps, PipelineOps, QueueOps, StackOps |
+| **opt/flow** | BreakerOps, FlowOps, RouterOps, ValveOps |
+| **opt/sync** | AtomicOps, LatchOps, LockOps |
+| **opt/pool** | ExchangeOps, LeaseOps, PoolOps, ResourceOps |
+| **opt/exec** | ProcessOps, ServiceOps, TaskOps, TimerOps, TransactionOps |
+| **opt/role** | ActorOps, AgentOps |
