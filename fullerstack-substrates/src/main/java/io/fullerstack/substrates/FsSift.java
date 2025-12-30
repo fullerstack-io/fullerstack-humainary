@@ -4,6 +4,7 @@ import io.humainary.substrates.api.Substrates.Fluent;
 import io.humainary.substrates.api.Substrates.Provided;
 import io.humainary.substrates.api.Substrates.Sift;
 import io.humainary.substrates.api.Substrates.Temporal;
+
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -59,8 +60,8 @@ final class FsSift < E >
   @Fluent
   @Override
   public Sift < E > high () {
-    Object[] currentHigh = { null };
-    boolean[] hasValue = { false };
+    Object[] currentHigh = {null};
+    boolean[] hasValue = {false};
     filters.add ( v -> {
       @SuppressWarnings ( "unchecked" )
       E high = (E) currentHigh[0];
@@ -77,8 +78,8 @@ final class FsSift < E >
   @Fluent
   @Override
   public Sift < E > low () {
-    Object[] currentLow = { null };
-    boolean[] hasValue = { false };
+    Object[] currentLow = {null};
+    boolean[] hasValue = {false};
     filters.add ( v -> {
       @SuppressWarnings ( "unchecked" )
       E low = (E) currentLow[0];

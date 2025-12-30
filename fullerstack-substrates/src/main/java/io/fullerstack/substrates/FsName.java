@@ -3,6 +3,7 @@ package io.fullerstack.substrates;
 import io.humainary.substrates.api.Substrates.Identity;
 import io.humainary.substrates.api.Substrates.Name;
 import io.humainary.substrates.api.Substrates.Provided;
+
 import java.lang.reflect.Member;
 import java.util.Iterator;
 import java.util.Objects;
@@ -21,28 +22,28 @@ public final class FsName
   /// Unified cache: interned path string → FsName. Single lookup for all paths.
   /// Uses ConcurrentHashMap with high initial capacity to minimize rehashing.
   /// The concurrencyLevel=1 optimizes for single-writer scenarios.
-  private static final ConcurrentHashMap < String, FsName > NAME_CACHE =
+  private static final ConcurrentHashMap < String, FsName >     NAME_CACHE =
     new ConcurrentHashMap <> ( 256, 0.75f, 1 );
   /// Enum cache: Enum instance → FsName. Avoids redundant getDeclaringClass() + getCanonicalName() calls.
   private static final ConcurrentHashMap < Enum < ? >, FsName > ENUM_CACHE =
     new ConcurrentHashMap <> ( 64, 0.75f, 1 );
-  private static final char FULLSTOP = '.';
-  private final String segment;
+  private static final char                                     FULLSTOP   = '.';
+  private final        String                                   segment;
   /// Parent reference - null for root names.
-  private final FsName parent;
+  private final        FsName                                   parent;
   /// Cached depth - computed at construction, avoids traversal.
-  private final int depth;
+  private final        int                                      depth;
   /// Path string - computed at construction, never null.
-  private final String path;
+  private final        String                                   path;
   /// Cached identity hash code - avoids System.identityHashCode() call on every lookup.
-  private final int cachedHash;
+  private final        int                                      cachedHash;
 
   // =========================================================================
   // Per-node children cache for fast chaining
   // Simple array with linear scan - O(n) but n is typically <10
   // =========================================================================
   private volatile FsName[] childNodes = new FsName[0];
-  private final Object childLock = new Object ();
+  private final    Object   childLock  = new Object ();
 
   /// Private constructor for root names (depth=1, no parent).
   private FsName ( String segment ) {
@@ -305,7 +306,7 @@ public final class FsName
   /// Iterates from this name (leaf) up to root.
   @Override
   public Iterator < Name > iterator () {
-    return new Iterator < > () {
+    return new Iterator <> () {
       private FsName current = FsName.this;
 
       @Override

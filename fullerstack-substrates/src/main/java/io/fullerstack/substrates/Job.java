@@ -9,24 +9,24 @@ import java.util.function.Consumer;
 abstract class Job {
   volatile Job next;
 
-  abstract void run();
+  abstract void run ();
 }
 
 /**
  * Concrete job for emit operations.
  */
 final class EmitJob extends Job {
-  private final Consumer<?> consumer;
-  private final Object emission;
+  private final Consumer < ? > consumer;
+  private final Object         emission;
 
-  EmitJob(Consumer<?> consumer, Object emission) {
+  EmitJob ( Consumer < ? > consumer, Object emission ) {
     this.consumer = consumer;
     this.emission = emission;
   }
 
   @Override
-  @SuppressWarnings("unchecked")
-  void run() {
-    ((Consumer<Object>) consumer).accept(emission);
+  @SuppressWarnings ( "unchecked" )
+  void run () {
+    ( (Consumer < Object >) consumer ).accept ( emission );
   }
 }

@@ -23,6 +23,7 @@ import io.humainary.substrates.api.Substrates.State;
 import io.humainary.substrates.api.Substrates.Subject;
 import io.humainary.substrates.api.Substrates.Subscriber;
 import io.humainary.substrates.api.Substrates.Subscription;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
@@ -49,14 +50,15 @@ public final class FsCircuit implements Circuit {
 
   /** Sentinel job for queue initialization (never executed). */
   private static final class SentinelJob extends Job {
-    @Override void run() {}
+    @Override
+    void run () { }
   }
 
   /** Shared sentinel instance - immutable, no state. */
-  private static final Job SENTINEL = new SentinelJob();
+  private static final Job SENTINEL = new SentinelJob ();
 
   // Ingress queue: write-to-head MPSC for external emissions
-  private final AtomicReference<Job> stackHead;
+  private final AtomicReference < Job > stackHead;
 
   // Transit queue: intrusive FIFO for cascading emissions (circuit-thread only, no sync needed)
   // Uses the same Job.next field as ingress - jobs move between queues, never in both
@@ -64,28 +66,28 @@ public final class FsCircuit implements Circuit {
   private Job transitTail;
 
   // Circuit state
-  private final Subject<Circuit> subject;
-  private final Thread thread;
-  private volatile boolean running = true;  // Volatile for visibility across threads
-  private final List<Subscriber<State>> subscribers = new ArrayList<>();
+  private final    Subject < Circuit >           subject;
+  private final    Thread                        thread;
+  private volatile boolean                       running     = true;  // Volatile for visibility across threads
+  private final    List < Subscriber < State > > subscribers = new ArrayList <> ();
 
-  public FsCircuit(Subject<Circuit> subject) {
+  public FsCircuit ( Subject < Circuit > subject ) {
     this.subject = subject;
     // Initialize write-to-head queue with sentinel
-    this.stackHead = new AtomicReference<>(SENTINEL);
+    this.stackHead = new AtomicReference <> ( SENTINEL );
     // Start thread eagerly
-    this.thread = Thread.ofVirtual().name("circuit-" + subject.name()).start(this::loop);
+    this.thread = Thread.ofVirtual ().name ( "circuit-" + subject.name () ).start ( this::loop );
   }
 
   /**
    * Submit a job to the circuit. Transit queue is the hot path (inline).
    */
-  public void submit(Job job) {
-    if (Thread.currentThread() == thread) {
+  public void submit ( Job job ) {
+    if ( Thread.currentThread () == thread ) {
       // Hot path: cascade via transit queue (inline, no method call)
-      if (!running) return;
+      if ( !running ) return;
       job.next = null;
-      if (transitTail != null) {
+      if ( transitTail != null ) {
         transitTail.next = job;
       } else {
         transitHead = job;
@@ -93,75 +95,75 @@ public final class FsCircuit implements Circuit {
       transitTail = job;
     } else {
       // Cold path: external submission (extracted)
-      submitExternal(job);
+      submitExternal ( job );
     }
   }
 
   /** Cold path: external submission via write-to-head MPSC queue. */
-  private void submitExternal(Job job) {
-    if (!running) return;
-    Job prev = stackHead.getAndSet(job);
+  private void submitExternal ( Job job ) {
+    if ( !running ) return;
+    Job prev = stackHead.getAndSet ( job );
     job.next = prev;
-    if (prev == SENTINEL) {
+    if ( prev == SENTINEL ) {
       // Queue was empty - circuit may be parked, wake it
-      LockSupport.unpark(thread);
+      LockSupport.unpark ( thread );
     }
   }
 
   /** Returns true if the current thread is the circuit's processing thread. */
-  public boolean isCircuitThread() {
-    return Thread.currentThread() == thread;
+  public boolean isCircuitThread () {
+    return Thread.currentThread () == thread;
   }
 
   /** Returns true if the circuit is still running. */
-  public boolean isRunning() {
+  public boolean isRunning () {
     return running;
   }
 
   /** Returns the circuit's thread for direct comparison. */
-  public Thread thread() {
+  public Thread thread () {
     return thread;
   }
 
   /** Returns the head reference for write-to-head MPSC queue access. */
-  public AtomicReference<Job> head() {
+  public AtomicReference < Job > head () {
     return stackHead;
   }
 
   /** Spin iterations before parking. */
   private static final int SPIN_LIMIT =
-      Integer.getInteger("io.fullerstack.substrates.spinLimit", 128);
+    Integer.getInteger ( "io.fullerstack.substrates.spinLimit", 128 );
 
   /**
    * Core execution loop - drains transit (priority), then ingress.
    */
-  private void loop() {
+  private void loop () {
     int spins = 0;
 
-    for (; ; ) {
+    for ( ; ; ) {
       // Priority 1: Drain transit queue completely (cascading emissions)
-      if (drainTransit()) {
+      if ( drainTransit () ) {
         spins = 0;
         continue;
       }
 
       // Priority 2: Grab batch from ingress and process
-      if (drainIngress()) {
+      if ( drainIngress () ) {
         spins = 0;
         continue;
       }
 
       // Check for shutdown (both queues empty)
-      if (!running && stackHead.get() == SENTINEL && transitHead == null) {
+      if ( !running && stackHead.get () == SENTINEL && transitHead == null ) {
         break;
       }
 
       // Spin before parking
-      if (spins < SPIN_LIMIT) {
+      if ( spins < SPIN_LIMIT ) {
         spins++;
-        Thread.onSpinWait();
+        Thread.onSpinWait ();
       } else {
-        LockSupport.park();
+        LockSupport.park ();
         spins = 0;
       }
     }
@@ -171,20 +173,20 @@ public final class FsCircuit implements Circuit {
    * Drain transit queue completely (FIFO order via intrusive linked list).
    * Returns true if any work was done.
    */
-  private boolean drainTransit() {
-    if (transitHead == null) {
+  private boolean drainTransit () {
+    if ( transitHead == null ) {
       return false;
     }
     // Drain all transit jobs - cascading may add more, so loop until empty
-    while (transitHead != null) {
+    while ( transitHead != null ) {
       Job job = transitHead;
       transitHead = job.next;
-      if (transitHead == null) {
+      if ( transitHead == null ) {
         transitTail = null;
       }
       try {
-        job.run();  // May add more to transit via submit()
-      } catch (Exception ignored) {}
+        job.run ();  // May add more to transit via submit()
+      } catch ( Exception ignored ) { }
     }
     return true;
   }
@@ -192,31 +194,31 @@ public final class FsCircuit implements Circuit {
   /**
    * Grab batch from ingress, reverse to FIFO, process each job with transit drain after each.
    */
-  private boolean drainIngress() {
+  private boolean drainIngress () {
     // Read first to avoid cache contention when queue is empty
-    if (stackHead.get() == SENTINEL) {
+    if ( stackHead.get () == SENTINEL ) {
       return false;
     }
     // Atomically grab entire batch from ingress
-    Job batch = stackHead.getAndSet(SENTINEL);
-    if (batch == SENTINEL) {
+    Job batch = stackHead.getAndSet ( SENTINEL );
+    if ( batch == SENTINEL ) {
       return false;  // Race: another thread grabbed it
     }
 
     // Reverse to FIFO order (batch is currently LIFO)
-    Job current = reverse(batch);
+    Job current = reverse ( batch );
 
     // Process each ingress job, draining transit after each (causality preservation)
-    while (current != null && current != SENTINEL) {
+    while ( current != null && current != SENTINEL ) {
       // Save next BEFORE running - job.run() may trigger cascades that reuse next field
       Job nextIngress = current.next;
 
       try {
-        current.run();  // May add to transit, which will use current.next
-      } catch (Exception ignored) {}
+        current.run ();  // May add to transit, which will use current.next
+      } catch ( Exception ignored ) { }
 
       // Drain transit completely before next ingress job
-      drainTransit();
+      drainTransit ();
 
       current = nextIngress;
     }
@@ -227,10 +229,10 @@ public final class FsCircuit implements Circuit {
   /**
    * Reverse linked list to convert LIFO to FIFO order.
    */
-  private static Job reverse(Job head) {
+  private static Job reverse ( Job head ) {
     Job prev = null;
     Job current = head;
-    while (current != null && current != SENTINEL) {
+    while ( current != null && current != SENTINEL ) {
       Job next = current.next;
       current.next = prev;
       prev = current;
@@ -240,196 +242,196 @@ public final class FsCircuit implements Circuit {
   }
 
   @Override
-  public Subject<Circuit> subject() {
+  public Subject < Circuit > subject () {
     return subject;
   }
 
   @Override
-  public void await() {
-    if (Thread.currentThread() == thread) {
-      throw new IllegalStateException("Cannot call Circuit::await from within a circuit's thread");
+  public void await () {
+    if ( Thread.currentThread () == thread ) {
+      throw new IllegalStateException ( "Cannot call Circuit::await from within a circuit's thread" );
     }
-    if (!running) {
+    if ( !running ) {
       try {
-        thread.join();
-      } catch (InterruptedException e) {
-        Thread.currentThread().interrupt();
+        thread.join ();
+      } catch ( InterruptedException e ) {
+        Thread.currentThread ().interrupt ();
       }
       return;
     }
-    var latch = new CountDownLatch(1);
-    submit(new EmitJob(ignored -> latch.countDown(), null));
+    var latch = new CountDownLatch ( 1 );
+    submit ( new EmitJob ( ignored -> latch.countDown (), null ) );
     try {
-      latch.await();
-    } catch (InterruptedException e) {
-      Thread.currentThread().interrupt();
+      latch.await ();
+    } catch ( InterruptedException e ) {
+      Thread.currentThread ().interrupt ();
     }
   }
 
   @Idempotent
   @Override
-  public void close() {
+  public void close () {
     running = false;
-    LockSupport.unpark(thread);
+    LockSupport.unpark ( thread );
   }
 
   @New
   @NotNull
   @Override
-  public <I, E> Cell<I, E> cell(
-      @NotNull Name name, @NotNull Composer<E, Pipe<I>> ingress, @NotNull Composer<E, Pipe<E>> egress, @NotNull Receptor<? super E> receptor) {
-    requireNonNull(name);
-    requireNonNull(ingress);
-    requireNonNull(egress);
-    requireNonNull(receptor);
-    return new FsCell<>(
-        new FsSubject<>(name, (FsSubject<?>) subject, Cell.class), this, ingress, egress, receptor);
+  public < I, E > Cell < I, E > cell (
+    @NotNull Name name, @NotNull Composer < E, Pipe < I > > ingress, @NotNull Composer < E, Pipe < E > > egress, @NotNull Receptor < ? super E > receptor ) {
+    requireNonNull ( name );
+    requireNonNull ( ingress );
+    requireNonNull ( egress );
+    requireNonNull ( receptor );
+    return new FsCell <> (
+      new FsSubject <> ( name, (FsSubject < ? >) subject, Cell.class ), this, ingress, egress, receptor );
   }
 
   @New
   @NotNull
   @Override
-  public <P extends Percept, E> Conduit<P, E> conduit(@NotNull Name name, @NotNull Composer<E, ? extends P> composer) {
-    requireNonNull(name);
-    requireNonNull(composer);
-    return new FsConduit<>((FsSubject<?>) subject, name, channel -> composer.compose(channel), this);
+  public < P extends Percept, E > Conduit < P, E > conduit ( @NotNull Name name, @NotNull Composer < E, ? extends P > composer ) {
+    requireNonNull ( name );
+    requireNonNull ( composer );
+    return new FsConduit <> ( (FsSubject < ? >) subject, name, channel -> composer.compose ( channel ), this );
   }
 
   @New
   @NotNull
   @Override
-  public <P extends Percept, E> Conduit<P, E> conduit(
-      @NotNull Name name, @NotNull Composer<E, ? extends P> composer, @NotNull Configurer<Flow<E>> configurer) {
-    requireNonNull(name);
-    requireNonNull(composer);
-    requireNonNull(configurer);
-    return new FsConduit<>(
-        (FsSubject<?>) subject, name, channel -> composer.compose(channel), this, configurer);
+  public < P extends Percept, E > Conduit < P, E > conduit (
+    @NotNull Name name, @NotNull Composer < E, ? extends P > composer, @NotNull Configurer < Flow < E > > configurer ) {
+    requireNonNull ( name );
+    requireNonNull ( composer );
+    requireNonNull ( configurer );
+    return new FsConduit <> (
+      (FsSubject < ? >) subject, name, channel -> composer.compose ( channel ), this, configurer );
   }
 
   @New
   @NotNull
   @Override
-  public <E> Pipe<E> pipe(@NotNull Pipe<E> target) {
-    requireNonNull(target);
-    if (target instanceof FsPipe<E> fsPipe) {
-      return new FsPipe<>(target.subject(), this, fsPipe.receiver());
+  public < E > Pipe < E > pipe ( @NotNull Pipe < E > target ) {
+    requireNonNull ( target );
+    if ( target instanceof FsPipe < E > fsPipe ) {
+      return new FsPipe <> ( target.subject (), this, fsPipe.receiver () );
     }
-    return new FsPipe<>(target.subject(), this, target::emit);
+    return new FsPipe <> ( target.subject (), this, target::emit );
   }
 
   @New
   @NotNull
   @Override
-  public <E> Pipe<E> pipe(@NotNull Receptor<E> receptor) {
-    Subject<Pipe<E>> pipeSubject = new FsSubject<>(null, (FsSubject<?>) subject, Pipe.class);
-    return new FsPipe<>(pipeSubject, this, receptor::receive);
+  public < E > Pipe < E > pipe ( @NotNull Receptor < E > receptor ) {
+    Subject < Pipe < E > > pipeSubject = new FsSubject <> ( null, (FsSubject < ? >) subject, Pipe.class );
+    return new FsPipe <> ( pipeSubject, this, receptor::receive );
   }
 
   @New
   @NotNull
   @Override
-  public <E> Pipe<E> pipe(@NotNull Pipe<E> target, @NotNull Configurer<Flow<E>> configurer) {
-    FsPipe<E> fsPipe;
-    if (target instanceof FsPipe<E> fp) {
-      fsPipe = new FsPipe<>(target.subject(), this, fp.receiver());
+  public < E > Pipe < E > pipe ( @NotNull Pipe < E > target, @NotNull Configurer < Flow < E > > configurer ) {
+    FsPipe < E > fsPipe;
+    if ( target instanceof FsPipe < E > fp ) {
+      fsPipe = new FsPipe <> ( target.subject (), this, fp.receiver () );
     } else {
-      fsPipe = new FsPipe<>(target.subject(), this, target::emit);
+      fsPipe = new FsPipe <> ( target.subject (), this, target::emit );
     }
-    FsFlow<E> flow = new FsFlow<>(target.subject(), this, fsPipe);
-    configurer.configure(flow);
-    return flow.pipe();
+    FsFlow < E > flow = new FsFlow <> ( target.subject (), this, fsPipe );
+    configurer.configure ( flow );
+    return flow.pipe ();
   }
 
   @New
   @NotNull
   @Override
-  public <E> Pipe<E> pipe(@NotNull Receptor<E> receptor, @NotNull Configurer<Flow<E>> configurer) {
-    Subject<Pipe<E>> pipeSubject = new FsSubject<>(null, (FsSubject<?>) subject, Pipe.class);
-    FsPipe<E> fsPipe = new FsPipe<>(pipeSubject, this, receptor::receive);
-    FsFlow<E> flow = new FsFlow<>(pipeSubject, this, fsPipe);
-    configurer.configure(flow);
-    return flow.pipe();
+  public < E > Pipe < E > pipe ( @NotNull Receptor < E > receptor, @NotNull Configurer < Flow < E > > configurer ) {
+    Subject < Pipe < E > > pipeSubject = new FsSubject <> ( null, (FsSubject < ? >) subject, Pipe.class );
+    FsPipe < E > fsPipe = new FsPipe <> ( pipeSubject, this, receptor::receive );
+    FsFlow < E > flow = new FsFlow <> ( pipeSubject, this, fsPipe );
+    configurer.configure ( flow );
+    return flow.pipe ();
   }
 
   @New
   @NotNull
   @Override
-  public <E> Pipe<E> pipe(Name name, @NotNull Pipe<E> target) {
-    requireNonNull(target);
-    if (target instanceof FsPipe<E> fp) {
-      return new FsPipe<>(target.subject(), this, fp.receiver());
+  public < E > Pipe < E > pipe ( Name name, @NotNull Pipe < E > target ) {
+    requireNonNull ( target );
+    if ( target instanceof FsPipe < E > fp ) {
+      return new FsPipe <> ( target.subject (), this, fp.receiver () );
     }
-    return new FsPipe<>(target.subject(), this, target::emit);
+    return new FsPipe <> ( target.subject (), this, target::emit );
   }
 
   @New
   @NotNull
   @Override
-  public <E> Pipe<E> pipe(Name name, @NotNull Receptor<E> receptor) {
-    Subject<Pipe<E>> pipeSubject = new FsSubject<>(name, (FsSubject<?>) subject, Pipe.class);
-    return new FsPipe<>(pipeSubject, this, receptor::receive);
+  public < E > Pipe < E > pipe ( Name name, @NotNull Receptor < E > receptor ) {
+    Subject < Pipe < E > > pipeSubject = new FsSubject <> ( name, (FsSubject < ? >) subject, Pipe.class );
+    return new FsPipe <> ( pipeSubject, this, receptor::receive );
   }
 
   @New
   @NotNull
   @Override
-  public <E> Pipe<E> pipe(Name name, @NotNull Pipe<E> target, @NotNull Configurer<Flow<E>> configurer) {
-    FsPipe<E> fsPipe;
-    if (target instanceof FsPipe<E> fp) {
-      fsPipe = new FsPipe<>(target.subject(), this, fp.receiver());
+  public < E > Pipe < E > pipe ( Name name, @NotNull Pipe < E > target, @NotNull Configurer < Flow < E > > configurer ) {
+    FsPipe < E > fsPipe;
+    if ( target instanceof FsPipe < E > fp ) {
+      fsPipe = new FsPipe <> ( target.subject (), this, fp.receiver () );
     } else {
-      fsPipe = new FsPipe<>(target.subject(), this, target::emit);
+      fsPipe = new FsPipe <> ( target.subject (), this, target::emit );
     }
-    FsFlow<E> flow = new FsFlow<>(target.subject(), this, fsPipe);
-    configurer.configure(flow);
-    return flow.pipe();
+    FsFlow < E > flow = new FsFlow <> ( target.subject (), this, fsPipe );
+    configurer.configure ( flow );
+    return flow.pipe ();
   }
 
   @New
   @NotNull
   @Override
-  public <E> Pipe<E> pipe(Name name, @NotNull Receptor<E> receptor, @NotNull Configurer<Flow<E>> configurer) {
-    Subject<Pipe<E>> pipeSubject = new FsSubject<>(name, (FsSubject<?>) subject, Pipe.class);
-    FsPipe<E> fsPipe = new FsPipe<>(pipeSubject, this, receptor::receive);
-    FsFlow<E> flow = new FsFlow<>(pipeSubject, this, fsPipe);
-    configurer.configure(flow);
-    return flow.pipe();
+  public < E > Pipe < E > pipe ( Name name, @NotNull Receptor < E > receptor, @NotNull Configurer < Flow < E > > configurer ) {
+    Subject < Pipe < E > > pipeSubject = new FsSubject <> ( name, (FsSubject < ? >) subject, Pipe.class );
+    FsPipe < E > fsPipe = new FsPipe <> ( pipeSubject, this, receptor::receive );
+    FsFlow < E > flow = new FsFlow <> ( pipeSubject, this, fsPipe );
+    configurer.configure ( flow );
+    return flow.pipe ();
   }
 
   @New
   @NotNull
   @Override
-  public <E> Subscriber<E> subscriber(
-      @NotNull Name name, @NotNull BiConsumer<Subject<Channel<E>>, Registrar<E>> callback) {
-    requireNonNull(name);
-    requireNonNull(callback);
-    return new FsSubscriber<>(
-        new FsSubject<>(name, (FsSubject<?>) subject, Subscriber.class), callback);
+  public < E > Subscriber < E > subscriber (
+    @NotNull Name name, @NotNull BiConsumer < Subject < Channel < E > >, Registrar < E > > callback ) {
+    requireNonNull ( name );
+    requireNonNull ( callback );
+    return new FsSubscriber <> (
+      new FsSubject <> ( name, (FsSubject < ? >) subject, Subscriber.class ), callback );
   }
 
   @New
   @NotNull
   @Override
-  @SuppressWarnings("unchecked")
-  public Subscription subscribe(@NotNull Subscriber<State> subscriber) {
-    requireNonNull(subscriber);
-    if (subscriber.subject() instanceof FsSubject<?> subSubject) {
-      FsSubject<?> subscriberCircuit = subSubject.findCircuitAncestor();
-      if (subscriberCircuit != null && subscriberCircuit != subject) {
-        throw new FsException("Subscriber belongs to a different circuit");
+  @SuppressWarnings ( "unchecked" )
+  public Subscription subscribe ( @NotNull Subscriber < State > subscriber ) {
+    requireNonNull ( subscriber );
+    if ( subscriber.subject () instanceof FsSubject < ? > subSubject ) {
+      FsSubject < ? > subscriberCircuit = subSubject.findCircuitAncestor ();
+      if ( subscriberCircuit != null && subscriberCircuit != subject ) {
+        throw new FsException ( "Subscriber belongs to a different circuit" );
       }
     }
-    subscribers.add(subscriber);
-    return new FsSubscription(
-        (Subject<Subscription>) (Subject<?>) subject, () -> subscribers.remove(subscriber));
+    subscribers.add ( subscriber );
+    return new FsSubscription (
+      (Subject < Subscription >) (Subject < ? >) subject, () -> subscribers.remove ( subscriber ) );
   }
 
   @New
   @NotNull
   @Override
-  @SuppressWarnings("unchecked")
-  public Reservoir<State> reservoir() {
-    return new FsReservoir<>((Subject<Reservoir<State>>) (Subject<?>) subject);
+  @SuppressWarnings ( "unchecked" )
+  public Reservoir < State > reservoir () {
+    return new FsReservoir <> ( (Subject < Reservoir < State > >) (Subject < ? >) subject );
   }
 }

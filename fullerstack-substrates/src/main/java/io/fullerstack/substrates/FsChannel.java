@@ -8,6 +8,7 @@ import io.humainary.substrates.api.Substrates.NotNull;
 import io.humainary.substrates.api.Substrates.Pipe;
 import io.humainary.substrates.api.Substrates.Provided;
 import io.humainary.substrates.api.Substrates.Subject;
+
 import java.util.function.Consumer;
 
 /// A named port in a conduit that provides a pipe for emission.
@@ -20,27 +21,27 @@ import java.util.function.Consumer;
 /// @param <E> the class type of emitted value
 /// @see FsConduit
 @Provided
-final class FsChannel<E> implements Channel<E> {
+final class FsChannel < E > implements Channel < E > {
 
   /// The subject identity for this channel.
-  private final Subject<Channel<E>> subject;
+  private final Subject < Channel < E > > subject;
 
   /// The circuit that owns this channel.
   private final FsCircuit circuit;
 
   /// The emission consumer for routing emissions to subscribers.
-  private final Consumer<E> router;
+  private final Consumer < E > router;
 
   /// Cached pipe subject - all pipes from this channel share the same identity.
   /// Lazy initialized on first pipe() call.
-  private volatile Subject<Pipe<E>> cachedPipeSubject;
+  private volatile Subject < Pipe < E > > cachedPipeSubject;
 
   /// Creates a new channel with the given subject and emission router.
   ///
   /// @param subject the subject identity for this channel
   /// @param circuit the circuit that owns this channel
   /// @param router the consumer that routes emissions to subscribers
-  FsChannel(Subject<Channel<E>> subject, FsCircuit circuit, Consumer<E> router) {
+  FsChannel ( Subject < Channel < E > > subject, FsCircuit circuit, Consumer < E > router ) {
     this.subject = subject;
     this.circuit = circuit;
     this.router = router;
@@ -50,16 +51,16 @@ final class FsChannel<E> implements Channel<E> {
   ///
   /// @return the subject of this channel
   @Override
-  public Subject<Channel<E>> subject() {
+  public Subject < Channel < E > > subject () {
     return subject;
   }
 
   /// Returns the cached pipe subject, creating it lazily if needed.
   /// All pipes from this channel share the same subject identity.
-  private Subject<Pipe<E>> pipeSubject() {
-    Subject<Pipe<E>> cached = cachedPipeSubject;
-    if (cached == null) {
-      cached = new FsSubject<>(subject.name(), (FsSubject<?>) subject, Pipe.class);
+  private Subject < Pipe < E > > pipeSubject () {
+    Subject < Pipe < E > > cached = cachedPipeSubject;
+    if ( cached == null ) {
+      cached = new FsSubject <> ( subject.name (), (FsSubject < ? >) subject, Pipe.class );
       cachedPipeSubject = cached;
     }
     return cached;
@@ -77,8 +78,8 @@ final class FsChannel<E> implements Channel<E> {
   @New
   @NotNull
   @Override
-  public Pipe<E> pipe() {
-    return new FsPipe<>(pipeSubject(), circuit, router);
+  public Pipe < E > pipe () {
+    return new FsPipe <> ( pipeSubject (), circuit, router );
   }
 
   /// Returns a new pipe with custom flow configuration.
@@ -89,11 +90,11 @@ final class FsChannel<E> implements Channel<E> {
   @New
   @NotNull
   @Override
-  public Pipe<E> pipe(@NotNull Configurer<Flow<E>> configurer) {
-    Subject<Pipe<E>> ps = pipeSubject();
-    Pipe<E> basePipe = new FsPipe<>(ps, circuit, router);
-    FsFlow<E> flow = new FsFlow<>(ps, circuit, basePipe);
-    configurer.configure(flow);
-    return flow.pipe();
+  public Pipe < E > pipe ( @NotNull Configurer < Flow < E > > configurer ) {
+    Subject < Pipe < E > > ps = pipeSubject ();
+    Pipe < E > basePipe = new FsPipe <> ( ps, circuit, router );
+    FsFlow < E > flow = new FsFlow <> ( ps, circuit, basePipe );
+    configurer.configure ( flow );
+    return flow.pipe ();
   }
 }

@@ -13,6 +13,7 @@ import io.humainary.substrates.api.Substrates.Scope;
 import io.humainary.substrates.api.Substrates.Slot;
 import io.humainary.substrates.api.Substrates.State;
 import io.humainary.substrates.api.Substrates.Subject;
+
 import java.lang.reflect.Member;
 import java.util.Iterator;
 import java.util.Objects;
@@ -23,11 +24,11 @@ import java.util.function.Function;
 final class FsCortex implements Cortex {
 
   /// Cached Name for anonymous scopes - avoid repeated HashMap lookup.
-  static final Name SCOPE_NAME = FsName.intern("scope");
+  static final Name SCOPE_NAME   = FsName.intern ( "scope" );
   /// Cached Name for anonymous circuits.
-  static final Name CIRCUIT_NAME = FsName.intern("circuit");
+  static final Name CIRCUIT_NAME = FsName.intern ( "circuit" );
 
-  private final Subject<Cortex> subject;
+  private final Subject < Cortex > subject;
 
   /// ThreadLocal cache for Current instances - each thread gets one stable Current.
   private final ThreadLocal < FsCurrent > currentCache;
@@ -36,10 +37,10 @@ final class FsCortex implements Cortex {
     this.subject = new FsSubject <> ( FsName.intern ( "cortex" ), Cortex.class );
     this.currentCache = ThreadLocal.withInitial ( () -> {
       Thread t = Thread.currentThread ();
-      String threadName = t.getName();
+      String threadName = t.getName ();
       // Handle empty thread names (common with virtual threads)
-      if (threadName == null || threadName.isEmpty()) {
-        threadName = "vt-" + t.threadId();
+      if ( threadName == null || threadName.isEmpty () ) {
+        threadName = "vt-" + t.threadId ();
       }
       FsSubject < Current > currentSubject = new FsSubject <> (
         FsName.parse ( "thread." + threadName ),
@@ -70,7 +71,7 @@ final class FsCortex implements Cortex {
     FsSubject < Circuit > circuitSubject = new FsSubject <> (
       name, (FsSubject < ? >) subject, Circuit.class
     );
-    return new FsCircuit(circuitSubject);
+    return new FsCircuit ( circuitSubject );
   }
 
   @Override

@@ -3,326 +3,351 @@
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
                              http://maven.apache.org/xsd/maven-4.0.0.xsd">
-    <modelVersion>4.0.0</modelVersion>
+  <modelVersion>4.0.0</modelVersion>
 
-    <groupId>io.fullerstack</groupId>
-    <artifactId>fullerstack-substrates</artifactId>
-    <version>1.0.0-RC1</version>
-    <packaging>jar</packaging>
+  <groupId>io.fullerstack</groupId>
+  <artifactId>fullerstack-substrates</artifactId>
+  <version>1.0.0-RC1</version>
+  <packaging>jar</packaging>
 
-    <name>Substrates (Java)</name>
-    <description>Event-driven runtime implementation of Humainary Substrates API for Java 25</description>
+  <name>Substrates (Java)</name>
+  <description>Event-driven runtime implementation of Humainary Substrates API for Java 25
+  </description>
 
-    <url>https://github.com/fullerstack-io/fullerstack-humainary</url>
+  <url>https://github.com/fullerstack-io/fullerstack-humainary</url>
 
-    <properties>
-        <!-- Java 25 (required for Substrates API PREVIEW) -->
-        <java.version>25</java.version>
-        <maven.compiler.source>25</maven.compiler.source>
-        <maven.compiler.target>25</maven.compiler.target>
-        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+  <properties>
+    <!-- Java 25 (required for Substrates API PREVIEW) -->
+    <java.version>25</java.version>
+    <maven.compiler.source>25</maven.compiler.source>
+    <maven.compiler.target>25</maven.compiler.target>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 
-        <!-- Dependency Versions -->
-        <substrates-api.version>1.0.0-PREVIEW</substrates-api.version>
-        <junit.version>5.11.0</junit.version>
-        <assertj.version>3.26.3</assertj.version>
-        <mockito.version>5.15.2</mockito.version>
+    <!-- Dependency Versions -->
+    <substrates-api.version>1.0.0-PREVIEW</substrates-api.version>
+    <junit.version>5.11.0</junit.version>
+    <assertj.version>3.26.3</assertj.version>
+    <mockito.version>5.15.2</mockito.version>
 
-        <!-- Plugin Versions -->
-        <maven-compiler-plugin.version>3.13.0</maven-compiler-plugin.version>
-        <maven-surefire-plugin.version>3.5.1</maven-surefire-plugin.version>
-        <maven-jar-plugin.version>3.4.2</maven-jar-plugin.version>
-    </properties>
+    <!-- Plugin Versions -->
+    <maven-compiler-plugin.version>3.13.0</maven-compiler-plugin.version>
+    <maven-surefire-plugin.version>3.5.1</maven-surefire-plugin.version>
+    <maven-jar-plugin.version>3.4.2</maven-jar-plugin.version>
+  </properties>
 
-    <licenses>
-        <license>
-            <name>Apache License, Version 2.0</name>
-            <url>https://www.apache.org/licenses/LICENSE-2.0.txt</url>
-            <distribution>repo</distribution>
-            <comments>
-                This implementation is based on the Humainary Substrates API designed by William Louth.
-                Both this implementation and the Substrates API are licensed under Apache 2.0.
-            </comments>
-        </license>
-    </licenses>
+  <licenses>
+    <license>
+      <name>Apache License, Version 2.0</name>
+      <url>https://www.apache.org/licenses/LICENSE-2.0.txt</url>
+      <distribution>repo</distribution>
+      <comments>
+        This implementation is based on the Humainary Substrates API designed by William Louth.
+        Both this implementation and the Substrates API are licensed under Apache 2.0.
+      </comments>
+    </license>
+  </licenses>
 
-    <developers>
-        <developer>
-            <id>fullerstack</id>
-            <name>Fullerstack</name>
-            <url>https://fullerstack.io/</url>
-            <roles>
-                <role>Implementation</role>
-            </roles>
-        </developer>
-    </developers>
+  <developers>
+    <developer>
+      <id>fullerstack</id>
+      <name>Fullerstack</name>
+      <url>https://fullerstack.io/</url>
+      <roles>
+        <role>Implementation</role>
+      </roles>
+    </developer>
+  </developers>
 
-    <contributors>
-        <contributor>
-            <name>William Louth</name>
-            <organization>Humainary</organization>
-            <organizationUrl>https://humainary.io/</organizationUrl>
-            <roles>
-                <role>API Design</role>
-                <role>Substrates Framework Creator</role>
-            </roles>
-        </contributor>
-    </contributors>
+  <contributors>
+    <contributor>
+      <name>William Louth</name>
+      <organization>Humainary</organization>
+      <organizationUrl>https://humainary.io/</organizationUrl>
+      <roles>
+        <role>API Design</role>
+        <role>Substrates Framework Creator</role>
+      </roles>
+    </contributor>
+  </contributors>
 
-    <scm>
-        <connection>scm:git:git://github.com/fullerstack-io/fullerstack-humainary.git</connection>
-        <developerConnection>scm:git:ssh://github.com:fullerstack-io/fullerstack-humainary.git</developerConnection>
-        <url>https://github.com/fullerstack-io/fullerstack-humainary/tree/main/fullerstack-substrates</url>
-    </scm>
+  <scm>
+    <connection>scm:git:git://github.com/fullerstack-io/fullerstack-humainary.git</connection>
+    <developerConnection>scm:git:ssh://github.com:fullerstack-io/fullerstack-humainary.git
+    </developerConnection>
+    <url>https://github.com/fullerstack-io/fullerstack-humainary/tree/main/fullerstack-substrates
+    </url>
+  </scm>
 
-    <distributionManagement>
-        <repository>
-            <id>github</id>
-            <name>GitHub Packages</name>
-            <url>https://maven.pkg.github.com/fullerstack-io/fullerstack-humainary</url>
-        </repository>
-    </distributionManagement>
+  <distributionManagement>
+    <repository>
+      <id>github</id>
+      <name>GitHub Packages</name>
+      <url>https://maven.pkg.github.com/fullerstack-io/fullerstack-humainary</url>
+    </repository>
+  </distributionManagement>
 
-    <dependencies>
-        <!-- Substrates API -->
-        <dependency>
-            <groupId>io.humainary.substrates</groupId>
-            <artifactId>humainary-substrates-api</artifactId>
-            <version>${substrates-api.version}</version>
-        </dependency>
+  <dependencies>
+    <!-- Substrates API -->
+    <dependency>
+      <groupId>io.humainary.substrates</groupId>
+      <artifactId>humainary-substrates-api</artifactId>
+      <version>${substrates-api.version}</version>
+    </dependency>
 
-        <!-- Serventis Extension (ext/serventis) - part of Substrates API repo -->
-        <dependency>
-            <groupId>io.humainary.substrates.ext</groupId>
-            <artifactId>humainary-substrates-ext-serventis</artifactId>
-            <version>${substrates-api.version}</version>
-        </dependency>
+    <!-- Serventis Extension (ext/serventis) - part of Substrates API repo -->
+    <dependency>
+      <groupId>io.humainary.substrates.ext</groupId>
+      <artifactId>humainary-substrates-ext-serventis</artifactId>
+      <version>${substrates-api.version}</version>
+    </dependency>
 
-        <!-- Logging (SLF4J API only, implementation provided by consumer) -->
-        <dependency>
-            <groupId>org.slf4j</groupId>
-            <artifactId>slf4j-api</artifactId>
-            <version>2.0.16</version>
-        </dependency>
+    <!-- Logging (SLF4J API only, implementation provided by consumer) -->
+    <dependency>
+      <groupId>org.slf4j</groupId>
+      <artifactId>slf4j-api</artifactId>
+      <version>2.0.16</version>
+    </dependency>
 
-        <!-- Lombok (compile-time code generation) -->
-        <dependency>
-            <groupId>org.projectlombok</groupId>
-            <artifactId>lombok</artifactId>
-            <version>1.18.34</version>
-            <scope>provided</scope>
-        </dependency>
+    <!-- Lombok (compile-time code generation) -->
+    <dependency>
+      <groupId>org.projectlombok</groupId>
+      <artifactId>lombok</artifactId>
+      <version>1.18.34</version>
+      <scope>provided</scope>
+    </dependency>
 
-        <!-- Vavr (functional data structures) -->
-        <dependency>
-            <groupId>io.vavr</groupId>
-            <artifactId>vavr</artifactId>
-            <version>0.10.4</version>
-        </dependency>
+    <!-- Vavr (functional data structures) -->
+    <dependency>
+      <groupId>io.vavr</groupId>
+      <artifactId>vavr</artifactId>
+      <version>0.10.4</version>
+    </dependency>
 
-        <!-- Testing -->
-        <dependency>
-            <groupId>org.junit.jupiter</groupId>
-            <artifactId>junit-jupiter</artifactId>
-            <version>${junit.version}</version>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.assertj</groupId>
-            <artifactId>assertj-core</artifactId>
-            <version>${assertj.version}</version>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.mockito</groupId>
-            <artifactId>mockito-core</artifactId>
-            <version>${mockito.version}</version>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>net.bytebuddy</groupId>
-            <artifactId>byte-buddy</artifactId>
-            <version>1.15.11</version>
-            <scope>test</scope>
-        </dependency>
+    <!-- Testing -->
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <version>${junit.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.assertj</groupId>
+      <artifactId>assertj-core</artifactId>
+      <version>${assertj.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.mockito</groupId>
+      <artifactId>mockito-core</artifactId>
+      <version>${mockito.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>net.bytebuddy</groupId>
+      <artifactId>byte-buddy</artifactId>
+      <version>1.15.11</version>
+      <scope>test</scope>
+    </dependency>
 
-        <!-- Substrates TCK (Test Compatibility Kit) -->
-        <dependency>
-            <groupId>io.humainary.substrates</groupId>
-            <artifactId>humainary-substrates-tck</artifactId>
-            <version>${substrates-api.version}</version>
-            <scope>test</scope>
-        </dependency>
+    <!-- Substrates TCK (Test Compatibility Kit) -->
+    <dependency>
+      <groupId>io.humainary.substrates</groupId>
+      <artifactId>humainary-substrates-tck</artifactId>
+      <version>${substrates-api.version}</version>
+      <scope>test</scope>
+    </dependency>
 
-        <!-- LMAX Disruptor for benchmarking comparison -->
-        <dependency>
-            <groupId>com.lmax</groupId>
-            <artifactId>disruptor</artifactId>
-            <version>4.0.0</version>
-        </dependency>
+    <!-- LMAX Disruptor for benchmarking comparison -->
+    <dependency>
+      <groupId>com.lmax</groupId>
+      <artifactId>disruptor</artifactId>
+      <version>4.0.0</version>
+    </dependency>
 
-        <!-- JCTools - High-performance concurrent queues -->
-        <dependency>
-            <groupId>org.jctools</groupId>
-            <artifactId>jctools-core</artifactId>
-            <version>4.0.5</version>
-        </dependency>
+    <!-- JCTools - High-performance concurrent queues -->
+    <dependency>
+      <groupId>org.jctools</groupId>
+      <artifactId>jctools-core</artifactId>
+      <version>4.0.5</version>
+    </dependency>
 
-        <!-- JMH for Performance Benchmarking -->
-        <dependency>
-            <groupId>org.openjdk.jmh</groupId>
-            <artifactId>jmh-core</artifactId>
-            <version>1.37</version>
-        </dependency>
-        <dependency>
-            <groupId>org.openjdk.jmh</groupId>
-            <artifactId>jmh-generator-annprocess</artifactId>
-            <version>1.37</version>
-        </dependency>
-    </dependencies>
+    <!-- JMH for Performance Benchmarking -->
+    <dependency>
+      <groupId>org.openjdk.jmh</groupId>
+      <artifactId>jmh-core</artifactId>
+      <version>1.37</version>
+    </dependency>
+    <dependency>
+      <groupId>org.openjdk.jmh</groupId>
+      <artifactId>jmh-generator-annprocess</artifactId>
+      <version>1.37</version>
+    </dependency>
+  </dependencies>
 
-    <build>
-        <plugins>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-compiler-plugin</artifactId>
-                <version>${maven-compiler-plugin.version}</version>
-                <configuration>
-                    <release>${java.version}</release>
-                    <compilerArgs>
-                        <arg>--enable-preview</arg>
-                    </compilerArgs>
-                    <annotationProcessorPaths>
-                        <path>
-                            <groupId>org.openjdk.jmh</groupId>
-                            <artifactId>jmh-generator-annprocess</artifactId>
-                            <version>1.37</version>
-                        </path>
-                    </annotationProcessorPaths>
-                </configuration>
-            </plugin>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-surefire-plugin</artifactId>
-                <version>${maven-surefire-plugin.version}</version>
-                <configuration>
-                    <argLine>
-                        --enable-preview
-                        -XX:+EnableDynamicAgentLoading
-                        -Dnet.bytebuddy.experimental=true
-                        --add-opens java.base/java.lang=ALL-UNNAMED
-                        --add-opens java.base/java.util=ALL-UNNAMED
-                        --add-opens java.base/java.util.function=ALL-UNNAMED
-                        --add-opens java.management/javax.management=ALL-UNNAMED
-                        --add-opens java.management/javax.management.remote=ALL-UNNAMED
-                        --add-opens java.rmi/sun.rmi.transport=ALL-UNNAMED
-                    </argLine>
-                    <systemPropertyVariables>
-                        <!-- Configure Substrates API to use our FsCortexProvider implementation -->
-                        <io.humainary.substrates.spi.provider>io.fullerstack.substrates.FsCortexProvider</io.humainary.substrates.spi.provider>
-                    </systemPropertyVariables>
-                </configuration>
-            </plugin>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-jar-plugin</artifactId>
-                <version>${maven-jar-plugin.version}</version>
-            </plugin>
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <version>${maven-compiler-plugin.version}</version>
+        <configuration>
+          <release>${java.version}</release>
+          <compilerArgs>
+            <arg>--enable-preview</arg>
+          </compilerArgs>
+          <annotationProcessorPaths>
+            <path>
+              <groupId>org.openjdk.jmh</groupId>
+              <artifactId>jmh-generator-annprocess</artifactId>
+              <version>1.37</version>
+            </path>
+          </annotationProcessorPaths>
+        </configuration>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <version>${maven-surefire-plugin.version}</version>
+        <configuration>
+          <argLine>
+            --enable-preview
+            -XX:+EnableDynamicAgentLoading
+            -Dnet.bytebuddy.experimental=true
+            --add-opens java.base/java.lang=ALL-UNNAMED
+            --add-opens java.base/java.util=ALL-UNNAMED
+            --add-opens java.base/java.util.function=ALL-UNNAMED
+            --add-opens java.management/javax.management=ALL-UNNAMED
+            --add-opens java.management/javax.management.remote=ALL-UNNAMED
+            --add-opens java.rmi/sun.rmi.transport=ALL-UNNAMED
+          </argLine>
+          <systemPropertyVariables>
+            <!-- Configure Substrates API to use our FsCortexProvider implementation -->
+            <io.humainary.substrates.spi.provider>io.fullerstack.substrates.FsCortexProvider
+            </io.humainary.substrates.spi.provider>
+          </systemPropertyVariables>
+        </configuration>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-jar-plugin</artifactId>
+        <version>${maven-jar-plugin.version}</version>
+      </plugin>
 
-            <!-- Spotless Code Formatter -->
-            <plugin>
-                <groupId>com.diffplug.spotless</groupId>
-                <artifactId>spotless-maven-plugin</artifactId>
-                <version>2.43.0</version>
-                <configuration>
-                    <java>
-                        <googleJavaFormat>
-                            <version>1.19.2</version>
-                            <style>AOSP</style> <!-- AOSP uses 2-space indentation -->
-                        </googleJavaFormat>
-                        <removeUnusedImports/>
-                        <trimTrailingWhitespace/>
-                        <endWithNewline/>
-                    </java>
-                </configuration>
-            </plugin>
+      <!-- EditorConfig Formatter (uses IntelliJ CE formatter via javalint) -->
+      <plugin>
+        <groupId>org.ec4j.maven</groupId>
+        <artifactId>editorconfig-maven-plugin</artifactId>
+        <version>0.1.3</version>
+        <executions>
+          <execution>
+            <id>check</id>
+            <phase>verify</phase>
+            <goals>
+              <goal>check</goal>
+            </goals>
+          </execution>
+        </executions>
+        <configuration>
+          <!-- Disable default linters, use javalint instead -->
+          <linters>
+            <linter>
+              <id>org.ec4j.linters.TextLinter</id>
+              <enabled>false</enabled>
+            </linter>
+            <linter>
+              <id>org.ec4j.linters.XmlLinter</id>
+              <enabled>false</enabled>
+            </linter>
+          </linters>
+        </configuration>
+        <dependencies>
+          <!-- javalint: IntelliJ CE formatter with full ij_* EditorConfig support -->
+          <dependency>
+            <groupId>io.github.kamil-perczynski</groupId>
+            <artifactId>javalint-ec4j-linter</artifactId>
+            <version>1.3</version>
+          </dependency>
+        </dependencies>
+      </plugin>
 
-            <!-- JMH Benchmark Execution -->
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-shade-plugin</artifactId>
-                <version>3.5.1</version>
-                <executions>
-                    <execution>
-                        <phase>package</phase>
-                        <goals>
-                            <goal>shade</goal>
-                        </goals>
-                        <configuration>
-                            <finalName>benchmarks</finalName>
-                            <createDependencyReducedPom>false</createDependencyReducedPom>
-                            <transformers>
-                                <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
-                                    <mainClass>org.openjdk.jmh.Main</mainClass>
-                                </transformer>
-                                <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
-                            </transformers>
-                            <filters>
-                                <filter>
-                                    <!-- Exclude signatures to avoid SecurityException -->
-                                    <artifact>*:*</artifact>
-                                    <excludes>
-                                        <exclude>META-INF/*.SF</exclude>
-                                        <exclude>META-INF/*.DSA</exclude>
-                                        <exclude>META-INF/*.RSA</exclude>
-                                    </excludes>
-                                </filter>
-                            </filters>
-                        </configuration>
-                    </execution>
-                </executions>
-            </plugin>
+      <!-- JMH Benchmark Execution -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-shade-plugin</artifactId>
+        <version>3.5.1</version>
+        <executions>
+          <execution>
+            <phase>package</phase>
+            <goals>
+              <goal>shade</goal>
+            </goals>
+            <configuration>
+              <finalName>benchmarks</finalName>
+              <createDependencyReducedPom>false</createDependencyReducedPom>
+              <transformers>
+                <transformer
+                  implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+                  <mainClass>org.openjdk.jmh.Main</mainClass>
+                </transformer>
+                <transformer
+                  implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
+              </transformers>
+              <filters>
+                <filter>
+                  <!-- Exclude signatures to avoid SecurityException -->
+                  <artifact>*:*</artifact>
+                  <excludes>
+                    <exclude>META-INF/*.SF</exclude>
+                    <exclude>META-INF/*.DSA</exclude>
+                    <exclude>META-INF/*.RSA</exclude>
+                  </excludes>
+                </filter>
+              </filters>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
 
-            <!-- Copy runtime dependencies for benchmark classpath -->
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-dependency-plugin</artifactId>
-                <version>3.6.1</version>
-                <executions>
-                    <execution>
-                        <id>copy-dependencies</id>
-                        <phase>package</phase>
-                        <goals>
-                            <goal>copy-dependencies</goal>
-                        </goals>
-                        <configuration>
-                            <outputDirectory>${project.build.directory}/dependency</outputDirectory>
-                            <includeScope>runtime</includeScope>
-                        </configuration>
-                    </execution>
-                </executions>
-            </plugin>
+      <!-- Copy runtime dependencies for benchmark classpath -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-dependency-plugin</artifactId>
+        <version>3.6.1</version>
+        <executions>
+          <execution>
+            <id>copy-dependencies</id>
+            <phase>package</phase>
+            <goals>
+              <goal>copy-dependencies</goal>
+            </goals>
+            <configuration>
+              <outputDirectory>${project.build.directory}/dependency</outputDirectory>
+              <includeScope>runtime</includeScope>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
 
-            <!-- Add JMH benchmark sources -->
-            <plugin>
-                <groupId>org.codehaus.mojo</groupId>
-                <artifactId>build-helper-maven-plugin</artifactId>
-                <version>3.5.0</version>
-                <executions>
-                    <execution>
-                        <id>add-jmh-source</id>
-                        <phase>generate-sources</phase>
-                        <goals>
-                            <goal>add-source</goal>
-                        </goals>
-                        <configuration>
-                            <sources>
-                                <source>src/jmh/java</source>
-                            </sources>
-                        </configuration>
-                    </execution>
-                </executions>
-            </plugin>
-        </plugins>
-    </build>
+      <!-- Add JMH benchmark sources -->
+      <plugin>
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>build-helper-maven-plugin</artifactId>
+        <version>3.5.0</version>
+        <executions>
+          <execution>
+            <id>add-jmh-source</id>
+            <phase>generate-sources</phase>
+            <goals>
+              <goal>add-source</goal>
+            </goals>
+            <configuration>
+              <sources>
+                <source>src/jmh/java</source>
+              </sources>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
 </project>

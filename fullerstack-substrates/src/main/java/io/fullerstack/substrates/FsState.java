@@ -8,6 +8,7 @@ import io.humainary.substrates.api.Substrates.NotNull;
 import io.humainary.substrates.api.Substrates.Provided;
 import io.humainary.substrates.api.Substrates.Slot;
 import io.humainary.substrates.api.Substrates.State;
+
 import java.util.Iterator;
 import java.util.Objects;
 import java.util.Spliterator;
@@ -42,7 +43,7 @@ final class FsState
   @Override
   public Iterator < Slot < ? > > iterator () {
     // Return in most-recent-first order (reverse iteration: high index to low)
-    return new Iterator < > () {
+    return new Iterator <> () {
       private int index = slots.length - 1;
 
       @Override
@@ -62,12 +63,12 @@ final class FsState
   public Spliterator < Slot < ? > > spliterator () {
     // Return a SIZED spliterator in most-recent-first order (reverse of array)
     int len = slots.length;
-    if (len == 0) {
-      return java.util.Spliterators.emptySpliterator();
+    if ( len == 0 ) {
+      return java.util.Spliterators.emptySpliterator ();
     }
     // Create reversed array for spliterator
-    Slot<?>[] reversed = new Slot<?>[len];
-    for (int i = 0; i < len; i++) {
+    Slot < ? >[] reversed = new Slot < ? >[len];
+    for ( int i = 0; i < len; i++ ) {
       reversed[i] = slots[len - 1 - i];
     }
     return java.util.Spliterators.spliterator (
@@ -113,14 +114,14 @@ final class FsState
     int len = slots.length;
     // Fast path: adding to empty state - just wrap the single slot
     if ( len == 0 ) {
-      return new FsState ( new Slot < ? >[] { slot } );
+      return new FsState ( new Slot < ? >[]{slot} );
     }
     // If the most recent slot is equal (same name, type, and value), return this
     // Use identity for Name (interned) and Class
     Slot < ? > last = slots[len - 1];
     if ( last.name () == slot.name () &&
-         last.type () == slot.type () &&
-         Objects.equals ( last.value (), slot.value () ) ) {
+      last.type () == slot.type () &&
+      Objects.equals ( last.value (), slot.value () ) ) {
       return this;
     }
     // Copy with one extra slot - System.arraycopy is JVM intrinsic
@@ -219,7 +220,7 @@ final class FsState
     Class < ? > declClass = value.getDeclaringClass ();
     String canonical = declClass.getCanonicalName ();
     String className = canonical != null ? canonical : declClass.getName ();
-    Name slotName = cortex().name ( className );
+    Name slotName = cortex ().name ( className );
     // Value is a Name using the full hierarchical path: DeclaringClass.enumConstant
     Name slotValue = FsName.fromEnum ( value );
     return addSlot ( new FsSlot <> ( slotName, slotValue, Name.class ) );

@@ -6,6 +6,7 @@ import io.humainary.substrates.api.Substrates.Idempotent;
 import io.humainary.substrates.api.Substrates.Provided;
 import io.humainary.substrates.api.Substrates.Reservoir;
 import io.humainary.substrates.api.Substrates.Subject;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Stream;
@@ -23,10 +24,10 @@ public final class FsReservoir < E >
   implements Reservoir < E > {
 
   /// A capture of an emitted value from a channel with its associated subject.
-  private record Cap < E > (
+  private record Cap < E >(
     E emission,
     Subject < Channel < E > > subject
-  ) implements Capture < E > {}
+  ) implements Capture < E > { }
 
   /// The subject identity for this reservoir.
   private final Subject < Reservoir < E > > subject;
