@@ -22,12 +22,14 @@ public final class FsSubject < S extends Substrate < S > >
   private final Name            name;  // null for anonymous subjects
   private final FsSubject < ? > parent;
   private final Class < ? >     type;
+  private final String          part;  // cached for fast compareTo
 
   /// Creates a root subject with the given name and type.
   public FsSubject ( Name name, Class < ? > type ) {
     this.name = name;
     this.parent = null;
     this.type = type;
+    this.part = computePart ( name, type );
   }
 
   /// Creates a child subject with the given name, parent, and type.
@@ -36,6 +38,12 @@ public final class FsSubject < S extends Substrate < S > >
     this.name = name;
     this.parent = parent;
     this.type = type;
+    this.part = computePart ( name != null ? name : parent.name (), type );
+  }
+
+  /// Computes the part string for compareTo operations.
+  private static String computePart ( Name name, Class < ? > type ) {
+    return "Subject[name=" + name + ", type=" + type.getSimpleName () + "]";
   }
 
   @Override
@@ -62,9 +70,8 @@ public final class FsSubject < S extends Substrate < S > >
 
   @Override
   public String part () {
-    // Part is used for compareTo - must be deterministic based on name and type only
-    // Format must match TCK expectations: Subject[name=..., type=...]
-    return "Subject[name=" + name () + ", type=" + type.getSimpleName () + "]";
+    // Cached at construction for O(1) compareTo performance
+    return part;
   }
 
   @Override
