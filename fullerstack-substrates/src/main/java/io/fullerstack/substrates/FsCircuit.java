@@ -69,6 +69,7 @@ public final class FsCircuit implements Circuit {
   private final    Subject < Circuit >           subject;
   private final    Thread                        thread;
   private volatile boolean                       running     = true;  // Volatile for visibility across threads
+  private volatile boolean                       parked      = false; // True only when thread is parked
   private final    List < Subscriber < State > > subscribers = new ArrayList <> ();
 
   public FsCircuit ( Subject < Circuit > subject ) {
@@ -104,8 +105,9 @@ public final class FsCircuit implements Circuit {
     if ( !running ) return;
     Job prev = stackHead.getAndSet ( job );
     job.next = prev;
-    if ( prev == SENTINEL ) {
-      // Queue was empty - circuit may be parked, wake it
+    // Only unpark if thread is actually parked (not spinning)
+    // Reading parked after getAndSet ensures visibility of our submission
+    if ( parked ) {
       LockSupport.unpark ( thread );
     }
   }
@@ -163,7 +165,13 @@ public final class FsCircuit implements Circuit {
         spins++;
         Thread.onSpinWait ();
       } else {
-        LockSupport.park ();
+        // Set parked flag before parking so external submitters know to unpark
+        parked = true;
+        // Double-check queue after setting parked flag (avoids lost wakeup race)
+        if ( stackHead.get () == SENTINEL && transitHead == null ) {
+          LockSupport.park ();
+        }
+        parked = false;
         spins = 0;
       }
     }
