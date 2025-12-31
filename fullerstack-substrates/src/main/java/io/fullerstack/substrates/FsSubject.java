@@ -62,7 +62,9 @@ public final class FsSubject < S extends Substrate < S > >
 
   @Override
   public String part () {
-    return "Subject[name=" + name () + ", type=" + type.getSimpleName () + ", id=" + System.identityHashCode ( this ) + "]";
+    // Part is used for compareTo - must be deterministic based on name and type only
+    // Format must match TCK expectations: Subject[name=..., type=...]
+    return "Subject[name=" + name () + ", type=" + type.getSimpleName () + "]";
   }
 
   @Override
