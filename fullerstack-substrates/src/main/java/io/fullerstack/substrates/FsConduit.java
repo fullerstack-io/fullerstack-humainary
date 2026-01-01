@@ -97,8 +97,9 @@ public final class FsConduit < P extends Percept, E >
   private volatile FsSubscriber < E >[]                       subscribersSnapshot; // Lazy snapshot for iteration
   private final    Object                                     subscriberLock = new Object ();
 
-  /// Version counter - incremented on subscribe/unsubscribe.
-  private volatile int version = 0;
+  /// Version counter - only accessed from circuit thread.
+  /// Subscribe/unsubscribe enqueue jobs to increment this, avoiding volatile reads on emit.
+  private int circuitVersion = 0;
 
   /// Fast-path flag for no-subscriber optimization.
   /// When false AND no flowConfigurer, pipes can skip enqueue entirely.
@@ -238,19 +239,19 @@ public final class FsConduit < P extends Percept, E >
   }
 
   /// Emit to channel - called on circuit thread. Lazy init on first emit.
+  /// No volatile reads - circuitVersion only modified via circuit queue.
   private void emitToChannel ( ChannelState < E > state, E emission ) {
-    // Single volatile read at start (read-once principle)
-    int v = this.version;
-
-    // Check if we need to rebuild (version changed since last build)
+    // Check if rebuild needed (no volatile read - both fields circuit-thread only)
     // Note: builtVersion starts at -1, so first emit always rebuilds
-    if ( state.builtVersion != v ) {
-      rebuildChannelPipes ( state, v );
+    if ( state.builtVersion != circuitVersion ) {
+      rebuildChannelPipes ( state );
     }
 
     // Get cached pipes (may be null if no subscribers)
     Consumer < E >[] cachedPipes = state.pipes;
-    if ( cachedPipes == null ) return;  // No subscribers
+    if ( cachedPipes == null ) {
+      return;  // No subscribers
+    }
 
     // Hot path: index-based loop (no iterator allocation)
     for ( int i = 0, len = cachedPipes.length; i < len; i++ ) {
@@ -282,7 +283,7 @@ public final class FsConduit < P extends Percept, E >
   }
 
   /// Rebuild pipes for a channel. Only activates NEW subscribers.
-  private void rebuildChannelPipes ( ChannelState < E > state, int targetVersion ) {
+  private void rebuildChannelPipes ( ChannelState < E > state ) {
     // Get current subscribers snapshot
     FsSubscriber < E >[] currentSubs = getSubscribersSnapshot ();
 
@@ -308,7 +309,7 @@ public final class FsConduit < P extends Percept, E >
 
     // Rebuild flat array for fast iteration
     state.rebuildPipesArray ();
-    state.builtVersion = targetVersion;
+    state.builtVersion = circuitVersion;
   }
 
   void unsubscribe ( FsSubscriber < E > subscriber ) {
@@ -319,7 +320,9 @@ public final class FsConduit < P extends Percept, E >
         hasSubscribers = !subscribersList.isEmpty (); // Update fast-path flag
       }
     }
-    version++; // Trigger rebuild on next emit
+    // Enqueue version increment to circuit thread - avoids volatile read on emit
+    // Must create new job each time (intrusive queue reuses next pointer)
+    circuit.submit ( new RunnableJob ( () -> circuitVersion++ ) );
   }
 
   @New
@@ -349,7 +352,9 @@ public final class FsConduit < P extends Percept, E >
       subscribersSnapshot = null; // Invalidate snapshot
       hasSubscribers = true; // Enable processing path
     }
-    version++; // Trigger rebuild on next emit
+    // Enqueue version increment to circuit thread - avoids volatile read on emit
+    // Must create new job each time (intrusive queue reuses next pointer)
+    circuit.submit ( new RunnableJob ( () -> circuitVersion++ ) );
 
     FsSubject < Subscription > subSubject =
       new FsSubject <> ( subscriber.subject ().name (), (FsSubject < ? >) lazySubject (), Subscription.class );

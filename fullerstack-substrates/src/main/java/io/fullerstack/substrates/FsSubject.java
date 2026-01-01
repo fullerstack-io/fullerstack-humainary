@@ -29,7 +29,7 @@ public final class FsSubject < S extends Substrate < S > >
     this.name = name;
     this.parent = null;
     this.type = type;
-    this.part = computePart ( name, type );
+    this.part = computePart ( System.identityHashCode ( this ), name, type );
   }
 
   /// Creates a child subject with the given name, parent, and type.
@@ -38,12 +38,13 @@ public final class FsSubject < S extends Substrate < S > >
     this.name = name;
     this.parent = parent;
     this.type = type;
-    this.part = computePart ( name != null ? name : parent.name (), type );
+    this.part = computePart ( System.identityHashCode ( this ), name != null ? name : parent.name (), type );
   }
 
   /// Computes the part string for compareTo operations.
-  private static String computePart ( Name name, Class < ? > type ) {
-    return "Subject[name=" + name + ", type=" + type.getSimpleName () + "]";
+  /// Format: Subject[name=..., type=..., id=...] - id at end for uniqueness.
+  private static String computePart ( int id, Name name, Class < ? > type ) {
+    return "Subject[name=" + name + ", type=" + type.getSimpleName () + ", id=" + id + "]";
   }
 
   @Override

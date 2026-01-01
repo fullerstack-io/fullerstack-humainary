@@ -24,10 +24,11 @@ import io.humainary.substrates.api.Substrates.Subject;
 import io.humainary.substrates.api.Substrates.Subscriber;
 import io.humainary.substrates.api.Substrates.Subscription;
 
+import java.lang.invoke.MethodHandles;
+import java.lang.invoke.VarHandle;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.LockSupport;
 import java.util.function.BiConsumer;
 
@@ -57,25 +58,58 @@ public final class FsCircuit implements Circuit {
   /** Shared sentinel instance - immutable, no state. */
   private static final Job SENTINEL = new SentinelJob ();
 
-  // Ingress queue: write-to-head MPSC for external emissions
-  private final AtomicReference < Job > stackHead;
+  /** VarHandle for lock-free getAndSet on stackHead field. */
+  private static final VarHandle STACK_HEAD;
 
-  // Transit queue: intrusive FIFO for cascading emissions (circuit-thread only, no sync needed)
-  // Uses the same Job.next field as ingress - jobs move between queues, never in both
+  static {
+    try {
+      STACK_HEAD = MethodHandles.lookup ().findVarHandle ( FsCircuit.class, "stackHead", Job.class );
+    } catch ( ReflectiveOperationException e ) {
+      throw new ExceptionInInitializerError ( e );
+    }
+  }
+
+  // ===== PRODUCER FIELDS (written by external threads) =====
+  // Ingress queue: write-to-head MPSC for external emissions
+  @SuppressWarnings ( "unused" ) // Accessed via VarHandle
+  private Job stackHead;
+
+  // JCTools-style padding: 120 bytes (15 longs) to prevent false sharing
+  @SuppressWarnings ( "unused" )
+  private long p00, p01, p02, p03, p04, p05, p06, p07;
+  @SuppressWarnings ( "unused" )
+  private long p08, p09, p10, p11, p12, p13, p14;
+
+  // ===== CONSUMER FIELDS (accessed only by circuit thread) =====
+  // Transit queue: intrusive FIFO for cascading emissions
   private Job transitHead;
   private Job transitTail;
 
-  // Circuit state
-  private final    Subject < Circuit >           subject;
-  private final    Thread                        thread;
-  private volatile boolean                       running     = true;  // Volatile for visibility across threads
-  private volatile boolean                       parked      = false; // True only when thread is parked
-  private final    List < Subscriber < State > > subscribers = new ArrayList <> ();
+  // JCTools-style padding before shared state
+  @SuppressWarnings ( "unused" )
+  private long c00, c01, c02, c03, c04, c05, c06, c07;
+  @SuppressWarnings ( "unused" )
+  private long c08, c09, c10, c11, c12, c13, c14;
+
+  // ===== SHARED STATE (read by producers, written by consumer) =====
+  private volatile boolean running = true;  // Volatile for visibility across threads
+  private volatile boolean parked  = false; // True only when thread is parked
+
+  // JCTools-style padding after shared state
+  @SuppressWarnings ( "unused" )
+  private long s00, s01, s02, s03, s04, s05, s06, s07;
+  @SuppressWarnings ( "unused" )
+  private long s08, s09, s10, s11, s12, s13, s14;
+
+  // ===== IMMUTABLE FIELDS =====
+  private final Subject < Circuit >           subject;
+  private final Thread                        thread;
+  private final List < Subscriber < State > > subscribers = new ArrayList <> ();
 
   public FsCircuit ( Subject < Circuit > subject ) {
     this.subject = subject;
     // Initialize write-to-head queue with sentinel
-    this.stackHead = new AtomicReference <> ( SENTINEL );
+    this.stackHead = SENTINEL;
     // Start thread eagerly
     this.thread = Thread.ofVirtual ().name ( "circuit-" + subject.name () ).start ( this::loop );
   }
@@ -103,7 +137,7 @@ public final class FsCircuit implements Circuit {
   /** Cold path: external submission via write-to-head MPSC queue. */
   private void submitExternal ( Job job ) {
     if ( !running ) return;
-    Job prev = stackHead.getAndSet ( job );
+    Job prev = (Job) STACK_HEAD.getAndSet ( this, job );
     job.next = prev;
     // Only unpark if thread is actually parked (not spinning)
     // Reading parked after getAndSet ensures visibility of our submission
@@ -127,14 +161,9 @@ public final class FsCircuit implements Circuit {
     return thread;
   }
 
-  /** Returns the head reference for write-to-head MPSC queue access. */
-  public AtomicReference < Job > head () {
-    return stackHead;
-  }
-
   /** Spin iterations before parking. */
   private static final int SPIN_LIMIT =
-    Integer.getInteger ( "io.fullerstack.substrates.spinLimit", 128 );
+    Integer.getInteger ( "io.fullerstack.substrates.spinLimit", 512 );
 
   /**
    * Core execution loop - drains transit (priority), then ingress.
@@ -156,7 +185,7 @@ public final class FsCircuit implements Circuit {
       }
 
       // Check for shutdown (both queues empty)
-      if ( !running && stackHead.get () == SENTINEL && transitHead == null ) {
+      if ( !running && STACK_HEAD.getAcquire ( this ) == SENTINEL && transitHead == null ) {
         break;
       }
 
@@ -168,7 +197,7 @@ public final class FsCircuit implements Circuit {
         // Set parked flag before parking so external submitters know to unpark
         parked = true;
         // Double-check queue after setting parked flag (avoids lost wakeup race)
-        if ( stackHead.get () == SENTINEL && transitHead == null ) {
+        if ( STACK_HEAD.getAcquire ( this ) == SENTINEL && transitHead == null ) {
           LockSupport.park ();
         }
         parked = false;
@@ -204,11 +233,11 @@ public final class FsCircuit implements Circuit {
    */
   private boolean drainIngress () {
     // Read first to avoid cache contention when queue is empty
-    if ( stackHead.get () == SENTINEL ) {
+    if ( STACK_HEAD.getOpaque ( this ) == SENTINEL ) {
       return false;
     }
     // Atomically grab entire batch from ingress
-    Job batch = stackHead.getAndSet ( SENTINEL );
+    Job batch = (Job) STACK_HEAD.getAndSet ( this, SENTINEL );
     if ( batch == SENTINEL ) {
       return false;  // Race: another thread grabbed it
     }

@@ -7,7 +7,7 @@ import java.util.function.Consumer;
  * Used by both ingress (MPSC) and transit (FIFO) queues.
  */
 abstract class Job {
-  volatile Job next;
+  Job next;
 
   abstract void run ();
 }
@@ -28,5 +28,21 @@ final class EmitJob extends Job {
   @SuppressWarnings ( "unchecked" )
   void run () {
     ( (Consumer < Object >) consumer ).accept ( emission );
+  }
+}
+
+/**
+ * Job wrapping a Runnable for simple tasks.
+ */
+final class RunnableJob extends Job {
+  private final Runnable task;
+
+  RunnableJob ( Runnable task ) {
+    this.task = task;
+  }
+
+  @Override
+  void run () {
+    task.run ();
   }
 }
