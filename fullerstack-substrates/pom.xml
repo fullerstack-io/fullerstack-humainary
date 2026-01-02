@@ -108,6 +108,13 @@
       <version>2.0.16</version>
     </dependency>
 
+    <!-- JCTools MPSC intrusive queue -->
+    <dependency>
+      <groupId>org.jctools</groupId>
+      <artifactId>jctools-experimental</artifactId>
+      <version>4.0.5-SNAPSHOT</version>
+    </dependency>
+
     <!-- Lombok (compile-time code generation) -->
     <dependency>
       <groupId>org.projectlombok</groupId>

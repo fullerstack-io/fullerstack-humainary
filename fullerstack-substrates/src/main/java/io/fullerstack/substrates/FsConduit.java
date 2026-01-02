@@ -329,19 +329,16 @@ public final class FsConduit < P extends Percept, E >
   @NotNull
   @Override
   public Subscription subscribe ( @NotNull Subscriber < E > subscriber ) {
-    if ( subscriber.subject () instanceof FsSubject < ? > subSubject ) {
-      FsSubject < ? > subscriberCircuit = subSubject.findCircuitAncestor ();
-      FsSubject < ? > conduitCircuit = parent ().findCircuitAncestor ();
-      if ( subscriberCircuit != null
-        && conduitCircuit != null
-        && subscriberCircuit != conduitCircuit ) {
-        throw new FsException ( "Subscriber belongs to a different circuit" );
-      }
+    FsSubject < ? > subSubject = (FsSubject < ? >) subscriber.subject ();
+    FsSubject < ? > subscriberCircuit = subSubject.findCircuitAncestor ();
+    FsSubject < ? > conduitCircuit = parent ().findCircuitAncestor ();
+    if ( subscriberCircuit != null
+      && conduitCircuit != null
+      && subscriberCircuit != conduitCircuit ) {
+      throw new FsException ( "Subscriber belongs to a different circuit" );
     }
 
-    if ( !( subscriber instanceof FsSubscriber < E > fs ) ) {
-      throw new FsException ( "Subscriber must be an FsSubscriber" );
-    }
+    FsSubscriber < E > fs = (FsSubscriber < E >) subscriber;
 
     // Add to subscribers list - O(1) amortized with ArrayList growth
     synchronized ( subscriberLock ) {
@@ -356,9 +353,9 @@ public final class FsConduit < P extends Percept, E >
     // Must create new job each time (intrusive queue reuses next pointer)
     circuit.submit ( new RunnableJob ( () -> circuitVersion++ ) );
 
-    FsSubject < Subscription > subSubject =
+    FsSubject < Subscription > subscriptionSubject =
       new FsSubject <> ( subscriber.subject ().name (), (FsSubject < ? >) lazySubject (), Subscription.class );
-    Subscription subscription = new FsSubscription ( subSubject, () -> unsubscribe ( fs ) );
+    Subscription subscription = new FsSubscription ( subscriptionSubject, () -> unsubscribe ( fs ) );
     fs.trackSubscription ( subscription );
 
     return subscription;

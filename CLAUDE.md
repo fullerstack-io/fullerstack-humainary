@@ -8,6 +8,16 @@ This repository provides a **fully compliant implementation** of the Humainary S
 
 **Key Point:** We implement exactly what the Substrates specification defines. We don't change the API or add proprietary extensions.
 
+## CRITICAL RULES - READ FIRST
+
+**THERE IS NO HUMAINARY IMPLEMENTATION.** Humainary provides ONLY the API specification (interfaces). Fullerstack IS the implementation. NEVER search for or ask about "Humainary's implementation" - it does not exist. The benchmarks in substrates-api-java run against OUR implementation via SPI.
+
+**NEVER suggest object allocation is causing performance problems.** Both Humainary's benchmark baseline and our implementation allocate objects. Allocation is NOT the differentiator. When analyzing performance:
+- Focus on the actual code path differences
+- Measure what our code actually does
+- Compare our emit path logic to understand the overhead
+- The ~8ns Humainary baseline also allocates - so allocation cannot explain our gap
+
 ## Build Commands
 
 ### Prerequisites

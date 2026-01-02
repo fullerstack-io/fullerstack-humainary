@@ -170,9 +170,7 @@ public final class FsCell < I, E > implements Cell < I, E > {
       if ( subscriberChannelPairs.add ( key ) ) {
         // First time this subscriber sees this child - activate
         FsRegistrar < E > registrar = new FsRegistrar <> ();
-        if ( subscriber instanceof FsSubscriber < E > fs ) {
-          fs.activate ( channelSubject, registrar );
-        }
+        ( (FsSubscriber < E >) subscriber ).activate ( channelSubject, registrar );
         subscriberPipes
           .computeIfAbsent ( subscriber, k -> new HashMap <> () )
           .computeIfAbsent ( childName, k -> new ArrayList <> () )

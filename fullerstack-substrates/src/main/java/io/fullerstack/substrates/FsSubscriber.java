@@ -1,6 +1,7 @@
 package io.fullerstack.substrates;
 
 import io.humainary.substrates.api.Substrates.Channel;
+import io.humainary.substrates.api.Substrates.Idempotent;
 import io.humainary.substrates.api.Substrates.Provided;
 import io.humainary.substrates.api.Substrates.Registrar;
 import io.humainary.substrates.api.Substrates.Subject;
@@ -70,6 +71,7 @@ public final class FsSubscriber < E >
   }
 
   /// Closes this subscriber and all its tracked subscriptions.
+  @Idempotent
   @Override
   public void close () {
     if ( !closed ) {

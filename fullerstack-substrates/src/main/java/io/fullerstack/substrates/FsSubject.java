@@ -10,6 +10,7 @@ import io.humainary.substrates.api.Substrates.Subject;
 import io.humainary.substrates.api.Substrates.Substrate;
 
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
 
 /// The identity of a substrate.
 /// Supports null name for anonymous subjects - delegates to parent's name.
@@ -19,17 +20,21 @@ import java.util.Optional;
 public final class FsSubject < S extends Substrate < S > >
   implements Subject < S >, Id {
 
+  /// Cache for type simple names - avoids repeated Class.getSimpleName() calls (33ns each).
+  private static final ConcurrentHashMap < Class < ? >, String > TYPE_NAMES = new ConcurrentHashMap <> ();
+
   private final Name            name;  // null for anonymous subjects
   private final FsSubject < ? > parent;
   private final Class < ? >     type;
-  private final String          part;  // cached for fast compareTo
+  private final int             id;    // cached identity hash
+  private       String          part;  // lazily computed on first part() call
 
   /// Creates a root subject with the given name and type.
   public FsSubject ( Name name, Class < ? > type ) {
     this.name = name;
     this.parent = null;
     this.type = type;
-    this.part = computePart ( System.identityHashCode ( this ), name, type );
+    this.id = System.identityHashCode ( this );
   }
 
   /// Creates a child subject with the given name, parent, and type.
@@ -38,13 +43,12 @@ public final class FsSubject < S extends Substrate < S > >
     this.name = name;
     this.parent = parent;
     this.type = type;
-    this.part = computePart ( System.identityHashCode ( this ), name != null ? name : parent.name (), type );
+    this.id = System.identityHashCode ( this );
   }
 
-  /// Computes the part string for compareTo operations.
-  /// Format: Subject[name=..., type=..., id=...] - id at end for uniqueness.
-  private static String computePart ( int id, Name name, Class < ? > type ) {
-    return "Subject[name=" + name + ", type=" + type.getSimpleName () + ", id=" + id + "]";
+  /// Gets cached type simple name - avoids expensive Class.getSimpleName() on every call.
+  private static String typeName ( Class < ? > type ) {
+    return TYPE_NAMES.computeIfAbsent ( type, Class::getSimpleName );
   }
 
   @Override
@@ -71,8 +75,13 @@ public final class FsSubject < S extends Substrate < S > >
 
   @Override
   public String part () {
-    // Cached at construction for O(1) compareTo performance
-    return part;
+    // Lazy computation - only build string when actually needed for compareTo
+    String p = part;
+    if ( p == null ) {
+      Name n = name != null ? name : parent.name ();
+      part = p = "Subject[name=" + n + ", type=" + typeName ( type ) + ", id=" + id + "]";
+    }
+    return p;
   }
 
   @Override

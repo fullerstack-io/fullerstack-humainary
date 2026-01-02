@@ -16,12 +16,10 @@ Run Serventis JMH benchmarks using Humainary's official jmh.sh with Fullerstack 
 Use the pattern from $ARGUMENTS, or if empty use `io.humainary.serventis.jmh` for all Serventis benchmarks.
 
 ```bash
-cd /workspaces/fullerstack-humainary/fullerstack-substrates && \
 source /usr/local/sdkman/bin/sdkman-init.sh && sdk use java 25.0.1-open && \
-mvn clean install -DskipTests -q && \
-cd /workspaces/fullerstack-humainary/substrates-api-java && \
+cd /workspaces/fullerstack-humainary/fullerstack-substrates && mvn clean install -DskipTests -q && \
 SPI_GROUP=io.fullerstack SPI_ARTIFACT=fullerstack-substrates SPI_VERSION=1.0.0-RC1 \
-./jmh.sh $ARGUMENTS
+/workspaces/fullerstack-humainary/substrates-api-java/jmh.sh $ARGUMENTS 2>&1 | tee /workspaces/fullerstack-humainary/benchmark-results/serventis-latest.txt
 ```
 
 When complete, present comparison table using Humainary baselines from BENCHMARKS.md.

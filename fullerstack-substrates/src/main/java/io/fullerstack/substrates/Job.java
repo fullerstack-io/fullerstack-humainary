@@ -3,11 +3,9 @@ package io.fullerstack.substrates;
 import java.util.function.Consumer;
 
 /**
- * Abstract job with intrusive next pointer for queue linkage.
- * Used by both ingress (MPSC) and transit (FIFO) queues.
+ * Abstract job for circuit execution.
  */
 abstract class Job {
-  Job next;
 
   abstract void run ();
 }

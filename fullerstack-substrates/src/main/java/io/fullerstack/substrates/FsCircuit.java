@@ -24,82 +24,41 @@ import io.humainary.substrates.api.Substrates.Subject;
 import io.humainary.substrates.api.Substrates.Subscriber;
 import io.humainary.substrates.api.Substrates.Subscription;
 
-import java.lang.invoke.MethodHandles;
-import java.lang.invoke.VarHandle;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.locks.LockSupport;
 import java.util.function.BiConsumer;
 
+import org.jctools.queues.MpscLinkedQueue;
+
 /**
- * Circuit implementation using dual-queue architecture per Humainary specification.
- *
- * <p>Uses William Louth's abstract job pattern: jobs have an intrusive `next` field for queue
- * linkage, eliminating separate queue node allocation.
+ * Circuit implementation using dual-queue architecture with JCTools MpscLinkedQueue.
  *
  * <p>Key design:
  * <ul>
- *   <li>External emissions: create job, submit to ingress MPSC queue (write-to-head)
- *   <li>Cascade emissions (on circuit thread): enqueue to transit queue (FIFO, no recursion)
- *   <li>Transit queue drains completely before returning to ingress (priority processing)
- *   <li>Stack-safe: deep cascading chains use iteration, never recursion
+ *   <li>Ingress queue (MpscLinkedQueue): external emissions from multiple threads
+ *   <li>Transit queue (ArrayDeque): cascade emissions on circuit thread
+ *   <li>Priority: drain transit completely, then process ingress with transit drain after each
+ *   <li>Park/unpark for efficient thread synchronization
  * </ul>
  */
 @Provided
 public final class FsCircuit implements Circuit {
 
-  /** Sentinel job for queue initialization (never executed). */
-  private static final class SentinelJob extends Job {
-    @Override
-    void run () { }
-  }
+  /** Batch size for ingress drain operations. */
+  private static final int DRAIN_BATCH = 64;
 
-  /** Shared sentinel instance - immutable, no state. */
-  private static final Job SENTINEL = new SentinelJob ();
+  /** JCTools MPSC linked queue for external submissions (ingress). */
+  private final MpscLinkedQueue < Job > ingress = new MpscLinkedQueue <> ();
 
-  /** VarHandle for lock-free getAndSet on stackHead field. */
-  private static final VarHandle STACK_HEAD;
-
-  static {
-    try {
-      STACK_HEAD = MethodHandles.lookup ().findVarHandle ( FsCircuit.class, "stackHead", Job.class );
-    } catch ( ReflectiveOperationException e ) {
-      throw new ExceptionInInitializerError ( e );
-    }
-  }
-
-  // ===== PRODUCER FIELDS (written by external threads) =====
-  // Ingress queue: write-to-head MPSC for external emissions
-  @SuppressWarnings ( "unused" ) // Accessed via VarHandle
-  private Job stackHead;
-
-  // JCTools-style padding: 120 bytes (15 longs) to prevent false sharing
-  @SuppressWarnings ( "unused" )
-  private long p00, p01, p02, p03, p04, p05, p06, p07;
-  @SuppressWarnings ( "unused" )
-  private long p08, p09, p10, p11, p12, p13, p14;
-
-  // ===== CONSUMER FIELDS (accessed only by circuit thread) =====
-  // Transit queue: intrusive FIFO for cascading emissions
-  private Job transitHead;
-  private Job transitTail;
-
-  // JCTools-style padding before shared state
-  @SuppressWarnings ( "unused" )
-  private long c00, c01, c02, c03, c04, c05, c06, c07;
-  @SuppressWarnings ( "unused" )
-  private long c08, c09, c10, c11, c12, c13, c14;
+  /** Simple queue for cascade emissions on circuit thread (transit). */
+  private final ArrayDeque < Job > transit = new java.util.ArrayDeque <> ();
 
   // ===== SHARED STATE (read by producers, written by consumer) =====
   private volatile boolean running = true;  // Volatile for visibility across threads
   private volatile boolean parked  = false; // True only when thread is parked
-
-  // JCTools-style padding after shared state
-  @SuppressWarnings ( "unused" )
-  private long s00, s01, s02, s03, s04, s05, s06, s07;
-  @SuppressWarnings ( "unused" )
-  private long s08, s09, s10, s11, s12, s13, s14;
 
   // ===== IMMUTABLE FIELDS =====
   private final Subject < Circuit >           subject;
@@ -108,39 +67,29 @@ public final class FsCircuit implements Circuit {
 
   public FsCircuit ( Subject < Circuit > subject ) {
     this.subject = subject;
-    // Initialize write-to-head queue with sentinel
-    this.stackHead = SENTINEL;
     // Start thread eagerly
     this.thread = Thread.ofVirtual ().name ( "circuit-" + subject.name () ).start ( this::loop );
   }
 
   /**
-   * Submit a job to the circuit. Transit queue is the hot path (inline).
+   * Submit a job to the circuit.
    */
   public void submit ( Job job ) {
     if ( Thread.currentThread () == thread ) {
-      // Hot path: cascade via transit queue (inline, no method call)
+      // Hot path: cascade - add to transit queue (processed before next ingress job)
       if ( !running ) return;
-      job.next = null;
-      if ( transitTail != null ) {
-        transitTail.next = job;
-      } else {
-        transitHead = job;
-      }
-      transitTail = job;
+      transit.addLast ( job );
     } else {
-      // Cold path: external submission (extracted)
+      // Cold path: external submission via JCTools MPSC queue
       submitExternal ( job );
     }
   }
 
-  /** Cold path: external submission via write-to-head MPSC queue. */
+  /** Cold path: external submission via JCTools MPSC queue. */
   private void submitExternal ( Job job ) {
     if ( !running ) return;
-    Job prev = (Job) STACK_HEAD.getAndSet ( this, job );
-    job.next = prev;
-    // Only unpark if thread is actually parked (not spinning)
-    // Reading parked after getAndSet ensures visibility of our submission
+    ingress.offer ( job );
+    // Only unpark if thread is actually parked
     if ( parked ) {
       LockSupport.unpark ( thread );
     }
@@ -161,12 +110,11 @@ public final class FsCircuit implements Circuit {
     return thread;
   }
 
-  /** Spin iterations before parking. */
-  private static final int SPIN_LIMIT =
-    Integer.getInteger ( "io.fullerstack.substrates.spinLimit", 512 );
+  /** Spin iterations before parking (0 = park immediately). */
+  private static final int SPIN_LIMIT = Integer.getInteger ( "io.fullerstack.substrates.spinLimit", 512 );
 
   /**
-   * Core execution loop - drains transit (priority), then ingress.
+   * Core execution loop - drains transit (priority), then ingress with transit drain after each.
    */
   private void loop () {
     int spins = 0;
@@ -178,14 +126,14 @@ public final class FsCircuit implements Circuit {
         continue;
       }
 
-      // Priority 2: Grab batch from ingress and process
+      // Priority 2: Drain batch from ingress, with transit drain after each job
       if ( drainIngress () ) {
         spins = 0;
         continue;
       }
 
       // Check for shutdown (both queues empty)
-      if ( !running && STACK_HEAD.getAcquire ( this ) == SENTINEL && transitHead == null ) {
+      if ( !running && ingress.isEmpty () && transit.isEmpty () ) {
         break;
       }
 
@@ -196,8 +144,7 @@ public final class FsCircuit implements Circuit {
       } else {
         // Set parked flag before parking so external submitters know to unpark
         parked = true;
-        // Double-check queue after setting parked flag (avoids lost wakeup race)
-        if ( STACK_HEAD.getAcquire ( this ) == SENTINEL && transitHead == null ) {
+        if ( ingress.isEmpty () && transit.isEmpty () ) {
           LockSupport.park ();
         }
         parked = false;
@@ -207,75 +154,47 @@ public final class FsCircuit implements Circuit {
   }
 
   /**
-   * Drain transit queue completely (FIFO order via intrusive linked list).
-   * Returns true if any work was done.
+   * Drain transit queue completely. Returns true if any work was done.
    */
   private boolean drainTransit () {
-    if ( transitHead == null ) {
+    if ( transit.isEmpty () ) {
       return false;
     }
-    // Drain all transit jobs - cascading may add more, so loop until empty
-    while ( transitHead != null ) {
-      Job job = transitHead;
-      transitHead = job.next;
-      if ( transitHead == null ) {
-        transitTail = null;
-      }
+    while ( !transit.isEmpty () ) {
+      Job job = transit.pollFirst ();
       try {
-        job.run ();  // May add more to transit via submit()
+        job.run (); // May add more to transit
       } catch ( Exception ignored ) { }
     }
     return true;
   }
 
   /**
-   * Grab batch from ingress, reverse to FIFO, process each job with transit drain after each.
+   * Drain batch from ingress, with transit drain after each job for causality.
+   * Returns true if any work was done.
    */
   private boolean drainIngress () {
-    // Read first to avoid cache contention when queue is empty
-    if ( STACK_HEAD.getOpaque ( this ) == SENTINEL ) {
+    Job job = ingress.relaxedPoll ();
+    if ( job == null ) {
       return false;
     }
-    // Atomically grab entire batch from ingress
-    Job batch = (Job) STACK_HEAD.getAndSet ( this, SENTINEL );
-    if ( batch == SENTINEL ) {
-      return false;  // Race: another thread grabbed it
-    }
 
-    // Reverse to FIFO order (batch is currently LIFO)
-    Job current = reverse ( batch );
-
-    // Process each ingress job, draining transit after each (causality preservation)
-    while ( current != null && current != SENTINEL ) {
-      // Save next BEFORE running - job.run() may trigger cascades that reuse next field
-      Job nextIngress = current.next;
-
+    int count = 0;
+    do {
       try {
-        current.run ();  // May add to transit, which will use current.next
+        job.run (); // May add to transit
       } catch ( Exception ignored ) { }
 
-      // Drain transit completely before next ingress job
+      // Drain transit after each ingress job (causality preservation)
       drainTransit ();
 
-      current = nextIngress;
-    }
-
+      count++;
+      if ( count >= DRAIN_BATCH ) {
+        break;
+      }
+      job = ingress.relaxedPoll ();
+    } while ( job != null );
     return true;
-  }
-
-  /**
-   * Reverse linked list to convert LIFO to FIFO order.
-   */
-  private static Job reverse ( Job head ) {
-    Job prev = null;
-    Job current = head;
-    while ( current != null && current != SENTINEL ) {
-      Job next = current.next;
-      current.next = prev;
-      prev = current;
-      current = next;
-    }
-    return prev;
   }
 
   @Override
@@ -315,14 +234,12 @@ public final class FsCircuit implements Circuit {
   @New
   @NotNull
   @Override
-  public < I, E > Cell < I, E > cell (
-    @NotNull Name name, @NotNull Composer < E, Pipe < I > > ingress, @NotNull Composer < E, Pipe < E > > egress, @NotNull Receptor < ? super E > receptor ) {
+  public < I, E > Cell < I, E > cell ( @NotNull Name name, @NotNull Composer < E, Pipe < I > > ingress, @NotNull Composer < E, Pipe < E > > egress, @NotNull Receptor < ? super E > receptor ) {
     requireNonNull ( name );
     requireNonNull ( ingress );
     requireNonNull ( egress );
     requireNonNull ( receptor );
-    return new FsCell <> (
-      new FsSubject <> ( name, (FsSubject < ? >) subject, Cell.class ), this, ingress, egress, receptor );
+    return new FsCell <> ( new FsSubject <> ( name, (FsSubject < ? >) subject, Cell.class ), this, ingress, egress, receptor );
   }
 
   @New
@@ -337,24 +254,19 @@ public final class FsCircuit implements Circuit {
   @New
   @NotNull
   @Override
-  public < P extends Percept, E > Conduit < P, E > conduit (
-    @NotNull Name name, @NotNull Composer < E, ? extends P > composer, @NotNull Configurer < Flow < E > > configurer ) {
+  public < P extends Percept, E > Conduit < P, E > conduit ( @NotNull Name name, @NotNull Composer < E, ? extends P > composer, @NotNull Configurer < Flow < E > > configurer ) {
     requireNonNull ( name );
     requireNonNull ( composer );
     requireNonNull ( configurer );
-    return new FsConduit <> (
-      (FsSubject < ? >) subject, name, channel -> composer.compose ( channel ), this, configurer );
+    return new FsConduit <> ( (FsSubject < ? >) subject, name, channel -> composer.compose ( channel ), this, configurer );
   }
 
   @New
   @NotNull
   @Override
   public < E > Pipe < E > pipe ( @NotNull Pipe < E > target ) {
-    requireNonNull ( target );
-    if ( target instanceof FsPipe < E > fsPipe ) {
-      return new FsPipe <> ( target.subject (), this, fsPipe.receiver () );
-    }
-    return new FsPipe <> ( target.subject (), this, target::emit );
+    var fsPipe = (FsPipe < E >) requireNonNull ( target );
+    return new FsPipe <> ( fsPipe.subject (), this, fsPipe.receiver () );
   }
 
   @New
@@ -369,13 +281,9 @@ public final class FsCircuit implements Circuit {
   @NotNull
   @Override
   public < E > Pipe < E > pipe ( @NotNull Pipe < E > target, @NotNull Configurer < Flow < E > > configurer ) {
-    FsPipe < E > fsPipe;
-    if ( target instanceof FsPipe < E > fp ) {
-      fsPipe = new FsPipe <> ( target.subject (), this, fp.receiver () );
-    } else {
-      fsPipe = new FsPipe <> ( target.subject (), this, target::emit );
-    }
-    FsFlow < E > flow = new FsFlow <> ( target.subject (), this, fsPipe );
+    var fp = (FsPipe < E >) requireNonNull ( target );
+    var fsPipe = new FsPipe <> ( fp.subject (), this, fp.receiver () );
+    var flow = new FsFlow <> ( fp.subject (), this, fsPipe );
     configurer.configure ( flow );
     return flow.pipe ();
   }
@@ -395,11 +303,8 @@ public final class FsCircuit implements Circuit {
   @NotNull
   @Override
   public < E > Pipe < E > pipe ( Name name, @NotNull Pipe < E > target ) {
-    requireNonNull ( target );
-    if ( target instanceof FsPipe < E > fp ) {
-      return new FsPipe <> ( target.subject (), this, fp.receiver () );
-    }
-    return new FsPipe <> ( target.subject (), this, target::emit );
+    var fsPipe = (FsPipe < E >) requireNonNull ( target );
+    return new FsPipe <> ( fsPipe.subject (), this, fsPipe.receiver () );
   }
 
   @New
@@ -414,13 +319,9 @@ public final class FsCircuit implements Circuit {
   @NotNull
   @Override
   public < E > Pipe < E > pipe ( Name name, @NotNull Pipe < E > target, @NotNull Configurer < Flow < E > > configurer ) {
-    FsPipe < E > fsPipe;
-    if ( target instanceof FsPipe < E > fp ) {
-      fsPipe = new FsPipe <> ( target.subject (), this, fp.receiver () );
-    } else {
-      fsPipe = new FsPipe <> ( target.subject (), this, target::emit );
-    }
-    FsFlow < E > flow = new FsFlow <> ( target.subject (), this, fsPipe );
+    var fp = (FsPipe < E >) requireNonNull ( target );
+    var fsPipe = new FsPipe <> ( fp.subject (), this, fp.receiver () );
+    var flow = new FsFlow <> ( fp.subject (), this, fsPipe );
     configurer.configure ( flow );
     return flow.pipe ();
   }
@@ -439,12 +340,10 @@ public final class FsCircuit implements Circuit {
   @New
   @NotNull
   @Override
-  public < E > Subscriber < E > subscriber (
-    @NotNull Name name, @NotNull BiConsumer < Subject < Channel < E > >, Registrar < E > > callback ) {
+  public < E > Subscriber < E > subscriber ( @NotNull Name name, @NotNull BiConsumer < Subject < Channel < E > >, Registrar < E > > callback ) {
     requireNonNull ( name );
     requireNonNull ( callback );
-    return new FsSubscriber <> (
-      new FsSubject <> ( name, (FsSubject < ? >) subject, Subscriber.class ), callback );
+    return new FsSubscriber <> ( new FsSubject <> ( name, (FsSubject < ? >) subject, Subscriber.class ), callback );
   }
 
   @New
@@ -460,8 +359,7 @@ public final class FsCircuit implements Circuit {
       }
     }
     subscribers.add ( subscriber );
-    return new FsSubscription (
-      (Subject < Subscription >) (Subject < ? >) subject, () -> subscribers.remove ( subscriber ) );
+    return new FsSubscription ( (Subject < Subscription >) (Subject < ? >) subject, () -> subscribers.remove ( subscriber ) );
   }
 
   @New

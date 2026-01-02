@@ -1,6 +1,7 @@
 package io.fullerstack.substrates;
 
 import io.humainary.substrates.api.Substrates.Closure;
+import io.humainary.substrates.api.Substrates.Provided;
 import io.humainary.substrates.api.Substrates.Resource;
 
 import java.util.function.Consumer;
@@ -8,6 +9,7 @@ import java.util.function.Consumer;
 /// A single-use block-scoped resource wrapper.
 ///
 /// @param <R> the resource type
+@Provided
 final class FsClosure < R extends Resource >
   implements Closure < R > {
 

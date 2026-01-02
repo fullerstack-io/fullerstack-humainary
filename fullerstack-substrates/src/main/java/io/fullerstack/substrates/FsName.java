@@ -329,15 +329,12 @@ public final class FsName
   @Override
   public Name name ( Name suffix ) {
     // Walk suffix segments and chain them
-    if ( suffix instanceof FsName nano ) {
-      // Fast path for single-segment suffix (most common)
-      if ( nano.depth == 1 ) {
-        return internChild ( nano.segment );
-      }
-      return chainFrom ( nano );
+    FsName nano = (FsName) suffix;
+    // Fast path for single-segment suffix (most common)
+    if ( nano.depth == 1 ) {
+      return internChild ( nano.segment );
     }
-    // Fallback: parse suffix string
-    return name ( suffix.toString () );
+    return chainFrom ( nano );
   }
 
   /// Chain segments from another FsName onto this one.

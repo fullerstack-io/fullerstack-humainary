@@ -1,8 +1,8 @@
 ---
-description: Run FlowOps JMH benchmarks comparing Fullerstack vs Humainary
+description: Run ALL JMH benchmarks (Substrates + Serventis) comparing Fullerstack vs Humainary
 ---
 
-Run FlowOps JMH benchmarks using Humainary's official jmh.sh with Fullerstack as the SPI provider.
+Run ALL JMH benchmarks using Humainary's official jmh.sh with Fullerstack as the SPI provider.
 
 ## Instructions
 
@@ -12,7 +12,7 @@ Run FlowOps JMH benchmarks using Humainary's official jmh.sh with Fullerstack as
 source /usr/local/sdkman/bin/sdkman-init.sh && sdk use java 25.0.1-open && \
 cd /workspaces/fullerstack-humainary/fullerstack-substrates && mvn clean install -DskipTests -q && \
 SPI_GROUP=io.fullerstack SPI_ARTIFACT=fullerstack-substrates SPI_VERSION=1.0.0-RC1 \
-/workspaces/fullerstack-humainary/substrates-api-java/jmh.sh FlowOps 2>&1 | tee /workspaces/fullerstack-humainary/benchmark-results/flowops-latest.txt
+/workspaces/fullerstack-humainary/substrates-api-java/jmh.sh 2>&1 | tee /workspaces/fullerstack-humainary/benchmark-results/all-latest.txt
 ```
 
 When complete, present comparison table using Humainary baselines from BENCHMARKS.md.
