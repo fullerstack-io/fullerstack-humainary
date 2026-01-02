@@ -20,11 +20,10 @@ import io.humainary.substrates.api.Substrates.Subscription;
 /// @see FsConduit#subscribe(Subscriber)
 /// @see FsSubscriber
 @Provided
-public final class FsSubscription
-  implements Subscription {
+public final class FsSubscription implements Subscription {
 
   /// The subject identity for this subscription.
-  private final Subject < Subscription > subject;
+  private final Subject<Subscription> subject;
 
   /// Action to run on close.
   private final Runnable onClose;
@@ -36,7 +35,7 @@ public final class FsSubscription
   ///
   /// @param subject the subject identity for this subscription
   /// @param onClose action to run when subscription is closed
-  public FsSubscription ( Subject < Subscription > subject, Runnable onClose ) {
+  public FsSubscription(Subject<Subscription> subject, Runnable onClose) {
     this.subject = subject;
     this.onClose = onClose;
   }
@@ -45,7 +44,7 @@ public final class FsSubscription
   ///
   /// @return the subject of this subscription
   @Override
-  public Subject < Subscription > subject () {
+  public Subject<Subscription> subject() {
     return subject;
   }
 
@@ -53,10 +52,10 @@ public final class FsSubscription
   /// Idempotent - repeated calls have no effect.
   @Idempotent
   @Override
-  public void close () {
-    if ( !closed ) {
+  public void close() {
+    if (!closed) {
       closed = true;
-      onClose.run ();
+      onClose.run();
     }
   }
 

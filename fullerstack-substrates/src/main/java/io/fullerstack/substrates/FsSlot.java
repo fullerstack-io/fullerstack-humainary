@@ -6,4 +6,5 @@ import io.humainary.substrates.api.Substrates.Slot;
 
 /// An immutable name-value pair - record for minimal overhead.
 @Provided
-record FsSlot < T >( Name name, T value, Class < T > type ) implements Slot < T > { }
+record FsSlot<T>(Name name, T value, Class<T> type) implements Slot<T> {
+}
