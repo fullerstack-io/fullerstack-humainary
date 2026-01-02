@@ -20,22 +20,22 @@ import java.util.stream.Stream;
 /// @param <E> the class type of the emitted value
 /// @see Capture
 @Provided
-public final class FsReservoir<E> implements Reservoir<E> {
+public final class FsReservoir < E > implements Reservoir < E > {
 
   /// A capture of an emitted value from a channel with its associated subject.
-  private record Cap<E>(E emission, Subject<Channel<E>> subject) implements Capture<E> {
+  private record Cap < E >( E emission, Subject < Channel < E > > subject ) implements Capture < E > {
   }
 
   /// The subject identity for this reservoir.
-  private final Subject<Reservoir<E>> subject;
+  private final Subject < Reservoir < E > > subject;
 
   /// Internal buffer storing captured emissions.
-  private final List<Cap<E>> buffer = new ArrayList<>();
+  private final List < Cap < E > > buffer = new ArrayList <> ();
 
   /// Creates a new reservoir with the given subject identity.
   ///
   /// @param subject the subject identity for this reservoir
-  public FsReservoir(Subject<Reservoir<E>> subject) {
+  public FsReservoir ( Subject < Reservoir < E > > subject ) {
     this.subject = subject;
   }
 
@@ -43,7 +43,7 @@ public final class FsReservoir<E> implements Reservoir<E> {
   ///
   /// @return the subject of this reservoir
   @Override
-  public Subject<Reservoir<E>> subject() {
+  public Subject < Reservoir < E > > subject () {
     return subject;
   }
 
@@ -52,23 +52,23 @@ public final class FsReservoir<E> implements Reservoir<E> {
   ///
   /// @return A stream consisting of stored events captured from channels.
   /// @see Capture
-  public Stream<Capture<E>> drain() {
+  public Stream < Capture < E > > drain () {
     // Optimized: use buffer snapshot instead of toArray allocation
-    List<Cap<E>> snapshot = new ArrayList<>(buffer);
-    buffer.clear();
-    return snapshot.stream().map(c -> c);
+    List < Cap < E > > snapshot = new ArrayList <> ( buffer );
+    buffer.clear ();
+    return snapshot.stream ().map ( c -> c );
   }
 
   /// Captures an emission with its channel subject.
-  void capture(E emission, Subject<Channel<E>> channelSubject) {
-    buffer.add(new Cap<>(emission, channelSubject));
+  void capture ( E emission, Subject < Channel < E > > channelSubject ) {
+    buffer.add ( new Cap <> ( emission, channelSubject ) );
   }
 
   /// Closes this reservoir, releasing the captured emissions buffer.
   @Idempotent
   @Override
-  public void close() {
-    buffer.clear();
+  public void close () {
+    buffer.clear ();
   }
 
 }

@@ -10,34 +10,34 @@ import java.util.function.Consumer;
 ///
 /// @param <R> the resource type
 @Provided
-final class FsClosure<R extends Resource> implements Closure<R> {
+final class FsClosure < R extends Resource > implements Closure < R > {
 
-  private final R resource;
+  private final R       resource;
   private final FsScope scope;
-  private boolean consumed;
+  private       boolean consumed;
 
-  FsClosure(R resource, FsScope scope) {
+  FsClosure ( R resource, FsScope scope ) {
     this.resource = resource;
     this.scope = scope;
   }
 
-  boolean isConsumed() {
+  boolean isConsumed () {
     return consumed;
   }
 
   @Override
-  public void consume(Consumer<? super R> consumer) {
+  public void consume ( Consumer < ? super R > consumer ) {
     // If scope is closed or already consumed, no-op (fail-safe)
-    if (scope.isClosed() || consumed) {
+    if ( scope.isClosed () || consumed ) {
       return;
     }
     consumed = true;
     // Remove from scope's cache so next closure() call creates new one
-    scope.closureConsumed(resource);
+    scope.closureConsumed ( resource );
     try {
-      consumer.accept(resource);
+      consumer.accept ( resource );
     } finally {
-      resource.close();
+      resource.close ();
     }
   }
 

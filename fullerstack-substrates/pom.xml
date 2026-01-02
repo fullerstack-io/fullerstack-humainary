@@ -7,7 +7,7 @@
 
   <groupId>io.fullerstack</groupId>
   <artifactId>fullerstack-substrates</artifactId>
-  <version>1.0.0-RC1</version>
+  <version>1.0.0-RC2</version>
   <packaging>jar</packaging>
 
   <name>Substrates (Java)</name>
@@ -106,13 +106,6 @@
       <groupId>org.slf4j</groupId>
       <artifactId>slf4j-api</artifactId>
       <version>2.0.16</version>
-    </dependency>
-
-    <!-- JCTools MPSC intrusive queue -->
-    <dependency>
-      <groupId>org.jctools</groupId>
-      <artifactId>jctools-experimental</artifactId>
-      <version>4.0.5-SNAPSHOT</version>
     </dependency>
 
     <!-- Lombok (compile-time code generation) -->

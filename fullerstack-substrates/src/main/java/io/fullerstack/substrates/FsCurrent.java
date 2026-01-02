@@ -23,12 +23,12 @@ import io.humainary.substrates.api.Substrates.Temporal;
 final class FsCurrent implements Current {
 
   /// The subject identity for this current context.
-  private final Subject<Current> subject;
+  private final Subject < Current > subject;
 
   /// Creates a new current context with the given subject identity.
   ///
   /// @param subject the subject identity for this context
-  FsCurrent(Subject<Current> subject) {
+  FsCurrent ( Subject < Current > subject ) {
     this.subject = subject;
   }
 
@@ -36,7 +36,7 @@ final class FsCurrent implements Current {
   ///
   /// @return the subject of this current context
   @Override
-  public Subject<Current> subject() {
+  public Subject < Current > subject () {
     return subject;
   }
 

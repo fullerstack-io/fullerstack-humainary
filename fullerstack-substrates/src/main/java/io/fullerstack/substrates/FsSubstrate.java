@@ -20,11 +20,11 @@ import io.humainary.substrates.api.Substrates.Substrate;
  * @param <S>
  *            the substrate type
  */
-abstract class FsSubstrate<S extends Substrate<S>> {
+abstract class FsSubstrate < S extends Substrate < S > > {
 
-  private final FsSubject<?> parent;
-  private final Name name;
-  private volatile Subject<S> subject;
+  private final    FsSubject < ? > parent;
+  private final    Name            name;
+  private volatile Subject < S >   subject;
 
   /**
    * Creates a new substrate with lazy subject creation.
@@ -34,7 +34,7 @@ abstract class FsSubstrate<S extends Substrate<S>> {
    * @param name
    *            the substrate name (may be null for anonymous substrates)
    */
-  protected FsSubstrate(FsSubject<?> parent, Name name) {
+  protected FsSubstrate ( FsSubject < ? > parent, Name name ) {
     this.parent = parent;
     this.name = name;
   }
@@ -45,7 +45,7 @@ abstract class FsSubstrate<S extends Substrate<S>> {
    *
    * @return the substrate type class
    */
-  protected abstract Class<?> type();
+  protected abstract Class < ? > type ();
 
   /**
    * Returns the lazily-created subject. Subclasses should call this from their
@@ -53,14 +53,14 @@ abstract class FsSubstrate<S extends Substrate<S>> {
    *
    * @return the subject for this substrate
    */
-  @SuppressWarnings("unchecked")
-  protected final Subject<S> lazySubject() {
-    Subject<S> s = subject;
-    if (s == null) {
-      synchronized (this) {
+  @SuppressWarnings ( "unchecked" )
+  protected final Subject < S > lazySubject () {
+    Subject < S > s = subject;
+    if ( s == null ) {
+      synchronized ( this ) {
         s = subject;
-        if (s == null) {
-          s = subject = (Subject<S>) (Subject<?>) new FsSubject<>(name, parent, type());
+        if ( s == null ) {
+          s = subject = (Subject < S >) (Subject < ? >) new FsSubject <> ( name, parent, type () );
         }
       }
     }
@@ -70,12 +70,12 @@ abstract class FsSubstrate<S extends Substrate<S>> {
   /**
    * Returns the parent subject. For use by subclasses that need hierarchy access.
    */
-  protected final FsSubject<?> parent() {
+  protected final FsSubject < ? > parent () {
     return parent;
   }
 
   /** Returns the name. For use by subclasses. */
-  protected final Name name() {
+  protected final Name name () {
     return name;
   }
 }

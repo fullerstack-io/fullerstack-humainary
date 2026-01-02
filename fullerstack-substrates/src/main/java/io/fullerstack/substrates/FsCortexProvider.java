@@ -12,8 +12,8 @@ import io.humainary.substrates.spi.CortexProvider;
 public final class FsCortexProvider extends CortexProvider {
 
   @Override
-  protected Cortex create() {
-    return new FsCortex();
+  protected Cortex create () {
+    return new FsCortex ();
   }
 
 }

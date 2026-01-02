@@ -35,6 +35,11 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .bmad/
-docs/
 benchmark-results/
 tools/
+
+# Claude
+CLAUDE.md
+
+# External dependencies (cloned separately)
+substrates-api-java/

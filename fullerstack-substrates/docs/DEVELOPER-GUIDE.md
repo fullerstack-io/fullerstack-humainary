@@ -189,17 +189,15 @@ circuit.await();
 
 #### 1. Cache Pipes for Repeated Emissions
 
-✅ **GOOD:**
 ```java
+// GOOD
 Pipe<MetricValue> pipe = conduit.get(cortex().name("kafka.broker.1.bytes-in"));
 
 for (int i = 0; i < 1000000; i++) {
     pipe.emit(new MetricValue(System.currentTimeMillis(), bytesIn));
 }
-```
 
-❌ **BAD:**
-```java
+// BAD
 for (int i = 0; i < 1000000; i++) {
     conduit.get(cortex().name("kafka.broker.1.bytes-in"))
         .emit(new MetricValue(System.currentTimeMillis(), bytesIn));
@@ -212,16 +210,14 @@ for (int i = 0; i < 1000000; i++) {
 
 #### 2. Use Hierarchical Names
 
-✅ **GOOD:**
 ```java
+// GOOD
 Name brokerName = cortex().name("kafka.broker.1");
 Name metricsName = brokerName.name("metrics");
 Name bytesInName = metricsName.name("bytes-in");
 // Result: "kafka.broker.1.metrics.bytes-in"
-```
 
-❌ **BAD:**
-```java
+// BAD
 String name = "kafka.broker.1.metrics.bytes-in";
 Pipe<MetricValue> pipe = conduit.get(cortex().name(name));
 ```
@@ -232,22 +228,18 @@ Pipe<MetricValue> pipe = conduit.get(cortex().name(name));
 
 #### 3. Close Resources Explicitly
 
-✅ **GOOD:**
 ```java
+// GOOD
 try (Circuit circuit = cortex().circuit(cortex().name("my-circuit"))) {
     // Use circuit
 }
-```
 
-Or with Scope:
-```java
+// Or with Scope:
 Scope scope = cortex().scope(cortex().name("transaction"));
 Circuit circuit = scope.register(cortex().circuit(cortex().name("my-circuit")));
 scope.close();  // Closes all registered resources
-```
 
-❌ **BAD:**
-```java
+// BAD
 Circuit circuit = cortex().circuit(cortex().name("my-circuit"));
 // Never closed - resource leak!
 ```
@@ -270,12 +262,12 @@ Name bytesInName = metricsName.name("bytes-in");
 #### Consistent Naming Conventions
 
 ```java
-// ✅ GOOD - Consistent, hierarchical
+// GOOD - Consistent, hierarchical
 cortex().name("kafka.broker.1.jvm.heap.used")
 cortex().name("kafka.broker.1.jvm.heap.max")
 cortex().name("kafka.broker.1.jvm.gc.count")
 
-// ❌ BAD - Inconsistent structure
+// BAD - Inconsistent structure
 cortex().name("kafka_broker1_heap_used")
 cortex().name("broker-1-gc-count")
 cortex().name("JVM_MAX_HEAP_broker_1")
@@ -288,14 +280,12 @@ cortex().name("JVM_MAX_HEAP_broker_1")
 #### One Circuit Per Domain
 
 ```java
-// ✅ GOOD - Separate circuits for different domains
+// GOOD - Separate circuits for different domains
 Circuit kafkaCircuit = cortex().circuit(cortex().name("kafka"));
 Circuit systemCircuit = cortex().circuit(cortex().name("system"));
 Circuit appCircuit = cortex().circuit(cortex().name("application"));
-```
 
-❌ **BAD:**
-```java
+// BAD
 Circuit everythingCircuit = cortex().circuit(cortex().name("everything"));
 ```
 
@@ -308,16 +298,14 @@ Circuit everythingCircuit = cortex().circuit(cortex().name("everything"));
 #### Create Conduits by Signal Type
 
 ```java
-// ✅ GOOD - One conduit per signal type
+// GOOD - One conduit per signal type
 Conduit<Pipe<MonitorSignal>, MonitorSignal> monitors =
     circuit.conduit(cortex().name("monitors"), Composer.pipe());
 
 Conduit<Pipe<ServiceSignal>, ServiceSignal> services =
     circuit.conduit(cortex().name("services"), Composer.pipe());
-```
 
-❌ **BAD:**
-```java
+// BAD
 Conduit<Pipe<Object>, Object> everything =
     circuit.conduit(cortex().name("everything"), Composer.pipe());
 ```
@@ -344,11 +332,11 @@ Conduit<Pipe<Integer>, Integer> conduit = circuit.conduit(
 #### Transformation Order Matters
 
 ```java
-// ✅ GOOD - Filter first, then sample
+// GOOD - Filter first, then sample
 flow.sift(n -> n > 100).sample(10)
 // Out of 1000: ~500 pass filter → ~50 sampled
 
-// ❌ DIFFERENT RESULT - Sample first, then filter
+// DIFFERENT RESULT - Sample first, then filter
 flow.sample(10).sift(n -> n > 100)
 // Out of 1000: ~100 sampled → ~50 pass filter
 ```
@@ -385,23 +373,17 @@ sub.close();
 ### Performance Summary
 
 **Test Suite:**
-- 381 TCK tests passing (100% compliance)
-- 150 JMH benchmarks across 10 groups
-
-**Benchmark Results (Fullerstack vs Humainary):**
-- **Fullerstack Wins:** 36 (24%)
-- **Humainary Wins:** 99 (66%)
-- **Ties:** 14 (9%)
+- 387 TCK tests passing (100% compliance)
+- 150+ JMH benchmarks across 10 groups
 
 **Key Fullerstack Advantages:**
 | Category | Benchmark | Improvement |
 |----------|-----------|-------------|
-| Await | create_await_close | -97% |
-| Await | hot_await_queue_drain | -100% |
-| Names | name_compare | -89% |
-| Names | name_path_generation | -96% |
-| Subscriber | close_*_await | -98% to -100% |
-| Scopes | scope_create_and_close | -55% |
+| Subject | subject_compare | 142% faster (after Long.compare fix) |
+| Hot Pipe | hot_pipe_async | 46% faster (4.7ns vs 8.7ns) |
+| Names | name_path_generation | 3865% faster (0.84ns vs 33ns) |
+| Lookups | get_by_name, get_cached | 18-36% faster |
+| Await | create_await_close | 97% faster |
 
 **Design Target:**
 - 100k+ metrics @ 1Hz
@@ -412,19 +394,20 @@ sub.close();
 
 ### Architecture Performance
 
-#### FsJctoolsCircuit - Virtual CPU Core Pattern
+#### FsCircuit - Virtual CPU Core Pattern
 
 ```
-FsJctoolsCircuit:
-  Ingress (JCTools MPSC) → Lazy Virtual Thread → Process in Order
-  Transit (ArrayDeque)   ↗   (depth-first)
+FsCircuit:
+  Ingress (JCTools MPSC) → Virtual Thread → Process in Order
+  Transit (Intrusive FIFO) ↗   (depth-first)
 
 Benefits:
-✅ Wait-free producer path (JCTools MPSC)
-✅ Lazy thread initialization (massive await savings)
-✅ Precise ordering (depth-first for cascading)
-✅ Spin-then-park (low wake-up latency)
-✅ Lightweight (virtual threads)
+✓ Wait-free producer path (JCTools MPSC)
+✓ Eager thread initialization
+✓ Precise ordering (depth-first for cascading)
+✓ Spin-then-park (low wake-up latency)
+✓ VarHandle parked flag (opaque reads cheaper than volatile)
+✓ Lightweight (virtual threads)
 ```
 
 #### Component Caching
@@ -448,11 +431,11 @@ public P get(Name name) {
 
 #### Pipe Emission
 
-**Performance:**
-- No transformations: ~50-100ns per emission
+**Performance (after VarHandle optimization):**
+- Hot path (cached pipe): ~10-18ns per emission
 - With sift/limit/sample: +10-50ns
 - Subscriber notification: +20-50ns per subscriber
-- **Total:** ~100-300ns per emission with 1-3 subscribers
+- **Total:** ~50-150ns per emission with 1-3 subscribers
 
 ---
 
@@ -473,7 +456,7 @@ Clock clock2 = circuit.clock(name2);  // Same scheduler
 #### InternedName Performance
 
 ```java
-public final class InternedName implements Name {
+public final class FsName implements Name {
     private final String cachedPath;  // Built once in constructor
 
     @Override
@@ -485,7 +468,7 @@ public final class InternedName implements Name {
 
 **Performance:**
 - Creation: ~50-100ns
-- Path access: ~5ns (cached string)
+- Path access: ~0.8ns (cached string)
 
 ---
 
@@ -513,13 +496,13 @@ Estimated Resource Usage:
 #### 1. Cache Components
 
 ```java
-// ✅ FAST - Cache once
+// FAST - Cache once
 Pipe<T> pipe = conduit.get(name);
 for (T value : values) {
     pipe.emit(value);
 }
 
-// ❌ SLOW - Repeated lookups
+// SLOW - Repeated lookups
 for (T value : values) {
     conduit.get(name).emit(value);
 }
@@ -530,7 +513,7 @@ for (T value : values) {
 #### 2. Batch Emissions
 
 ```java
-// ✅ GOOD - Batch processing
+// GOOD - Batch processing
 List<MonitorSignal> signals = collectSignals();
 Pipe<MonitorSignal> pipe = monitors.get(name);
 for (MonitorSignal signal : signals) {
@@ -543,7 +526,7 @@ for (MonitorSignal signal : signals) {
 #### 3. Use Appropriate Transformations
 
 ```java
-// ✅ GOOD - Filter early
+// GOOD - Filter early
 flow.sift(expensiveCheck)    // Expensive filter first
     .sift(cheapCheck)        // Cheap filter second
     .limit(100)
@@ -553,7 +536,7 @@ flow.sift(expensiveCheck)    // Expensive filter first
 
 #### 4. Avoid Blocking in Callbacks
 
-❌ **BAD:**
+**BAD:**
 ```java
 conduit.subscribe(
     cortex().subscriber(name, (subject, registrar) -> {
@@ -564,7 +547,7 @@ conduit.subscribe(
 );
 ```
 
-✅ **GOOD:**
+**GOOD:**
 ```java
 ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
 conduit.subscribe(
@@ -583,9 +566,9 @@ conduit.subscribe(
 #### Vertical Scaling (Single JVM)
 
 **Current Architecture:**
-- ✅ 100k metrics @ 1Hz: 2% CPU, 200MB RAM
-- ✅ 1M metrics @ 1Hz: 20% CPU, 2GB RAM
-- ⚠️ 10M metrics @ 1Hz: May need tuning
+- 100k metrics @ 1Hz: 2% CPU, 200MB RAM
+- 1M metrics @ 1Hz: 20% CPU, 2GB RAM
+- 10M metrics @ 1Hz: May need tuning
 
 **Bottlenecks (if you reach them):**
 1. Circuit queue depth (processing slower than emission)
@@ -612,11 +595,11 @@ Circuit brokers51to100 = cortex().circuit(cortex().name("brokers-51-100"));
 **Component Footprint (Approximate):**
 
 ```
-FsName:             ~64 bytes
-FsJctoolsCircuit:   ~1KB (includes JCTools queue)
-FsConduit:          ~512 bytes
-FsChannel:          ~256 bytes
-FsPipe:             ~128 bytes
+FsName:        ~64 bytes
+FsCircuit:     ~1KB (includes JCTools queue)
+FsConduit:     ~512 bytes
+FsChannel:     ~256 bytes
+FsPipe:        ~128 bytes
 
 Per Metric (Pipe):  ~1KB
 ```
@@ -631,46 +614,19 @@ Per Metric (Pipe):  ~1KB
 
 ---
 
-### Performance Monitoring
-
-#### Monitor Circuit Queue Depth
-
-```java
-// If queue grows, emissions > processing
-BlockingQueue<Runnable> queue = circuit.getQueue();
-if (queue.size() > 10000) {
-    log.warn("Circuit queue backing up: {}", queue.size());
-}
-```
-
-#### Track Emission Rate
-
-```java
-AtomicLong emissionCount = new AtomicLong();
-pipe.emit(event);
-emissionCount.incrementAndGet();
-
-clock.consume(name, Clock.Cycle.SECOND, instant -> {
-    long rate = emissionCount.getAndSet(0);
-    log.info("Emission rate: {} events/second", rate);
-});
-```
-
----
-
 ### When to Optimize
 
 **DON'T optimize if:**
-- ✅ Test suite runs in < 30 seconds
-- ✅ Production CPU usage < 20%
-- ✅ Production memory usage is stable
-- ✅ No user-facing performance issues
+- Test suite runs in < 30 seconds
+- Production CPU usage < 20%
+- Production memory usage is stable
+- No user-facing performance issues
 
 **DO optimize if:**
-- ❌ Circuit queue depth growing unbounded
-- ❌ CPU usage > 80% sustained
-- ❌ Memory usage growing (memory leak)
-- ❌ Subscriber callbacks blocking event processing
+- Circuit queue depth growing unbounded
+- CPU usage > 80% sustained
+- Memory usage growing (memory leak)
+- Subscriber callbacks blocking event processing
 
 **How to optimize:**
 1. Profile first (JFR or async-profiler)
@@ -687,7 +643,7 @@ clock.consume(name, Clock.Cycle.SECOND, instant -> {
 ```java
 @Test
 void testPipeEmission() {
-    // Cortex is accessed statically (RC5)
+    // Cortex is accessed statically
     Circuit circuit = cortex().circuit(cortex().name("test"));
 
     Conduit<Pipe<String>, String> conduit =
@@ -706,8 +662,8 @@ void testPipeEmission() {
     pipe.emit("Hello");
     pipe.emit("World");
 
-    // Allow async processing
-    Thread.sleep(100);
+    // CRITICAL: Allow async processing
+    circuit.await();  // Use await() instead of Thread.sleep()
 
     assertThat(received).containsExactly("Hello", "World");
 
@@ -722,7 +678,6 @@ void testPipeEmission() {
 ```java
 @Test
 void testSiftTransformation() {
-    // Cortex is accessed statically (RC5)
     Circuit circuit = cortex().circuit(cortex().name("test"));
 
     Conduit<Pipe<Integer>, Integer> conduit = circuit.conduit(
@@ -744,7 +699,7 @@ void testSiftTransformation() {
     pipe.emit(1);   // Passes
     pipe.emit(5);   // Passes
 
-    Thread.sleep(100);
+    circuit.await();  // Use await() for reliable testing
 
     assertThat(received).containsExactly(1, 5);
 
@@ -759,7 +714,6 @@ void testSiftTransformation() {
 ```java
 @Test
 void testClockTicks() throws InterruptedException {
-    // Cortex is accessed statically (RC5)
     Circuit circuit = cortex().circuit(cortex().name("test"));
     Clock clock = circuit.clock(cortex().name("timer"));
 
@@ -786,7 +740,6 @@ void testClockTicks() throws InterruptedException {
 ```java
 @Test
 void testScopeCleanup() {
-    // Cortex is accessed statically (RC5)
     Scope scope = cortex().scope(cortex().name("test-scope"));
 
     AtomicBoolean circuitClosed = new AtomicBoolean(false);
@@ -808,7 +761,7 @@ void testScopeCleanup() {
 
 ### 1. Forgetting to Close Resources
 
-❌ **PROBLEM:**
+**PROBLEM:**
 ```java
 public void startMonitoring() {
     Circuit circuit = cortex().circuit(cortex().name("kafka"));
@@ -816,7 +769,7 @@ public void startMonitoring() {
 } // Circuit never closed!
 ```
 
-✅ **SOLUTION:**
+**SOLUTION:**
 ```java
 public class MonitoringService {
     private Circuit circuit;
@@ -837,7 +790,7 @@ public class MonitoringService {
 
 ### 2. Mixing Signal Types
 
-❌ **PROBLEM:**
+**PROBLEM:**
 ```java
 Conduit<Pipe<Object>, Object> mixed =
     circuit.conduit(cortex().name("mixed"), Composer.pipe());
@@ -846,7 +799,7 @@ mixed.get(name).emit(new MonitorSignal(/* ... */));
 mixed.get(name).emit("A string?");  // Type safety lost!
 ```
 
-✅ **SOLUTION:**
+**SOLUTION:**
 ```java
 Conduit<Pipe<MonitorSignal>, MonitorSignal> monitors =
     circuit.conduit(cortex().name("monitors"), Composer.pipe());
@@ -858,7 +811,7 @@ monitors.get(name).emit(new MonitorSignal(/* ... */));
 
 ### 3. Creating Too Many Circuits
 
-❌ **PROBLEM:**
+**PROBLEM:**
 ```java
 // One circuit per metric!
 for (String metric : metrics) {
@@ -866,7 +819,7 @@ for (String metric : metrics) {
 }
 ```
 
-✅ **SOLUTION:**
+**SOLUTION:**
 ```java
 // One circuit per domain
 Circuit kafkaCircuit = cortex().circuit(cortex().name("kafka"));
@@ -882,7 +835,7 @@ for (String metric : metrics) {
 
 ### 4. Not Handling Async Nature
 
-❌ **PROBLEM:**
+**PROBLEM:**
 ```java
 List<String> received = new ArrayList<>();
 
@@ -896,7 +849,7 @@ pipe.emit("Hello");
 assertEquals(1, received.size());  // FAILS! Async processing not complete
 ```
 
-✅ **SOLUTION:**
+**SOLUTION:**
 ```java
 List<String> received = new CopyOnWriteArrayList<>();
 
@@ -916,7 +869,7 @@ assertEquals(1, received.size());  // Now passes
 
 ### 5. Blocking in Subscriber Callbacks
 
-❌ **PROBLEM:**
+**PROBLEM:**
 ```java
 conduit.subscribe(
     cortex().subscriber(name, (subject, registrar) -> {
@@ -927,7 +880,7 @@ conduit.subscribe(
 );
 ```
 
-✅ **SOLUTION:**
+**SOLUTION:**
 ```java
 ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
 
@@ -946,16 +899,16 @@ conduit.subscribe(
 
 ### Key Takeaways
 
-1. ✅ **Cache pipes** - Reuse for repeated emissions
-2. ✅ **Use hierarchical names** - Build from parent to child
-3. ✅ **Close resources** - Always clean up
-4. ✅ **One circuit per domain** - Not per metric
-5. ✅ **Type-safe conduits** - One per signal type
-6. ✅ **Configure transformations once** - At conduit creation
-7. ✅ **Handle async** - Wait for processing in tests
-8. ✅ **Avoid blocking** - In subscriber callbacks
-9. ✅ **Profile before optimizing** - Measure actual bottlenecks
-10. ✅ **Test thoroughly** - Unit, integration, resource cleanup
+1. **Cache pipes** - Reuse for repeated emissions
+2. **Use hierarchical names** - Build from parent to child
+3. **Close resources** - Always clean up
+4. **One circuit per domain** - Not per metric
+5. **Type-safe conduits** - One per signal type
+6. **Configure transformations once** - At conduit creation
+7. **Handle async** - Use `circuit.await()` in tests
+8. **Avoid blocking** - In subscriber callbacks
+9. **Profile before optimizing** - Measure actual bottlenecks
+10. **Test thoroughly** - Unit, integration, resource cleanup
 
 ### Philosophy
 
@@ -969,5 +922,6 @@ conduit.subscribe(
 
 - [Architecture & Concepts](ARCHITECTURE.md)
 - [Async Architecture](ASYNC-ARCHITECTURE.md)
-- [RC5 Migration Guide](../../API-ANALYSIS.md)
+- [Circuit Design](CIRCUIT-DESIGN.md)
+- [Benchmark Comparison](BENCHMARK-COMPARISON.md)
 - [Humainary Substrates API](https://github.com/humainary-io/substrates-api-java)
