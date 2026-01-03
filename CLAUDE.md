@@ -96,27 +96,21 @@ mvn spotless:apply
 mvn spotless:check
 ```
 
-**Run benchmarks (using Humainary's jmh.sh):**
+**Run benchmarks:**
 ```bash
-# Build Fullerstack first
-cd fullerstack-substrates && mvn clean install -DskipTests -q
-
-# Run benchmarks via Humainary's jmh.sh with Fullerstack SPI
-cd substrates-api-java
-SPI_GROUP=io.fullerstack SPI_ARTIFACT=fullerstack-substrates SPI_VERSION=1.0.0-RC1 ./jmh.sh
-
-# Or run specific benchmark group
-SPI_GROUP=io.fullerstack SPI_ARTIFACT=fullerstack-substrates SPI_VERSION=1.0.0-RC1 ./jmh.sh PipeOps
+# From fullerstack-substrates directory (auto-detects version from pom.xml)
+cd fullerstack-substrates
+./jmh.sh                    # Run all benchmarks
+./jmh.sh PipeOps            # Run specific benchmark group
+./jmh.sh "emit.*batch" -f 3 # Run pattern with JMH args
 ```
 
-**Run TCK (using Humainary's tck.sh):**
+**Run TCK:**
 ```bash
-# Build Fullerstack first
-cd fullerstack-substrates && mvn clean install -DskipTests -q
-
-# Run TCK via Humainary's tck.sh with Fullerstack SPI
-cd substrates-api-java
-SPI_GROUP=io.fullerstack SPI_ARTIFACT=fullerstack-substrates SPI_VERSION=1.0.0-RC1 ./tck.sh
+# From fullerstack-substrates directory (auto-detects version from pom.xml)
+cd fullerstack-substrates
+./tck.sh                    # Run all TCK tests
+./tck.sh CircuitTest        # Run specific test class
 ```
 
 ## Architecture Overview

@@ -35,13 +35,12 @@ import java.util.function.BiConsumer;
 import org.jctools.queues.MpscUnboundedArrayQueue;
 
 /**
- * Circuit implementation using dual-queue architecture with JCTools
- * MpscLinkedQueue.
+ * Circuit implementation using dual-queue architecture with JCTools MPSC queue.
  *
  * <p>
  * Key design:
  * <ul>
- * <li>Ingress queue (MpscLinkedQueue): external emissions from multiple threads
+ * <li>Ingress queue (MpscUnboundedArrayQueue): external emissions from multiple threads
  * <li>Transit queue (intrusive linked list): cascade emissions on circuit thread
  * <li>Priority: drain transit completely, then process ingress with transit
  * drain after each
