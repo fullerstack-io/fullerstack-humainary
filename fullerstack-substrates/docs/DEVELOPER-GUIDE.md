@@ -26,13 +26,27 @@ Semiotic:     producer-1.buffer → OVERFLOW  (backpressure from broker)
              consumer-1.lag → OVERFLOW     (data loss risk!)
 ```
 
+### The Semiotic Ascent Hierarchy
+
+Serventis implements a **semiotic ascent** architecture where raw domain signs translate upward through abstraction layers:
+
+```
+Raw Signs (Domain) → Systems (Constraint) → Statuses (Condition) → Situations (Urgency) → Actions
+```
+
+Each layer manages complexity appropriate to its reasoning tasks while preserving coherence through translation pathways.
+
 ### Pattern 1: OBSERVE Phase (Raw Sensing)
 
-Use Serventis instrument APIs to emit domain-specific signals:
+Use Serventis instrument APIs to emit domain-specific signs:
 
 ```java
-// Create instrument conduits
-Conduit<Queue, Queues.Signal> queues = circuit.conduit(
+import static io.humainary.substrates.api.Substrates.*;
+import io.humainary.substrates.ext.serventis.opt.data.Queues;
+import io.humainary.substrates.ext.serventis.opt.data.Queues.Queue;
+
+// Create instrument conduit
+var queues = circuit.conduit(
     cortex().name("queues"),
     Queues::composer
 );
@@ -41,9 +55,9 @@ Conduit<Queue, Queues.Signal> queues = circuit.conduit(
 Queue producerBuffer = queues.get(cortex().name("producer-1.buffer"));
 Queue consumerLag = queues.get(cortex().name("consumer-1.lag"));
 
-// Emit signals based on observations
+// Emit signs based on observations
 if (bufferUtilization > 0.95) {
-    producerBuffer.overflow(95L);  // Raw signal: OVERFLOW at 95%
+    producerBuffer.overflow();  // Raw sign: OVERFLOW
 }
 ```
 
@@ -51,35 +65,38 @@ if (bufferUtilization > 0.95) {
 
 ### Pattern 2: ORIENT Phase (Condition Assessment)
 
-Subscribe to raw signals and assess their meaning based on context:
+Subscribe to raw signs and assess their meaning using Statuses:
 
 ```java
-// Create monitor conduit for condition assessment
-Conduit<Monitor, Monitors.Status> monitors = circuit.conduit(
-    cortex().name("monitors"),
-    Monitors::composer
+import io.humainary.substrates.ext.serventis.sdk.Statuses;
+import io.humainary.substrates.ext.serventis.sdk.Statuses.Status;
+
+// Create status conduit for condition assessment
+var statuses = circuit.conduit(
+    cortex().name("statuses"),
+    Statuses::composer
 );
 
-// Subscribe to queue signals and interpret based on Subject
+// Subscribe to queue signs and interpret based on Subject
 queues.subscribe(cortex().subscriber(
     cortex().name("queue-health-assessor"),
-    (Subject<Channel<Queues.Signal>> subject, Registrar<Queues.Signal> registrar) -> {
-        // Get Monitor for this specific entity
-        Monitor monitor = monitors.get(subject.name());
+    (subject, registrar) -> {
+        // Get Status for this specific entity
+        Status status = statuses.get(subject.name());
 
-        registrar.register(signal -> {
+        registrar.register(sign -> {
             // CONTEXT-AWARE INTERPRETATION
             String entityType = extractEntityType(subject.name());
 
-            if (signal == Queues.Signal.OVERFLOW) {
+            if (sign == Queues.Sign.OVERFLOW) {
                 if (entityType.equals("producer")) {
                     // Producer overflow = backpressure (annoying but recoverable)
-                    monitor.degraded(Monitors.Confidence.HIGH);
+                    status.degraded(Statuses.Dimension.MEASURED);
                     log.warn("Producer backpressure detected: {}", subject.name());
 
                 } else if (entityType.equals("consumer")) {
                     // Consumer lag overflow = data loss risk (critical!)
-                    monitor.defective(Monitors.Confidence.HIGH);
+                    status.defective(Statuses.Dimension.CONFIRMED);
                     log.error("Consumer lag critical: {}", subject.name());
                 }
             }
@@ -88,32 +105,35 @@ queues.subscribe(cortex().subscriber(
 ));
 ```
 
-**Key Point:** Same signal (`OVERFLOW`), different meanings based on Subject context.
+**Key Point:** Same sign (`OVERFLOW`), different meanings based on Subject context.
 
 ### Pattern 3: DECIDE Phase (Situation Assessment)
 
-Subscribe to condition signals and determine urgency:
+Subscribe to status signals and determine urgency:
 
 ```java
-// Create reporter conduit for situation assessment
-Conduit<Reporter, Reporters.Situation> reporters = circuit.conduit(
-    cortex().name("reporters"),
-    Reporters::composer
+import io.humainary.substrates.ext.serventis.sdk.Situations;
+import io.humainary.substrates.ext.serventis.sdk.Situations.Situation;
+
+// Create situation conduit for urgency assessment
+var situations = circuit.conduit(
+    cortex().name("situations"),
+    Situations::composer
 );
 
-// Subscribe to monitor status and assess situation urgency
-monitors.subscribe(cortex().subscriber(
+// Subscribe to status signals and assess situation urgency
+statuses.subscribe(cortex().subscriber(
     cortex().name("situation-assessor"),
-    (Subject<Channel<Monitors.Status>> subject, Registrar<Monitors.Status> registrar) -> {
-        Reporter reporter = reporters.get(extractClusterName(subject.name()));
+    (subject, registrar) -> {
+        Situation situation = situations.get(extractClusterName(subject.name()));
 
-        registrar.register(status -> {
-            if (status.condition() == Monitors.Condition.DEFECTIVE) {
-                // Multiple DEFECTIVE conditions = cluster-wide issue
-                reporter.critical();
+        registrar.register(signal -> {
+            if (signal.sign() == Statuses.Sign.DEFECTIVE) {
+                // DEFECTIVE condition = critical situation
+                situation.critical(Situations.Dimension.CONSTANT);
 
-            } else if (status.condition() == Monitors.Condition.DEGRADED) {
-                reporter.warning();
+            } else if (signal.sign() == Statuses.Sign.DEGRADED) {
+                situation.warning(Situations.Dimension.VARIABLE);
             }
         });
     }
@@ -127,17 +147,17 @@ monitors.subscribe(cortex().subscriber(
 Subscribe to situations and execute steering decisions:
 
 ```java
-// Subscribe to situation reports and take action
-reporters.subscribe(cortex().subscriber(
+// Subscribe to situation signals and take action
+situations.subscribe(cortex().subscriber(
     cortex().name("auto-responder"),
-    (Subject<Channel<Reporters.Situation>> subject, Registrar<Reporters.Situation> registrar) -> {
-        registrar.register(situation -> {
-            if (situation.urgency() == Reporters.Urgency.CRITICAL) {
+    (subject, registrar) -> {
+        registrar.register(signal -> {
+            if (signal.sign() == Situations.Sign.CRITICAL) {
                 // Automated remediation
-                scaleUpCluster(subject.name());
+                scaleUpCluster(subject.name().path('.'));
                 alertOnCall("Critical situation in " + subject.name());
 
-            } else if (situation.urgency() == Reporters.Urgency.WARNING) {
+            } else if (signal.sign() == Situations.Sign.WARNING) {
                 // Proactive measures
                 notifyTeam("Warning condition in " + subject.name());
             }
@@ -151,35 +171,38 @@ reporters.subscribe(cortex().subscriber(
 ### Complete Example: End-to-End Semiotic Flow
 
 ```java
+import static io.humainary.substrates.api.Substrates.*;
+import io.humainary.substrates.ext.serventis.opt.data.Queues;
+import io.humainary.substrates.ext.serventis.sdk.Statuses;
+import io.humainary.substrates.ext.serventis.sdk.Situations;
+
 Circuit circuit = cortex().circuit(cortex().name("kafka-monitoring"));
 
-// OBSERVE: Create instrument conduits
-Conduit<Queue, Queues.Signal> queues = circuit.conduit(
+// OBSERVE: Create instrument conduit for raw signs
+var queues = circuit.conduit(
     cortex().name("queues"), Queues::composer);
 
-// ORIENT: Create assessment conduits
-Conduit<Monitor, Monitors.Status> monitors = circuit.conduit(
-    cortex().name("monitors"), Monitors::composer);
+// ORIENT: Create conduit for condition assessment
+var statuses = circuit.conduit(
+    cortex().name("statuses"), Statuses::composer);
 
-// DECIDE: Create situation conduits
-Conduit<Reporter, Reporters.Situation> reporters = circuit.conduit(
-    cortex().name("reporters"), Reporters::composer);
+// DECIDE: Create conduit for urgency assessment
+var situations = circuit.conduit(
+    cortex().name("situations"), Situations::composer);
 
 // Wire up the cognitive loop
-queues.subscribe(createQueueAssessor(monitors));
-monitors.subscribe(createSituationAssessor(reporters));
-reporters.subscribe(createAutoResponder());
+queues.subscribe(createQueueAssessor(statuses));
+statuses.subscribe(createSituationAssessor(situations));
+situations.subscribe(createAutoResponder());
 
-// Now emit raw signals - the system interprets and acts
-Queue consumerLag = queues.get(cortex().name("consumer-1.lag"));
-consumerLag.overflow(95L);  // → OBSERVE → ORIENT → DECIDE → ACT
+// Now emit raw signs - the system interprets and acts
+var consumerLag = queues.get(cortex().name("consumer-1.lag"));
+consumerLag.overflow();  // → OBSERVE → ORIENT → DECIDE → ACT
 
 circuit.await();
 ```
 
-**Result:** A single `overflow()` signal triggers a cascade of interpretation, assessment, and automated response - all based on contextual understanding.
-
----
+**Result:** A single `overflow()` sign triggers a cascade of interpretation, assessment, and automated response - all based on contextual understanding.
 
 ---
 
@@ -299,11 +322,11 @@ Circuit everythingCircuit = cortex().circuit(cortex().name("everything"));
 
 ```java
 // GOOD - One conduit per signal type
-Conduit<Pipe<MonitorSignal>, MonitorSignal> monitors =
-    circuit.conduit(cortex().name("monitors"), Composer.pipe());
+var counters = circuit.conduit(
+    cortex().name("counters"), Counters::composer);
 
-Conduit<Pipe<ServiceSignal>, ServiceSignal> services =
-    circuit.conduit(cortex().name("services"), Composer.pipe());
+var statuses = circuit.conduit(
+    cortex().name("statuses"), Statuses::composer);
 
 // BAD
 Conduit<Pipe<Object>, Object> everything =
@@ -348,7 +371,7 @@ flow.sample(10).sift(n -> n > 100)
 #### Subscribe Once, Process Many
 
 ```java
-monitors.subscribe(
+statuses.subscribe(
     cortex().subscriber(
         cortex().name("health-aggregator"),
         (subject, registrar) -> {
@@ -361,7 +384,7 @@ monitors.subscribe(
 #### Unsubscribe When Done
 
 ```java
-Subscription sub = monitors.subscribe(subscriber);
+Subscription sub = statuses.subscribe(subscriber);
 // Later
 sub.close();
 ```
@@ -374,16 +397,16 @@ sub.close();
 
 **Test Suite:**
 - 387 TCK tests passing (100% compliance)
-- 150+ JMH benchmarks across 10 groups
+- 846 JMH benchmarks across Substrates and Serventis
 
 **Key Fullerstack Advantages:**
 | Category | Benchmark | Improvement |
 |----------|-----------|-------------|
-| Subject | subject_compare | 142% faster (after Long.compare fix) |
+| Subject | subject_compare | 142% faster |
 | Hot Pipe | hot_pipe_async | 46% faster (4.7ns vs 8.7ns) |
-| Names | name_path_generation | 3865% faster (0.84ns vs 33ns) |
+| Names | name_path_generation | 3865% faster (0.5ns vs 33ns) |
 | Lookups | get_by_name, get_cached | 18-36% faster |
-| Await | create_await_close | 97% faster |
+| Circuit | create_await_close | 97% faster |
 
 **Design Target:**
 - 100k+ metrics @ 1Hz
@@ -439,20 +462,6 @@ public P get(Name name) {
 
 ---
 
-#### Shared Scheduler Optimization
-
-```java
-// All Clocks in Circuit share one ScheduledExecutorService
-Circuit circuit = cortex().circuit(name);
-Clock clock1 = circuit.clock(name1);  // Shares scheduler
-Clock clock2 = circuit.clock(name2);  // Same scheduler
-
-// 100 Clocks = 1 scheduler thread instead of 100
-// Memory saved: ~10MB (100 threads × ~100KB each)
-```
-
----
-
 #### InternedName Performance
 
 ```java
@@ -468,7 +477,7 @@ public final class FsName implements Name {
 
 **Performance:**
 - Creation: ~50-100ns
-- Path access: ~0.8ns (cached string)
+- Path access: ~0.5ns (cached string)
 
 ---
 
@@ -514,10 +523,10 @@ for (T value : values) {
 
 ```java
 // GOOD - Batch processing
-List<MonitorSignal> signals = collectSignals();
-Pipe<MonitorSignal> pipe = monitors.get(name);
-for (MonitorSignal signal : signals) {
-    pipe.emit(signal);
+List<Statuses.Signal> signals = collectSignals();
+var status = statuses.get(name);
+for (var signal : signals) {
+    status.signal(signal.sign(), signal.dimension());
 }
 ```
 
@@ -673,6 +682,42 @@ void testPipeEmission() {
 
 ---
 
+### Testing Serventis Instruments
+
+```java
+@Test
+void testStatusEmission() {
+    Circuit circuit = cortex().circuit(cortex().name("test"));
+
+    var statuses = circuit.conduit(
+        cortex().name("statuses"),
+        Statuses::composer
+    );
+
+    List<Statuses.Signal> received = new CopyOnWriteArrayList<>();
+    statuses.subscribe(
+        cortex().subscriber(
+            cortex().name("collector"),
+            (subject, registrar) -> registrar.register(received::add)
+        )
+    );
+
+    var status = statuses.get(cortex().name("service"));
+    status.stable(Statuses.Dimension.CONFIRMED);
+    status.degraded(Statuses.Dimension.MEASURED);
+
+    circuit.await();
+
+    assertThat(received).hasSize(2);
+    assertThat(received.get(0).sign()).isEqualTo(Statuses.Sign.STABLE);
+    assertThat(received.get(1).sign()).isEqualTo(Statuses.Sign.DEGRADED);
+
+    circuit.close();
+}
+```
+
+---
+
 ### Testing Transformations
 
 ```java
@@ -702,32 +747,6 @@ void testSiftTransformation() {
     circuit.await();  // Use await() for reliable testing
 
     assertThat(received).containsExactly(1, 5);
-
-    circuit.close();
-}
-```
-
----
-
-### Testing Clock Behavior
-
-```java
-@Test
-void testClockTicks() throws InterruptedException {
-    Circuit circuit = cortex().circuit(cortex().name("test"));
-    Clock clock = circuit.clock(cortex().name("timer"));
-
-    AtomicInteger tickCount = new AtomicInteger(0);
-
-    clock.consume(
-        cortex().name("counter"),
-        Clock.Cycle.MILLISECOND.scale(100),  // Every 100ms
-        instant -> tickCount.incrementAndGet()
-    );
-
-    Thread.sleep(550);  // Wait for ~5 ticks
-
-    assertThat(tickCount.get()).isGreaterThanOrEqualTo(5);
 
     circuit.close();
 }
@@ -795,16 +814,16 @@ public class MonitoringService {
 Conduit<Pipe<Object>, Object> mixed =
     circuit.conduit(cortex().name("mixed"), Composer.pipe());
 
-mixed.get(name).emit(new MonitorSignal(/* ... */));
+mixed.get(name).emit(new StatusSignal(/* ... */));
 mixed.get(name).emit("A string?");  // Type safety lost!
 ```
 
 **SOLUTION:**
 ```java
-Conduit<Pipe<MonitorSignal>, MonitorSignal> monitors =
-    circuit.conduit(cortex().name("monitors"), Composer.pipe());
+var statuses = circuit.conduit(
+    cortex().name("statuses"), Statuses::composer);
 
-monitors.get(name).emit(new MonitorSignal(/* ... */));
+statuses.get(name).stable(Statuses.Dimension.CONFIRMED);
 ```
 
 ---
@@ -825,9 +844,11 @@ for (String metric : metrics) {
 Circuit kafkaCircuit = cortex().circuit(cortex().name("kafka"));
 
 // Many conduits in one circuit
+var counters = kafkaCircuit.conduit(
+    cortex().name("counters"), Counters::composer);
+
 for (String metric : metrics) {
-    Conduit<Pipe<MetricValue>, MetricValue> conduit =
-        kafkaCircuit.conduit(cortex().name(metric), Composer.pipe());
+    counters.get(cortex().name(metric)).increment();
 }
 ```
 
@@ -903,7 +924,7 @@ conduit.subscribe(
 2. **Use hierarchical names** - Build from parent to child
 3. **Close resources** - Always clean up
 4. **One circuit per domain** - Not per metric
-5. **Type-safe conduits** - One per signal type
+5. **Type-safe conduits** - Use Serventis composers
 6. **Configure transformations once** - At conduit creation
 7. **Handle async** - Use `circuit.await()` in tests
 8. **Avoid blocking** - In subscriber callbacks
@@ -923,5 +944,6 @@ conduit.subscribe(
 - [Architecture & Concepts](ARCHITECTURE.md)
 - [Async Architecture](ASYNC-ARCHITECTURE.md)
 - [Circuit Design](CIRCUIT-DESIGN.md)
+- [Serventis Integration](SERVENTIS.md)
 - [Benchmark Comparison](BENCHMARK-COMPARISON.md)
 - [Humainary Substrates API](https://github.com/humainary-io/substrates-api-java)
