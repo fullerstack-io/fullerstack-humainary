@@ -116,13 +116,6 @@
       <scope>provided</scope>
     </dependency>
 
-    <!-- JCTools - High-performance concurrent queues -->
-    <dependency>
-      <groupId>org.jctools</groupId>
-      <artifactId>jctools-core</artifactId>
-      <version>4.0.5</version>
-    </dependency>
-
     <!-- Vavr (functional data structures) -->
     <dependency>
       <groupId>io.vavr</groupId>
