@@ -368,13 +368,15 @@ class TenureAnnotationContractTest {
       var cell1 = circuit.cell (
         Composer.pipe (),
         Composer.pipe (),
-        (Receptor < Integer >) value -> {}
+        (Receptor < Integer >) value -> {
+        }
       );
 
       var cell2 = circuit.cell (
         Composer.pipe (),
         Composer.pipe (),
-        (Receptor < Integer >) value -> {}
+        (Receptor < Integer >) value -> {
+        }
       );
 
       assertNotSame ( cell1, cell2,
@@ -397,7 +399,8 @@ class TenureAnnotationContractTest {
         cortex ().name ( "parent" ),
         Composer.pipe (),
         Composer.pipe (),
-        (Receptor < Integer >) value -> {}
+        (Receptor < Integer >) value -> {
+        }
       );
 
       Name childName = cortex ().name ( "child" );

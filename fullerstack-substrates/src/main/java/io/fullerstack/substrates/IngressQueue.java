@@ -48,7 +48,6 @@ public final class IngressQueue {
   private volatile QChunk freeHead;
 
 
-
   public IngressQueue () {
     QChunk initial = new QChunk ();
     headChunk = initial;

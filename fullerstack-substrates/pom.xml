@@ -171,13 +171,6 @@
       <version>4.0.0</version>
     </dependency>
 
-    <!-- JCTools - High-performance concurrent queues -->
-    <dependency>
-      <groupId>org.jctools</groupId>
-      <artifactId>jctools-core</artifactId>
-      <version>4.0.5</version>
-    </dependency>
-
     <!-- JMH for Performance Benchmarking -->
     <dependency>
       <groupId>org.openjdk.jmh</groupId>
