@@ -28,7 +28,7 @@ Substrates provides the infrastructure for building observable, event-driven sys
 <dependency>
     <groupId>io.fullerstack</groupId>
     <artifactId>fullerstack-substrates</artifactId>
-    <version>1.0.0-RC2</version>
+    <version>1.0.0-RC3</version>
 </dependency>
 ```
 
@@ -90,7 +90,7 @@ mvn test \
   -Dtck \
   -Dtck.spi.groupId=io.fullerstack \
   -Dtck.spi.artifactId=fullerstack-substrates \
-  -Dtck.spi.version=1.0.0-RC2
+  -Dtck.spi.version=1.0.0-RC3
 ```
 
 **Expected:** 387 tests, 0 failures, 0 errors

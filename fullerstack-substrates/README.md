@@ -4,7 +4,7 @@ A **fully compliant implementation** of the [Humainary Substrates API](https://g
 
 ## Status
 
-- **Version:** 1.0.0-RC2
+- **Version:** 1.0.0-RC3
 - **TCK Compliance:** 463 tests (447 passing, 16 skipped in CellTest)
 - **Java Version:** 25 (Virtual Threads + Preview Features)
 - **Substrates API:** 1.0.0-PREVIEW
@@ -39,7 +39,7 @@ mvn clean install
 <dependency>
     <groupId>io.fullerstack</groupId>
     <artifactId>fullerstack-substrates</artifactId>
-    <version>1.0.0-RC2</version>
+    <version>1.0.0-RC3</version>
 </dependency>
 ```
 
@@ -154,7 +154,7 @@ cd fullerstack-substrates && mvn clean install -DskipTests -Deditorconfig.skip=t
 
 # Run TCK via Humainary's tck.sh
 cd ../substrates-api-java
-SPI_GROUP=io.fullerstack SPI_ARTIFACT=fullerstack-substrates SPI_VERSION=1.0.0-RC2 ./tck.sh
+SPI_GROUP=io.fullerstack SPI_ARTIFACT=fullerstack-substrates SPI_VERSION=1.0.0-RC3 ./tck.sh
 ```
 
 Or run directly with Maven:
@@ -164,7 +164,7 @@ cd substrates-api-java
 mvn test -pl tck -Dtck \
   -Dsubstrates.spi.groupId=io.fullerstack \
   -Dsubstrates.spi.artifactId=fullerstack-substrates \
-  -Dsubstrates.spi.version=1.0.0-RC2
+  -Dsubstrates.spi.version=1.0.0-RC3
 ```
 
 **Expected:** 463 tests, 0 failures, 16 skipped (CellTest)
@@ -177,7 +177,7 @@ cd fullerstack-substrates && mvn clean install -DskipTests -Deditorconfig.skip=t
 
 # Run benchmarks via Humainary's jmh.sh
 cd ../substrates-api-java
-SPI_GROUP=io.fullerstack SPI_ARTIFACT=fullerstack-substrates SPI_VERSION=1.0.0-RC2 ./jmh.sh
+SPI_GROUP=io.fullerstack SPI_ARTIFACT=fullerstack-substrates SPI_VERSION=1.0.0-RC3 ./jmh.sh
 ```
 
 ## License

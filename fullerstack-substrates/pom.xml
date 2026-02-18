@@ -7,7 +7,7 @@
 
   <groupId>io.fullerstack</groupId>
   <artifactId>fullerstack-substrates</artifactId>
-  <version>1.0.0-RC2</version>
+  <version>1.0.0-RC3</version>
   <packaging>jar</packaging>
 
   <name>Substrates (Java)</name>

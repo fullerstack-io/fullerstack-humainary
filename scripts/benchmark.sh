@@ -71,7 +71,7 @@ echo "=== Running Benchmarks via Humainary jmh.sh ==="
 cd "${HUMAINARY_ROOT}"
 SPI_GROUP=io.fullerstack \
 SPI_ARTIFACT=fullerstack-substrates \
-SPI_VERSION=1.0.0-RC2 \
+SPI_VERSION=1.0.0-RC3 \
 ./jmh.sh -rf json -rff "${JSON_FILE}" "$@" 2>&1 | tee "${TXT_FILE}"
 
 echo ""
@@ -81,12 +81,3 @@ echo "  JSON Results: ${JSON_FILE}"
 echo "  Text Results: ${TXT_FILE}"
 echo "=========================================="
 
-# Generate comparison table if script exists
-COMPARISON_SCRIPT="${SCRIPT_DIR}/generate-comparison.py"
-if [[ -f "${COMPARISON_SCRIPT}" ]] && [[ -f "${JSON_FILE}" ]]; then
-    echo ""
-    echo "=== Generating Comparison Report ==="
-    python3 "${COMPARISON_SCRIPT}" "${JSON_FILE}" --print-table --update-md
-    echo ""
-    echo "Comparison saved to: ${PROJECT_ROOT}/fullerstack-substrates/docs/BENCHMARK-COMPARISON.md"
-fi
