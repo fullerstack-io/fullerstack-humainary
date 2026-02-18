@@ -194,7 +194,7 @@ class TemporalAnnotationContractTest {
 
     @Test
     @DisplayName ( "Subscriber callback receives channel subject when pipe emits" )
-    void channel_subjectAvailableDuringCallback () throws InterruptedException {
+    void channel_subjectAvailableDuringCallback () {
       AtomicBoolean channelUsed = new AtomicBoolean ( false );
 
       Conduit < Pipe < String >, String > conduit = circuit.conduit ( cortex ().name ( "conduit" ), Composer.pipe () );
@@ -213,8 +213,8 @@ class TemporalAnnotationContractTest {
       Pipe < String > pipe = conduit.percept ( cortex ().name ( "channel" ) );
       pipe.emit ( "test" );
 
-      // Wait for async processing
-      Thread.sleep ( 100 );
+      // Wait for async processing (await flushes batch and waits for processing)
+      circuit.await ();
 
       assertTrue ( channelUsed.get (), "Subscriber callback must be invoked when pipe emits" );
     }

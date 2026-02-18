@@ -22,7 +22,7 @@ public class HelloSubstrates {
 
         // 3. CONSUMER: Subscribe to observe emissions
         conduit.subscribe(
-            cortex().subscriber(
+            circuit.subscriber(
                 cortex().name("console-logger"),
                 (subject, registrar) -> {
                     // Register a consumer Pipe
@@ -34,7 +34,7 @@ public class HelloSubstrates {
         );
 
         // 4. PRODUCER: Get a pipe and emit
-        Pipe<String> pipe = conduit.get(cortex().name("producer1"));
+        Pipe<String> pipe = conduit.percept(cortex().name("producer1"));
         pipe.emit("Hello, Substrates!");
         pipe.emit("This is message 2");
         pipe.emit("And message 3");
@@ -65,7 +65,7 @@ Done!
 2. **Conduit** - Routes messages from producers (Channels) to consumers (Subscribers)
 3. **Subscriber** - Registers a consumer Pipe to receive messages
 4. **Producer** - Gets a Pipe from conduit and emits messages
-5. **Async Processing** - Circuit processes emissions on Valve (virtual thread)
+5. **Async Processing** - Circuit processes emissions on virtual thread (eager-started)
 6. **circuit.await()** - Test pattern to wait for async processing
 7. **Cleanup** - Circuit closes all resources
 
@@ -74,15 +74,13 @@ Done!
 ```
 pipe.emit("Hello")
   ↓
-Conduit's queue
+circuit.submitIngress(receiver, "Hello")
   ↓
-Queue processor (async)
+Worker thread drains ingress queue
   ↓
-Source.emit()
+node.run() → receiver.accept("Hello")
   ↓
-Subscriber notified
-  ↓
-Consumer Pipe receives message
+Conduit dispatches to subscriber pipes
   ↓
 "Received: Hello"
 ```

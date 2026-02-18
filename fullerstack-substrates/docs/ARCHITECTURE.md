@@ -3,7 +3,7 @@
 **Substrates API:** 1.0.0-PREVIEW (sealed hierarchy + Cell API + Flow)
 **Serventis API:** 1.0.0-PREVIEW (24+ Instrument APIs for semiotic observability)
 **Java Version:** 25 (Virtual Threads + Preview Features)
-**Status:** 387 TCK tests passing (100% compliance)
+**Status:** 220+ tests passing (100% compliance)
 **Benchmarks:** 150+ benchmarks across 10 groups (see [BENCHMARK-COMPARISON.md](BENCHMARK-COMPARISON.md))
 
 ---
@@ -135,26 +135,26 @@ Serventis organizes instruments into 7 categories across the OODA loop (Observe,
 // Tool: Counter for request counting
 Conduit<Counter, Counters.Sign> counters = circuit.conduit(
     cortex().name("counters"), Counters::composer);
-Counter requests = counters.get(cortex().name("api.requests"));
+Counter requests = counters.percept(cortex().name("api.requests"));
 requests.increment();
 
 // Exec: Service for API calls
 Conduit<Service, Services.Signal> services = circuit.conduit(
     cortex().name("services"), Services::composer);
-Service api = services.get(cortex().name("kafka.api"));
+Service api = services.percept(cortex().name("kafka.api"));
 api.call();
 api.succeeded();
 
 // Flow: Circuit breaker
 Conduit<Breaker, Breakers.Signal> breakers = circuit.conduit(
     cortex().name("breakers"), Breakers::composer);
-Breaker kafkaBreaker = breakers.get(cortex().name("kafka.breaker"));
+Breaker kafkaBreaker = breakers.percept(cortex().name("kafka.breaker"));
 kafkaBreaker.trip();  // Open circuit due to failures
 
 // Pool: Connection pool
 Conduit<Pool, Pools.Signal> pools = circuit.conduit(
     cortex().name("pools"), Pools::composer);
-Pool connections = pools.get(cortex().name("db.connections"));
+Pool connections = pools.percept(cortex().name("db.connections"));
 connections.borrow();
 connections.return_();
 ```
@@ -165,17 +165,17 @@ The **key insight**: The same signal means different things depending on its Sub
 
 ```java
 // Same OVERFLOW signal, different meanings:
-Queue producerBuffer = queues.get(cortex().name("producer.buffer"));
-Queue consumerLag = queues.get(cortex().name("consumer.lag"));
+Queue producerBuffer = queues.percept(cortex().name("producer.buffer"));
+Queue consumerLag = queues.percept(cortex().name("consumer.lag"));
 
 producerBuffer.overflow();  // → Backpressure (annoying)
 consumerLag.overflow();     // → Data loss risk (critical!)
 
 // Subscribers interpret based on Subject:
-queues.subscribe(cortex().subscriber(
+queues.subscribe(circuit.subscriber(
     cortex().name("assessor"),
     (Subject<Channel<Queues.Sign>> subject, Registrar<Queues.Sign> registrar) -> {
-        Monitor monitor = monitors.get(subject.name());
+        Monitor monitor = monitors.percept(subject.name());
         registrar.register(sign -> {
             if (sign == Queues.Sign.OVERFLOW) {
                 if (subject.name().toString().contains("producer")) {
@@ -199,7 +199,7 @@ This is **semiotic observability** - meaning arises from the interplay between s
 - Transformation pipelines - Filter, map, reduce, limit, sample emissions with JVM-style fusion
 - Dynamic subscription - Observers subscribe/unsubscribe at runtime
 - Precise ordering - Dual-queue pattern (Virtual CPU core) guarantees FIFO processing
-- Event-driven synchronization - CountDownLatch-based await() for precise synchronization
+- Event-driven synchronization - VarHandle park/unpark await() for lightweight synchronization
 - Pipeline optimization - Automatic fusion of adjacent skip/limit operations
 - Hierarchical naming - Dot-notation organization (kafka.broker.1.metrics)
 - Resource lifecycle - Automatic cleanup with Scope
@@ -215,7 +215,7 @@ This is **semiotic observability** - meaning arises from the interplay between s
 
 1. **Simplified Design** - Flat package structure, single implementations, no factory abstractions
 2. **PREVIEW Sealed Hierarchy** - Type-safe API contracts enforced by sealed interfaces
-3. **Single Circuit Implementation** - FsCircuit with JCTools MPSC queue + intrusive transit queue
+3. **Single Circuit Implementation** - FsCircuit with custom IngressQueue + TransitQueue
 4. **Dual-Queue Architecture** - Ingress (external) + Transit (cascading) with priority ordering
 5. **Eager Thread Initialization** - Virtual thread starts on circuit construction
 6. **Pipeline Fusion** - JVM-style optimization of adjacent transformations
@@ -230,7 +230,7 @@ This is **semiotic observability** - meaning arises from the interplay between s
 - **Intrusive Transit Queue** - No separate queue allocation for cascading emissions
 - **Pipeline Fusion** - Automatic optimization of adjacent skip/limit operations
 - **Name Interning** - FsName identity-based caching with cached path generation
-- **JCTools MPSC** - Wait-free producer path, chunked allocation
+- **Custom IngressQueue** - Wait-free MPSC linked list with atomic getAndSet
 
 ### What We DON'T Do
 
@@ -312,7 +312,7 @@ Conduit<P, E> extends Container<P, E, Conduit<P, E>> extends Component<E, Condui
    - Subscriber can inspect `Subject<Channel<E>>` to determine routing logic
 
 3. **Dynamic pipe registration:**
-   - Subscriber can call `conduit.get(subject.name())` to retrieve percepts
+   - Subscriber can call `conduit.percept(subject.name())` to retrieve percepts
    - Subscriber registers `Pipe<E>` instances via `Registrar<E>`
    - Registered pipes receive all future emissions from that subject
 
@@ -326,14 +326,14 @@ Conduit<Pipe<Long>, Long> conduit = circuit.conduit(
 );
 
 // Subscribe to the conduit (possible because Conduit IS-A Source)
-conduit.subscribe(cortex().subscriber(
+conduit.subscribe(circuit.subscriber(
     cortex().name("aggregator"),
     (subject, registrar) -> {
         // subject is Subject<Channel<Long>> - the channel that was created
         // We can inspect it and decide how to route
 
         // Get the percept for this subject (dual-key cache prevents recursion)
-        Pipe<Long> pipe = conduit.get(subject.name());
+        Pipe<Long> pipe = conduit.percept(subject.name());
 
         // Register our consumer pipe
         registrar.register(value -> {
@@ -344,7 +344,7 @@ conduit.subscribe(cortex().subscriber(
 ```
 
 **Two-Phase Notification:**
-1. **Phase 1:** Subscriber notified when `conduit.get(name)` creates a new Channel
+1. **Phase 1:** Subscriber notified when `conduit.percept(name)` creates a new Channel
 2. **Phase 2:** Subscriber notified (lazily) on first emission from a Subject
 
 This design enables **dynamic, hierarchical routing** where subscribers can:
@@ -395,8 +395,8 @@ public class FsCortex implements Cortex {
 - Single virtual thread processes events with depth-first execution
 - Thread starts **eagerly** on circuit construction
 - Contains Conduits and Cells
-- JCTools MPSC queue for wait-free producer path
-- Intrusive transit queue for cascading emissions
+- Custom IngressQueue for wait-free producer path
+- TransitQueue for cascading emissions
 - VarHandle-based parked flag for efficient synchronization
 
 ```java
@@ -416,7 +416,7 @@ Cell<Signal, Signal> cell = circuit.cell(
 **Virtual CPU Core Pattern (Dual-Queue Architecture):**
 
 ```
-External Emissions → Ingress Queue (JCTools MPSC, wait-free) →
+External Emissions → Ingress Queue (IngressQueue, wait-free) →
                                                                → Virtual Thread Processor
 Cascading Emissions → Transit Queue (Intrusive FIFO) →           → Depth-First Execution
 ```
@@ -432,49 +432,24 @@ Cascading Emissions → Transit Queue (Intrusive FIFO) →           → Depth-F
 
 ```java
 public final class FsCircuit implements Circuit {
-    // JCTools MPSC queue - wait-free producer, chunked allocation
-    private final MpscUnboundedArrayQueue<Job> ingress = new MpscUnboundedArrayQueue<>(CHUNK_SIZE);
+    // Custom MPSC queue - wait-free producer path (atomic getAndSet)
+    private final IngressQueue ingress = new IngressQueue();
+    // Transit queue for cascade emissions (circuit thread only)
+    private final TransitQueue transit = new TransitQueue();
 
-    // Intrusive transit queue for cascading (circuit thread only)
-    private Job transitHead;
-    private Job transitTail;
-
-    // VarHandle for opaque access to parked flag (cheaper than volatile)
+    // VarHandle for opaque access to parked flag
     private static final VarHandle PARKED;
-    private boolean parked = false;
+    @Contended
+    private volatile boolean parked;
+
+    // Eager-started virtual thread
+    private final Thread worker;
 
     public FsCircuit(Subject<Circuit> subject) {
         this.subject = subject;
-        // Thread starts eagerly on construction
-        this.thread = Thread.ofVirtual()
+        this.worker = Thread.ofVirtual()
             .name("circuit-" + subject.name())
-            .start(this::loop);
-    }
-
-    public void submit(Job job) {
-        if (Thread.currentThread() == thread) {
-            // Hot path: cascade - add to intrusive transit queue
-            if (!running) return;
-            job.next = null;
-            if (transitTail == null) {
-                transitHead = transitTail = job;
-            } else {
-                transitTail.next = job;
-                transitTail = job;
-            }
-        } else {
-            // Cold path: external submission via JCTools MPSC queue
-            submitExternal(job);
-        }
-    }
-
-    private void submitExternal(Job job) {
-        if (!running) return;
-        ingress.offer(job);
-        // Only unpark if thread is actually parked (opaque read is cheaper than volatile)
-        if ((boolean) PARKED.getOpaque(this)) {
-            LockSupport.unpark(thread);
-        }
+            .start(this::workerLoop);
     }
 }
 ```
@@ -529,12 +504,12 @@ Conduit<Pipe<String>, String> messages =
     circuit.conduit(cortex().name("messages"), Composer.pipe());
 
 // Get Pipe for specific subject
-Pipe<String> pipe = messages.get(cortex().name("user.login"));
+Pipe<String> pipe = messages.percept(cortex().name("user.login"));
 pipe.emit("User logged in");
 
 // Subscribe to all subjects (Conduit IS-A Source in PREVIEW)
 messages.subscribe(
-    cortex().subscriber(
+    circuit.subscriber(
         cortex().name("logger"),
         (subject, registrar) -> registrar.register(msg -> log.info(msg))
     )
@@ -569,8 +544,8 @@ public class FsConduit<P extends Percept, E> implements Conduit<P, E> {
 
     @Override
     public Subscription subscribe(Subscriber<E> subscriber) {
-        // Add to subscribers list, enqueue version increment
-        circuit.submit(new RunnableJob(() -> circuitVersion++));
+        // Enqueue subscribe to circuit thread via ReceptorReceiver (preserves QNode monomorphism)
+        circuit.submitIngress(new FsCircuit.ReceptorReceiver<Object>(_ -> addSubscriber(fs)), null);
         return new FsSubscription(...);
     }
 }
@@ -601,13 +576,17 @@ final class FsChannel<E> implements Channel<E> {
 
 ```java
 public final class FsPipe<E> implements Pipe<E> {
-    private final Name name;
-    private final FsCircuit circuit;
-    private final Consumer<E> receiver;
+    private final Consumer<Object> receiver;
+    private final FsCircuit        circuit;
+    private final Thread           worker;
 
     @Override
     public void emit(E emission) {
-        circuit.submit(new EmitJob(receiver, emission));  // ← Routes to circuit
+        if (Thread.currentThread() == worker) {
+            circuit.submitTransit(receiver, emission);   // Hot path: cascade
+        } else {
+            circuit.submitIngress(receiver, emission);   // Cold path: external
+        }
     }
 }
 ```
@@ -635,7 +614,7 @@ The `Pipe<E>` interface serves **dual purposes** via a single `emit()` method:
 
 ```java
 // PRODUCER SIDE
-Pipe<Long> producer = conduit.get(cortex().name("sensor1"));
+Pipe<Long> producer = conduit.percept(cortex().name("sensor1"));
 producer.emit(42L);  // ← Routes to circuit's ingress queue
 
 // CONSUMER SIDE (registered by subscriber)
@@ -678,7 +657,7 @@ Cell<BrokerHealth, ClusterHealth> clusterCell = brokerCell.cell(
 
 // Subscribe to cluster health
 clusterCell.subscribe(
-    cortex().subscriber(
+    circuit.subscriber(
         cortex().name("alerting"),
         (subject, registrar) -> registrar.register(health -> {
             if (health.status() == ClusterStatus.CRITICAL) {
@@ -770,12 +749,12 @@ State newState = state.state(cortex().name("heap-used"), 900_000_000L);
    pipe.emit(value) → Routes to circuit
 
 2. FsPipe:
-   circuit.submit(new EmitJob(receiver, emission)) → Adds to queue
+   submitIngress(receiver, emission) / submitTransit(receiver, emission)
 
 3. FsCircuit (virtual thread):
    Drains transit queue first (cascading priority)
-   Drains ingress queue (batch drain with JCTools)
-   Invokes job.run() → receiver.accept(value)
+   Drains ingress queue (batch of 64 via IngressQueue)
+   Invokes node.run() → receiver.accept(value)
 
 4. FsConduit.dispatch:
    Iterates subscriber pipes (cached array)
@@ -790,11 +769,11 @@ State newState = state.state(cortex().name("heap-used"), 900_000_000L);
 
 ```
 FsCircuit:
-  Ingress (MpscUnboundedArrayQueue):
-    [Job 1] → [Job 2] → [Job 3] → ...
+  Ingress (IngressQueue):
+    [QNode 1] → [QNode 2] → [QNode 3] → ...
         ↓
   Transit (Intrusive FIFO):
-    transitHead → transitTail (priority)
+    TransitQueue (FIFO, priority)
         ↓
   Single Virtual Thread (eager-started)
         ↓
@@ -813,25 +792,25 @@ FsCircuit:
 
 ## Circuit Implementation (FsCircuit)
 
-**Core Concept:** Each Circuit uses a JCTools MPSC queue + intrusive transit queue + Virtual Thread that processes emissions with depth-first execution. The thread starts **eagerly** on circuit construction.
+**Core Concept:** Each Circuit uses a custom IngressQueue + TransitQueue + Virtual Thread that processes emissions with depth-first execution. The thread starts **eagerly** on circuit construction.
 
 ### Circuit Architecture
 
 ```java
 public final class FsCircuit implements Circuit {
-    // JCTools MPSC queue - wait-free producer path
-    private final MpscUnboundedArrayQueue<Job> ingress;
+    // Custom MPSC linked list - wait-free producer path
+    private final IngressQueue ingress = new IngressQueue();
 
-    // Intrusive transit queue for cascading (circuit thread only)
-    private Job transitHead;
-    private Job transitTail;
+    // Transit queue for cascade emissions (circuit thread only)
+    private final TransitQueue transit = new TransitQueue();
 
-    // VarHandle for opaque access to parked flag (cheaper than volatile)
+    // VarHandle for opaque access to parked flag
     private static final VarHandle PARKED;
-    private boolean parked = false;
+    @Contended
+    private volatile boolean parked;
 
     // Eager-started virtual thread
-    private final Thread thread;
+    private final Thread worker;
 }
 ```
 
@@ -839,7 +818,7 @@ public final class FsCircuit implements Circuit {
 
 ```
 Circuit (FsCircuit)
-  ├── Ingress (MpscUnboundedArrayQueue)  (External emissions, MPSC, wait-free)
+  ├── Ingress (IngressQueue)  (External emissions, MPSC, wait-free)
   ├── Transit (Intrusive FIFO)            (Cascading emissions, priority)
   ├── Virtual Thread                      (eager-started, spin-then-park)
   └── VarHandle PARKED                    (opaque read for fast signaling)
@@ -847,15 +826,14 @@ Circuit (FsCircuit)
 Emission Flow:
   External Thread:
     Pipe.emit(value)
-      → circuit.submit(job)               // Check if on circuit thread
-      → ingress.offer(job)                // External: wait-free enqueue
+      → FsPipe.emit() → submitIngress/submitTransit
+      → ingress.add(receiver, value)      // External: wait-free enqueue
       → if (PARKED.getOpaque(this))       // Only if parked
           LockSupport.unpark(thread)
 
   Circuit Thread (cascading):
     Subscriber callback emits
-      → job.next = null                   // Intrusive FIFO
-      → transitTail.next = job            // Append to transit
+      → transit.enqueue(receiver, value)   // Append to transit
 
   Processor Loop:
     → drain transit (FIFO - depth-first)
@@ -866,31 +844,36 @@ Emission Flow:
 
 ### Await Implementation
 
-Uses CountDownLatch for precise synchronization:
+Uses VarHandle AWAITER with park/unpark for lightweight synchronization:
 
 ```java
 public void await() {
-    if (Thread.currentThread() == thread) {
+    if (Thread.currentThread() == worker) {
         throw new IllegalStateException("Cannot await from circuit thread");
     }
-    if (!running) {
-        try { thread.join(); } catch (InterruptedException e) { ... }
+    if (closed) { worker.join(); return; }
+
+    // VarHandle-based: CAS to register as awaiter, inject marker, park
+    Thread current = Thread.currentThread();
+    Thread existing = (Thread) AWAITER.compareAndExchange(this, null, current);
+    if (existing != null) {
+        // Piggyback on existing awaiter
+        while (AWAITER.getOpaque(this) == existing) LockSupport.parkNanos(1_000_000);
         return;
     }
-    // Submit sentinel task - when it runs, all prior work is done (FIFO)
-    var latch = new CountDownLatch(1);
-    submit(new EmitJob(ignored -> latch.countDown(), null));
-    latch.await();
+    submitIngress(awaitMarkerReceiver, null);
+    LockSupport.unpark(worker);
+    while (AWAITER.getOpaque(this) == current) LockSupport.park();
 }
 ```
 
 ### Circuit Guarantees
 
 1. **Depth-First Execution** - Transit queue processed before ingress queue
-2. **Deterministic Ordering** - Jobs execute in predictable order
+2. **Deterministic Ordering** - Nodes execute in predictable order
 3. **Single-Threaded** - No concurrent execution within Circuit domain
 4. **Eager Start** - Thread created immediately on circuit construction
-5. **Wait-Free Producers** - JCTools MPSC queue for external emissions
+5. **Wait-Free Producers** - Custom IngressQueue for external emissions
 6. **Spin-Then-Park** - Brief spin before parking reduces wake-up latency
 7. **VarHandle Optimization** - Opaque reads cheaper than volatile for parked check
 
@@ -986,8 +969,8 @@ Circuit circuitA = cortex().circuit(cortex().name("circuit-A"));
 Circuit circuitB = cortex().circuit(cortex().name("circuit-B"));
 
 // Both circuits create Channels named "Miles"
-Channel<Metric> milesInA = conduitA.get(cortex().name("Miles"));
-Channel<Metric> milesInB = conduitB.get(cortex().name("Miles"));
+Channel<Metric> milesInA = conduitA.percept(cortex().name("Miles"));
+Channel<Metric> milesInB = conduitB.percept(cortex().name("Miles"));
 
 // Same Name referent, different Subject instances:
 // - milesInA.subject() → Subject with unique ID in Circuit A context
@@ -1032,7 +1015,7 @@ FsCell
 ### Performance Characteristics
 
 **Test Suite:**
-- 387 TCK tests passing (100% compliance)
+- 220+ tests passing (100% compliance)
 - 150+ JMH benchmarks across 10 groups
 
 **Key Fullerstack Strengths:**
@@ -1064,7 +1047,7 @@ FsCell
 
 - **ConcurrentHashMap** - All component caches
 - **IdentityHashMap (copy-on-write)** - Percept and channel state caches
-- **JCTools MPSC Queue** - Circuit ingress queue
+- **Custom IngressQueue** - Circuit ingress queue (wait-free MPSC linked list)
 
 ### Immutable Components
 
@@ -1123,17 +1106,17 @@ try {
 **Fullerstack Substrates:**
 
 - **Simple** - Flat package structure, Fs-prefixed classes, easy to understand
-- **Correct** - 387/387 TCK tests passing (100% Humainary API compliance)
+- **Correct** - 220+ tests passing (100% Humainary API compliance)
 - **Lean** - Core implementation only, no application frameworks
-- **Optimized** - VarHandle parked check, JCTools MPSC, intrusive transit queue
+- **Optimized** - VarHandle parked check, custom IngressQueue, TransitQueue
 - **Thread-Safe** - Dual-queue pattern, proper concurrent collections
 - **Clean** - Explicit resource lifecycle management
 - **Benchmarked** - 150+ JMH benchmarks with documented performance
 
 **Key Optimizations:**
 - **VarHandle Opaque Access** - Reduced parked check overhead from ~11% to ~4%
-- **JCTools MPSC Queue** - Wait-free producer path for external emissions
-- **Intrusive Transit Queue** - No allocation for cascading emissions
+- **Custom IngressQueue** - Wait-free MPSC linked list for external emissions
+- **TransitQueue** - Separate queue class for cascading emissions
 - **Cached Path Generation** - Name.path() returns cached string
 - **Long.compare for Subject** - Fixed 183x regression in compareTo
 

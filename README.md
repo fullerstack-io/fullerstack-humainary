@@ -119,7 +119,6 @@ We provide the concrete runtime - the API design, architecture, and concepts are
 **Learn more:**
 - Humainary Website: https://humainary.io/
 - Substrates API: https://github.com/humainary-io/substrates-api-java
-- Observability X Blog: https://humainary.io/blog/category/observability-x/
 
 ## Authors
 

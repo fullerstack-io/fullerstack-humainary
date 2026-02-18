@@ -65,14 +65,14 @@ public final class FsCell < I, E > implements Cell < I, E > {
   /// Subscriber-channel activation tracking.
   private final Set < String > subscriberChannelPairs = new HashSet <> ();
 
-  /// Pipes registered by subscribers for each child channel.
-  private final Map < Subscriber < E >, Map < Name, List < Consumer < E > > > > subscriberPipes = new IdentityHashMap <> ();
+  /// Receptors registered by subscribers for each child channel.
+  private final Map < Subscriber < E >, Map < Name, List < Receptor < ? super E > > > > subscriberReceptors = new IdentityHashMap <> ();
 
   /// The pipe that processes input (receives I, transforms to E).
   private final Pipe < I > ingressPipe;
 
   /// Async pipe for receive() - single cascade/enqueue, avoids submit() overhead.
-  private final FsPipe < I > receivePipe;
+  private final Pipe < I > receivePipe;
 
   /// The receptor for final output.
   private final Receptor < ? super E > receptor;
@@ -111,11 +111,8 @@ public final class FsCell < I, E > implements Cell < I, E > {
     // Create ingress pipe (receives I, transforms to E, sends to egress)
     this.ingressPipe = ingress.compose ( egressChannel );
 
-    // Create receive pipe - single cascade/enqueue, no double cascade via submit()
-    // Cast cell subject to pipe subject (same identity, different type param)
-    @SuppressWarnings ( "unchecked" )
-    Subject < Pipe < I > > pipeSubject = (Subject < Pipe < I > >) (Subject < ? >) subject;
-    this.receivePipe = new FsPipe <> ( pipeSubject, circuit, ingressPipe::emit );
+    // Create receive pipe - thread-aware routing via FsPipe
+    this.receivePipe = circuit.createPipe ( subject.name (), (FsSubject < ? >) subject, o -> ingressPipe.emit ( (I) o ) );
   }
 
   /// Creates a child cell that routes emissions to parent.
@@ -138,13 +135,12 @@ public final class FsCell < I, E > implements Cell < I, E > {
     this.internalChannel = new FsChannel <> ( channelSubject, circuit, childRouter );
 
     // For children, ingress is a pipe that routes to the channel
-    // Child cells have I=E, so cast subject to Pipe<E> and then to Pipe<I>
-    Subject < Pipe < E > > childPipeSubjectE = (Subject < Pipe < E > >) (Subject < ? >) subject;
-    this.ingressPipe = (Pipe < I >) (Pipe < ? >) new FsPipe <> ( childPipeSubjectE, circuit, childRouter );
+    // Child cells have I=E, so cast to Pipe<I>
+    this.ingressPipe = (Pipe < I >) (Pipe < ? >) circuit.createPipe ( subject.name (), (FsSubject < ? >) subject,
+      (java.util.function.Consumer < Object >) (java.util.function.Consumer < ? >) childRouter );
 
-    // Create receive pipe - single cascade/enqueue, no double cascade via submit()
-    Subject < Pipe < I > > childPipeSubjectI = (Subject < Pipe < I > >) (Subject < ? >) subject;
-    this.receivePipe = new FsPipe <> ( childPipeSubjectI, circuit, ingressPipe::emit );
+    // Create receive pipe - thread-aware routing via FsPipe
+    this.receivePipe = circuit.createPipe ( subject.name (), (FsSubject < ? >) subject, o -> ingressPipe.emit ( (I) o ) );
   }
 
   /// Routes an emission to receptor and subscribers.
@@ -164,19 +160,19 @@ public final class FsCell < I, E > implements Cell < I, E > {
         // First time this subscriber sees this child - activate
         FsRegistrar < E > registrar = new FsRegistrar <> ();
         ( (FsSubscriber < E >) subscriber ).activate ( channelSubject, registrar );
-        subscriberPipes.computeIfAbsent ( subscriber, k -> new HashMap <> () )
-          .computeIfAbsent ( childName, k -> new ArrayList <> () ).addAll ( registrar.pipes () );
+        subscriberReceptors.computeIfAbsent ( subscriber, k -> new HashMap <> () )
+          .computeIfAbsent ( childName, k -> new ArrayList <> () ).addAll ( registrar.receptors () );
       }
     }
 
-    // Deliver to all subscriber pipes for this child
+    // Deliver to all subscriber receptors for this child
     for ( Subscriber < E > subscriber : new ArrayList <> ( subscribers ) ) {
-      Map < Name, List < Consumer < E > > > pipes = subscriberPipes.get ( subscriber );
-      if ( pipes != null ) {
-        List < Consumer < E > > childPipes = pipes.get ( childName );
-        if ( childPipes != null ) {
-          for ( Consumer < E > pipe : childPipes ) {
-            pipe.accept ( emission );
+      Map < Name, List < Receptor < ? super E > > > receptors = subscriberReceptors.get ( subscriber );
+      if ( receptors != null ) {
+        List < Receptor < ? super E > > childReceptors = receptors.get ( childName );
+        if ( childReceptors != null ) {
+          for ( Receptor < ? super E > r : childReceptors ) {
+            r.receive ( emission );
           }
         }
       }
@@ -232,11 +228,9 @@ public final class FsCell < I, E > implements Cell < I, E > {
   @Override
   public Subscription subscribe ( @NotNull Subscriber < E > subscriber ) {
     subscribers.add ( subscriber );
-    FsSubject < Subscription > subSubject = new FsSubject <> ( subscriber.subject ().name (), (FsSubject < ? >) subject,
-      Subscription.class );
-    return new FsSubscription ( subSubject, () -> {
+    return new FsSubscription ( subscriber.subject ().name (), (FsSubject < ? >) subject, () -> {
       subscribers.remove ( subscriber );
-      subscriberPipes.remove ( subscriber );
+      subscriberReceptors.remove ( subscriber );
       subscriberChannelPairs.removeIf ( key -> key.startsWith ( System.identityHashCode ( subscriber ) + ":" ) );
     } );
   }

@@ -7,6 +7,7 @@
 #
 # Usage:
 #   ./scripts/tck.sh              # Run all TCK tests
+#   ./scripts/tck.sh CircuitTest  # Run specific test class
 #
 
 set -e
@@ -34,9 +35,13 @@ echo ""
 echo "=== Fullerstack TCK Test Runner ==="
 echo ""
 
+# Extract version from pom.xml
+SPI_VERSION=$(grep -m1 '<version>' "${FULLERSTACK_ROOT}/pom.xml" | sed 's/.*<version>\(.*\)<\/version>.*/\1/')
+echo "Using Fullerstack version: ${SPI_VERSION}"
+
 # Build Fullerstack first (must be installed to local repo)
 echo "=== Building Fullerstack Substrates ==="
-mvn -f "${FULLERSTACK_ROOT}/pom.xml" clean install -DskipTests -q
+mvn -f "${FULLERSTACK_ROOT}/pom.xml" clean install -DskipTests -Deditorconfig.skip=true -q
 
 # Run TCK using Humainary's tck.sh with Fullerstack SPI
 echo ""
@@ -44,10 +49,22 @@ echo "=== Running TCK Tests via Humainary tck.sh ==="
 echo ""
 
 cd "${HUMAINARY_ROOT}"
-SPI_GROUP=io.fullerstack \
-SPI_ARTIFACT=fullerstack-substrates \
-SPI_VERSION=1.0.0-RC1 \
-./tck.sh
+
+# Build test filter if argument provided
+TEST_FILTER=""
+FAIL_IF_NO_TESTS=""
+if [[ -n "$1" ]]; then
+    TEST_FILTER="-Dtest=$1"
+    FAIL_IF_NO_TESTS="-Dsurefire.failIfNoSpecifiedTests=false"
+    echo "Running specific test: $1"
+fi
+
+# Run TCK with Fullerstack SPI
+./mvnw clean install -U -Dguice_custom_class_loading=CHILD -Dtck \
+    -Dsubstrates.spi.groupId=io.fullerstack \
+    -Dsubstrates.spi.artifactId=fullerstack-substrates \
+    -Dsubstrates.spi.version="${SPI_VERSION}" \
+    ${TEST_FILTER} ${FAIL_IF_NO_TESTS}
 
 echo ""
 echo "=========================================="

@@ -149,19 +149,19 @@ Circuit circuit = cortex().circuit(cortex().name("service"));
 
 // Raw Signs: Counter for request counting
 var counters = circuit.conduit(cortex().name("requests"), Counters::composer);
-counters.get(cortex().name("http.requests")).increment();
+counters.percept(cortex().name("http.requests")).increment();
 
 // Constraint State: System constraint assessment
 var systems = circuit.conduit(cortex().name("constraints"), Systems::composer);
-systems.get(cortex().name("memory")).signal(Systems.Sign.LIMIT, Systems.Dimension.SPACE);
+systems.percept(cortex().name("memory")).signal(Systems.Sign.LIMIT, Systems.Dimension.SPACE);
 
 // Behavioral Condition: Status assessment
 var statuses = circuit.conduit(cortex().name("health"), Statuses::composer);
-statuses.get(cortex().name("api")).degraded(Statuses.Confidence.MEASURED);
+statuses.percept(cortex().name("api")).degraded(Statuses.Confidence.MEASURED);
 
 // Urgency Assessment: Situation reporting
 var situations = circuit.conduit(cortex().name("alerts"), Situations::composer);
-situations.get(cortex().name("load")).warning();
+situations.percept(cortex().name("load")).warning();
 ```
 
 ## Semiotic Observability

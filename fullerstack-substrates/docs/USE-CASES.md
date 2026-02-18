@@ -101,7 +101,7 @@ Substrates is particularly well-suited when you:
 - **Medium-frequency instruments** (100K-10M Hz): Services, Tasks, Resources
 - **Coordination instruments** (1-1000 Hz): Agents, Actors, Statuses, Situations
 
-All built on Substrates' deterministic event ordering via the Virtual CPU Core pattern (FsCircuit with JCTools MPSC queue + intrusive transit queue).
+All built on Substrates' deterministic event ordering via the Virtual CPU Core pattern (FsCircuit with IngressQueue + TransitQueue).
 
 ## Further Reading
 

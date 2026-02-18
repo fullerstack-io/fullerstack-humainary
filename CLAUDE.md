@@ -1,348 +1,188 @@
-# CLAUDE.md
+# Claude Code Configuration - Claude Flow V3
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+## Behavioral Rules (Always Enforced)
 
-## Project Overview
+- Do what has been asked; nothing more, nothing less
+- NEVER create files unless they're absolutely necessary for achieving your goal
+- ALWAYS prefer editing an existing file to creating a new one
+- NEVER proactively create documentation files (*.md) or README files unless explicitly requested
+- NEVER save working files, text/mds, or tests to the root folder
+- Never continuously check status after spawning a swarm — wait for results
+- ALWAYS read a file before editing it
+- NEVER commit secrets, credentials, or .env files
 
-This repository provides a **fully compliant implementation** of the Humainary Substrates API (version 1.0.0-PREVIEW), an event-driven observability framework designed by William Louth. The API design, architecture, and concepts are from Humainary - this repository provides the concrete runtime implementation.
+## File Organization
 
-**Key Point:** We implement exactly what the Substrates specification defines. We don't change the API or add proprietary extensions.
+- NEVER save to root folder — use the directories below
+- Use `/src` for source code files
+- Use `/tests` for test files
+- Use `/docs` for documentation and markdown files
+- Use `/config` for configuration files
+- Use `/scripts` for utility scripts
+- Use `/examples` for example code
 
-## CRITICAL RULES - READ FIRST
+## Project Architecture
 
-**THERE IS NO HUMAINARY IMPLEMENTATION.** Humainary provides ONLY the API specification (interfaces). Fullerstack IS the implementation. NEVER search for or ask about "Humainary's implementation" - it does not exist. The benchmarks in substrates-api-java run against OUR implementation via SPI.
+- Follow Domain-Driven Design with bounded contexts
+- Keep files under 500 lines
+- Use typed interfaces for all public APIs
+- Prefer TDD London School (mock-first) for new code
+- Use event sourcing for state changes
+- Ensure input validation at system boundaries
 
-**NEVER suggest object allocation is causing performance problems.** Both Humainary's benchmark baseline and our implementation allocate objects. Allocation is NOT the differentiator. When analyzing performance:
-- Focus on the actual code path differences
-- Measure what our code actually does
-- Compare our emit path logic to understand the overhead
-- The ~8ns Humainary baseline also allocates - so allocation cannot explain our gap
+### Project Config
 
-## Build Commands
+- **Topology**: hierarchical-mesh
+- **Max Agents**: 15
+- **Memory**: hybrid
+- **HNSW**: Enabled
+- **Neural**: Enabled
 
-### Prerequisites
-
-#### Java 25 Requirement
-Both the Humainary Substrates API and this implementation **require Java 25** with preview features enabled.
-
-**Install Java 25 using SDKMAN:**
-```bash
-# Install SDKMAN if not already installed
-curl -s "https://get.sdkman.io" | bash
-source ~/.sdkman/bin/sdkman-init.sh
-
-# Install Java 25
-sdk install java 25.0.1-open
-sdk use java 25.0.1-open
-
-# Verify installation
-java -version  # Should show: openjdk version "25.0.1"
-```
-
-**Alternative: Check SDKMAN installation**
-```bash
-# If SDKMAN is already installed at /usr/local/sdkman
-source /usr/local/sdkman/bin/sdkman-init.sh
-sdk install java 25.0.1-open
-```
-
-#### Install Humainary Substrates API
-The Humainary Substrates API must be installed locally first (not yet published to Maven Central):
+## Build & Test
 
 ```bash
-# Ensure Java 25 is active
-source /usr/local/sdkman/bin/sdkman-init.sh
-sdk use java 25.0.1-open
+# Build
+npm run build
 
-# Clone and install the API dependency
-git clone https://github.com/humainary-io/substrates-api-java.git
-cd substrates-api-java
-mvn clean install
-cd ..
+# Test
+npm test
+
+# Lint
+npm run lint
 ```
 
-### Common Commands
+- ALWAYS run tests after making code changes
+- ALWAYS verify build succeeds before committing
 
-**Important:** Ensure Java 25 is active before running any Maven commands:
+## Security Rules
+
+- NEVER hardcode API keys, secrets, or credentials in source files
+- NEVER commit .env files or any file containing secrets
+- Always validate user input at system boundaries
+- Always sanitize file paths to prevent directory traversal
+- Run `npx @claude-flow/cli@latest security scan` after security-related changes
+
+## Concurrency: 1 MESSAGE = ALL RELATED OPERATIONS
+
+- All operations MUST be concurrent/parallel in a single message
+- Use Claude Code's Task tool for spawning agents, not just MCP
+- ALWAYS batch ALL todos in ONE TodoWrite call (5-10+ minimum)
+- ALWAYS spawn ALL agents in ONE message with full instructions via Task tool
+- ALWAYS batch ALL file reads/writes/edits in ONE message
+- ALWAYS batch ALL Bash commands in ONE message
+
+## Swarm Orchestration
+
+- MUST initialize the swarm using CLI tools when starting complex tasks
+- MUST spawn concurrent agents using Claude Code's Task tool
+- Never use CLI tools alone for execution — Task tool agents do the actual work
+- MUST call CLI tools AND Task tool in ONE message for complex work
+
+### 3-Tier Model Routing (ADR-026)
+
+| Tier | Handler | Latency | Cost | Use Cases |
+|------|---------|---------|------|-----------|
+| **1** | Agent Booster (WASM) | <1ms | $0 | Simple transforms (var→const, add types) — Skip LLM |
+| **2** | Haiku | ~500ms | $0.0002 | Simple tasks, low complexity (<30%) |
+| **3** | Sonnet/Opus | 2-5s | $0.003-0.015 | Complex reasoning, architecture, security (>30%) |
+
+- Always check for `[AGENT_BOOSTER_AVAILABLE]` or `[TASK_MODEL_RECOMMENDATION]` before spawning agents
+- Use Edit tool directly when `[AGENT_BOOSTER_AVAILABLE]`
+
+## Swarm Configuration & Anti-Drift
+
+- ALWAYS use hierarchical topology for coding swarms
+- Keep maxAgents at 6-8 for tight coordination
+- Use specialized strategy for clear role boundaries
+- Use `raft` consensus for hive-mind (leader maintains authoritative state)
+- Run frequent checkpoints via `post-task` hooks
+- Keep shared memory namespace for all agents
+
 ```bash
-source /usr/local/sdkman/bin/sdkman-init.sh
-sdk use java 25.0.1-open
+npx @claude-flow/cli@latest swarm init --topology hierarchical --max-agents 8 --strategy specialized
 ```
 
-**Build the project:**
+## Swarm Execution Rules
+
+- ALWAYS use `run_in_background: true` for all agent Task calls
+- ALWAYS put ALL agent Task calls in ONE message for parallel execution
+- After spawning, STOP — do NOT add more tool calls or check status
+- Never poll TaskOutput or check swarm status — trust agents to return
+- When agent results arrive, review ALL results before proceeding
+
+## V3 CLI Commands
+
+### Core Commands
+
+| Command | Subcommands | Description |
+|---------|-------------|-------------|
+| `init` | 4 | Project initialization |
+| `agent` | 8 | Agent lifecycle management |
+| `swarm` | 6 | Multi-agent swarm coordination |
+| `memory` | 11 | AgentDB memory with HNSW search |
+| `task` | 6 | Task creation and lifecycle |
+| `session` | 7 | Session state management |
+| `hooks` | 17 | Self-learning hooks + 12 workers |
+| `hive-mind` | 6 | Byzantine fault-tolerant consensus |
+
+### Quick CLI Examples
+
 ```bash
-cd fullerstack-substrates
-mvn clean install
+npx @claude-flow/cli@latest init --wizard
+npx @claude-flow/cli@latest agent spawn -t coder --name my-coder
+npx @claude-flow/cli@latest swarm init --v3-mode
+npx @claude-flow/cli@latest memory search --query "authentication patterns"
+npx @claude-flow/cli@latest doctor --fix
 ```
 
-**Run tests:**
+## Available Agents (60+ Types)
+
+### Core Development
+`coder`, `reviewer`, `tester`, `planner`, `researcher`
+
+### Specialized
+`security-architect`, `security-auditor`, `memory-specialist`, `performance-engineer`
+
+### Swarm Coordination
+`hierarchical-coordinator`, `mesh-coordinator`, `adaptive-coordinator`
+
+### GitHub & Repository
+`pr-manager`, `code-review-swarm`, `issue-tracker`, `release-manager`
+
+### SPARC Methodology
+`sparc-coord`, `sparc-coder`, `specification`, `pseudocode`, `architecture`
+
+## Memory Commands Reference
+
 ```bash
-mvn test
+# Store (REQUIRED: --key, --value; OPTIONAL: --namespace, --ttl, --tags)
+npx @claude-flow/cli@latest memory store --key "pattern-auth" --value "JWT with refresh" --namespace patterns
+
+# Search (REQUIRED: --query; OPTIONAL: --namespace, --limit, --threshold)
+npx @claude-flow/cli@latest memory search --query "authentication patterns"
+
+# List (OPTIONAL: --namespace, --limit)
+npx @claude-flow/cli@latest memory list --namespace patterns --limit 10
+
+# Retrieve (REQUIRED: --key; OPTIONAL: --namespace)
+npx @claude-flow/cli@latest memory retrieve --key "pattern-auth" --namespace patterns
 ```
 
-**Run a single test:**
+## Quick Setup
+
 ```bash
-mvn test -Dtest=ClassName
-mvn test -Dtest=ClassName#methodName
+claude mcp add claude-flow -- npx -y @claude-flow/cli@latest
+npx @claude-flow/cli@latest daemon start
+npx @claude-flow/cli@latest doctor --fix
 ```
 
-**Format code (Spotless with Google Java Format - AOSP style):**
-```bash
-mvn spotless:apply
-```
+## Claude Code vs CLI Tools
 
-**Check code formatting:**
-```bash
-mvn spotless:check
-```
+- Claude Code's Task tool handles ALL execution: agents, file ops, code generation, git
+- CLI tools handle coordination via Bash: swarm init, memory, hooks, routing
+- NEVER use CLI tools as a substitute for Task tool agents
 
-**Run benchmarks:**
-```bash
-# From fullerstack-substrates directory (auto-detects version from pom.xml)
-cd fullerstack-substrates
-./jmh.sh                    # Run all benchmarks
-./jmh.sh PipeOps            # Run specific benchmark group
-./jmh.sh "emit.*batch" -f 3 # Run pattern with JMH args
-```
+## Support
 
-**Run TCK:**
-```bash
-# From fullerstack-substrates directory (auto-detects version from pom.xml)
-cd fullerstack-substrates
-./tck.sh                    # Run all TCK tests
-./tck.sh CircuitTest        # Run specific test class
-```
-
-## Architecture Overview
-
-### Core Concepts
-
-**Substrates API = Interface** (from Humainary)
-**Fullerstack Implementation = Concrete Runtime** (this repository)
-
-Think of it like `java.util.List` (interface) vs `ArrayList` (implementation).
-
-### Key Components
-
-1. **Cortex** - Entry point accessed via `Substrates.cortex()` (SPI-loaded singleton)
-2. **Circuit** - Event orchestration hub with Virtual CPU Core pattern (sequential processing)
-3. **Conduit** - Container that creates Channels and routes emissions to subscribers
-4. **Channel** - Named emission port within a Conduit
-5. **Pipe** - Producer/consumer interface for emitting values
-6. **Cell** - Hierarchical computational cell with type transformation (I → E)
-7. **Valve** - Dual-queue architecture (Ingress + Transit) + Virtual Thread per Circuit
-
-### Circuit Architecture
-
-Fullerstack uses a single consolidated circuit implementation (`FsCircuit`) with an intrusive MPSC linked list queue:
-
-**Key design:**
-- External emissions: create job, submit to MPSC queue via `getAndSet`
-- Cascade emissions (on circuit thread): direct call, no job allocation
-- Park/unpark for efficient thread synchronization
-
-```
-External Emissions → MPSC Queue (intrusive linked list) →
-                                                          → Virtual Thread
-Cascade Emissions → Direct call (no job allocation) →       → Sequential Execution
-```
-
-**Key guarantees:**
-- Single virtual thread per Circuit eliminates race conditions
-- Wait-free producer path via atomic `getAndSet`
-- Park/unpark synchronization (no busy-spinning)
-- Cascade optimization: same-thread emissions bypass queue entirely
-- Passes all 383 TCK tests
-
-### Package Structure
-
-```
-io.fullerstack.substrates/
-├── capture/         - Emission capture with Subject context
-├── cell/            - CellNode implementation (hierarchical transformation)
-├── channel/         - EmissionChannel implementation
-├── circuit/         - SequentialCircuit and CortexRuntimeProvider (SPI)
-├── closure/         - Lazy-loading Subject-based closures
-├── conduit/         - RoutingConduit implementation
-├── current/         - ThreadLocal context tracking
-├── flow/            - Transformation pipeline with fusion optimization
-├── id/              - UUID-based unique identifiers
-├── lookup/          - Dual-key caching for percept lookup
-├── name/            - InternedName (hierarchical dot-notation)
-├── pipe/            - ProducerPipe implementation
-├── reservoir/       - Internal subscriber management
-├── scope/           - ManagedScope for resource lifecycle
-├── sift/            - Filter transformations
-├── slot/            - LinkedState (immutable state management)
-├── state/           - StateBuilder and State implementations
-├── subject/         - ContextualSubject with parent/state/type
-├── subscriber/      - Subscriber and Registrar implementations
-├── subscription/    - Subscription lifecycle management
-└── valve/           - Valve (Virtual CPU Core pattern)
-```
-
-### Important Implementation Details
-
-**Sealed Hierarchy:** The Substrates API uses sealed interfaces (Java JEP 409) to control which classes can implement them. All our implementations extend the non-sealed extension points (`Circuit`, `Conduit`, `Cell`, `Channel`, `Pipe`, `Sink`).
-
-**Pipeline Fusion:** Flow transformations automatically fuse adjacent operations:
-- `skip(n1).skip(n2)` → `skip(n1+n2)` (sum)
-- `limit(n1).limit(n2)` → `limit(min(n1,n2))` (minimum)
-
-**Event-Driven Await:** Circuits use wait/notify for zero-latency synchronization instead of polling with Thread.sleep().
-
-**SPI Loading:** The `CortexRuntimeProvider` is loaded via Java ServiceLoader from `META-INF/services/io.humainary.substrates.spi.CortexProvider`.
-
-## Development Guidelines
-
-### Code Style
-
-- **Java 25 required** (uses Virtual Threads and preview features)
-- **AOSP Google Java Format** (2-space indentation via Spotless)
-- Always run `mvn spotless:apply` before committing
-- Use Lombok for boilerplate reduction (`@Builder`, `@Getter`, etc.)
-
-### Testing Requirements
-
-**Testing Async Processing:**
-```java
-// CRITICAL: Circuit processing is asynchronous
-pipe.emit(value);  // Returns immediately
-circuit.await();   // MUST await processing in tests
-// or Thread.sleep(100);
-```
-
-**Use CopyOnWriteArrayList for test collectors:**
-```java
-List<String> received = new CopyOnWriteArrayList<>();  // Thread-safe
-conduit.subscribe((subject, registrar) -> registrar.register(received::add));
-```
-
-### Common Patterns
-
-**1. Creating a Circuit and Conduit:**
-```java
-import static io.humainary.substrates.api.Substrates.*;
-
-Circuit circuit = cortex().circuit(cortex().name("kafka"));
-Conduit<Pipe<String>, String> conduit = circuit.conduit(
-    cortex().name("messages"),
-    Composer.pipe()
-);
-```
-
-**2. Emitting to a Pipe:**
-```java
-Pipe<String> pipe = conduit.get(cortex().name("producer-1"));
-pipe.emit("Hello, Substrates!");
-```
-
-**3. Subscribing to emissions:**
-```java
-conduit.subscribe(cortex().subscriber(
-    cortex().name("logger"),
-    (subject, registrar) -> registrar.register(msg -> System.out.println(msg))
-));
-```
-
-**4. Resource cleanup:**
-```java
-try (Circuit circuit = cortex().circuit(cortex().name("test"))) {
-    // Use circuit
-}  // Auto-closes
-
-// Or with Scope for grouped cleanup
-Scope scope = cortex().scope(cortex().name("session"));
-Circuit circuit = scope.register(cortex().circuit(cortex().name("kafka")));
-scope.close();  // Closes all registered resources
-```
-
-### Serventis Integration (PREVIEW)
-
-Serventis extends Substrates with semantic signaling instruments organized by **semiotic ascent**:
-
-**Layered Architecture:** Raw Signs → Systems → Statuses → Situations → Actions
-
-**Module Structure:**
-- **sdk/** (Universal): Systems, Statuses, Situations, Outcomes, Operations, Trends, Surveys
-- **tool/** (Measurement): Counters, Gauges, Probes, Sensors, Logs
-- **data/** (Data Structures): Queues, Stacks, Caches, Pipelines
-- **flow/** (Flow Control): Valves, Breakers, Routers, Flows
-- **sync/** (Synchronization): Locks, Atomics, Latches
-- **pool/** (Resources): Resources, Pools, Leases, Exchanges
-- **exec/** (Execution): Tasks, Services, Processes, Timers, Transactions
-- **role/** (Coordination): Agents, Actors
-
-**Example:**
-```java
-import io.humainary.serventis.sdk.*;
-import io.humainary.serventis.opt.tool.*;
-
-// Raw Signs: Counter for request counting
-var counters = circuit.conduit(cortex().name("requests"), Counters::composer);
-counters.get(cortex().name("http.requests")).increment();
-
-// Behavioral Condition: Status assessment
-var statuses = circuit.conduit(cortex().name("health"), Statuses::composer);
-statuses.get(cortex().name("api")).degraded(Statuses.Confidence.MEASURED);
-```
-
-**Key insight:** The same signal means different things based on Subject context (semiotic observability). See [SERVENTIS.md](fullerstack-substrates/docs/SERVENTIS.md) for full documentation.
-
-## TCK Compliance
-
-This implementation passes **383/383 tests** from the Humainary Substrates TCK (Test Compatibility Kit), ensuring 100% API compliance.
-
-The TCK tests are maintained by Humainary and verify that implementations correctly handle:
-- Circuit event ordering and processing
-- Conduit channel creation and routing
-- Flow transformations (sift, limit, sample, skip, etc.)
-- Cell hierarchical computation
-- State and Slot immutability
-- Resource lifecycle management
-- Serventis instrument APIs
-
-## Performance Characteristics
-
-**Design Target:** 100k+ metrics @ 1Hz with ~2% CPU usage
-
-**Per-Operation Costs:**
-- Component lookup: ~5-10ns (ConcurrentHashMap)
-- Pipe emission: ~100-300ns (with transformations)
-- Subscriber notification: ~20-50ns per subscriber
-
-**Thread Safety:**
-- ConcurrentHashMap for all component caches
-- CopyOnWriteArrayList for subscriber lists (read-heavy workload)
-- BlockingQueue for Circuit event processing
-- Immutable Name, State, and Signal types
-
-## Key Documentation
-
-- **README.md** - Project overview and quick start
-- **fullerstack-substrates/docs/ARCHITECTURE.md** - Detailed architecture (sealed hierarchy, circuit types, data flow)
-- **fullerstack-substrates/docs/ASYNC-ARCHITECTURE.md** - Virtual CPU Core and event-driven synchronization
-- **fullerstack-substrates/docs/DEVELOPER-GUIDE.md** - Best practices, performance tips, testing strategies
-- **fullerstack-substrates/docs/USE-CASES.md** - Problem domains where Substrates excels
-- **fullerstack-substrates/docs/SERVENTIS.md** - Semiotic observability and Serventis instruments
-
-**External Resources:**
-- [Humainary Substrates API](https://github.com/humainary-io/substrates-api-java) - Official API specification
-- [Observability X Blog](https://humainary.io/blog/category/observability-x/) - William Louth's architectural vision
-- [Serventis: Big Things Have Small Beginnings](https://humainary.io/blog/serventis-big-things-have-small-beginnings/) - Semiotic ascent philosophy
-
-## Critical Reminders
-
-1. **API purity:** Application code should ONLY import `io.humainary.substrates.api.*` - never our concrete classes directly (SPI handles loading)
-2. **Async testing:** Always use `circuit.await()` or `Thread.sleep()` in tests to wait for async processing
-3. **Resource cleanup:** Always close Circuits, Conduits, and Scopes (use try-with-resources)
-4. **Caching:** Cache Pipes for repeated emissions - don't call `conduit.get(name)` in loops
-5. **Thread safety:** Don't block in subscriber callbacks - use virtual threads for slow operations
-6. **Code formatting:** Run `mvn spotless:apply` before committing
-
-## Philosophy
-
-**Build it simple, build it correct, then optimize hot paths identified by profiling.**
-
-We don't add features or change the API - we implement exactly what the Substrates specification defines, following William Louth's architectural vision for semiotic observability.
-- Always show full jmh benchmark results with a side by side comparisson with humainary results from substrates-api-java/BENCHMARKS.md in a single table
+- Documentation: https://github.com/ruvnet/claude-flow
+- Issues: https://github.com/ruvnet/claude-flow/issues

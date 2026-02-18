@@ -8,6 +8,7 @@ import io.humainary.substrates.api.Substrates.Temporal;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Objects;
 import java.util.function.Predicate;
 
 /// Configurable filter builder for comparator-based filtering operations.
@@ -46,6 +47,7 @@ final class FsSift < E > implements Sift < E > {
   @Fluent
   @Override
   public Sift < E > above ( E lower ) {
+    Objects.requireNonNull ( lower, "lower bound must not be null" );
     filters.add ( v -> comparator.compare ( v, lower ) > 0 );
     return this;
   }
@@ -53,6 +55,7 @@ final class FsSift < E > implements Sift < E > {
   @Fluent
   @Override
   public Sift < E > below ( E upper ) {
+    Objects.requireNonNull ( upper, "upper bound must not be null" );
     filters.add ( v -> comparator.compare ( v, upper ) < 0 );
     return this;
   }
@@ -96,6 +99,7 @@ final class FsSift < E > implements Sift < E > {
   @Fluent
   @Override
   public Sift < E > max ( E max ) {
+    Objects.requireNonNull ( max, "maximum must not be null" );
     filters.add ( v -> comparator.compare ( v, max ) <= 0 );
     return this;
   }
@@ -103,6 +107,7 @@ final class FsSift < E > implements Sift < E > {
   @Fluent
   @Override
   public Sift < E > min ( E min ) {
+    Objects.requireNonNull ( min, "minimum must not be null" );
     filters.add ( v -> comparator.compare ( v, min ) >= 0 );
     return this;
   }
@@ -110,6 +115,8 @@ final class FsSift < E > implements Sift < E > {
   @Fluent
   @Override
   public Sift < E > range ( E lower, E upper ) {
+    Objects.requireNonNull ( lower, "lower bound must not be null" );
+    Objects.requireNonNull ( upper, "upper bound must not be null" );
     filters.add ( v -> comparator.compare ( v, lower ) >= 0 && comparator.compare ( v, upper ) <= 0 );
     return this;
   }

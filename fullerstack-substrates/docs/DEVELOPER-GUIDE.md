@@ -52,8 +52,8 @@ var queues = circuit.conduit(
 );
 
 // Get instruments for specific entities (creates Channels with Subject)
-Queue producerBuffer = queues.get(cortex().name("producer-1.buffer"));
-Queue consumerLag = queues.get(cortex().name("consumer-1.lag"));
+Queue producerBuffer = queues.percept(cortex().name("producer-1.buffer"));
+Queue consumerLag = queues.percept(cortex().name("consumer-1.lag"));
 
 // Emit signs based on observations
 if (bufferUtilization > 0.95) {
@@ -78,11 +78,11 @@ var statuses = circuit.conduit(
 );
 
 // Subscribe to queue signs and interpret based on Subject
-queues.subscribe(cortex().subscriber(
+queues.subscribe(circuit.subscriber(
     cortex().name("queue-health-assessor"),
     (subject, registrar) -> {
         // Get Status for this specific entity
-        Status status = statuses.get(subject.name());
+        Status status = statuses.percept(subject.name());
 
         registrar.register(sign -> {
             // CONTEXT-AWARE INTERPRETATION
@@ -122,10 +122,10 @@ var situations = circuit.conduit(
 );
 
 // Subscribe to status signals and assess situation urgency
-statuses.subscribe(cortex().subscriber(
+statuses.subscribe(circuit.subscriber(
     cortex().name("situation-assessor"),
     (subject, registrar) -> {
-        Situation situation = situations.get(extractClusterName(subject.name()));
+        Situation situation = situations.percept(extractClusterName(subject.name()));
 
         registrar.register(signal -> {
             if (signal.sign() == Statuses.Sign.DEFECTIVE) {
@@ -148,7 +148,7 @@ Subscribe to situations and execute steering decisions:
 
 ```java
 // Subscribe to situation signals and take action
-situations.subscribe(cortex().subscriber(
+situations.subscribe(circuit.subscriber(
     cortex().name("auto-responder"),
     (subject, registrar) -> {
         registrar.register(signal -> {
@@ -196,7 +196,7 @@ statuses.subscribe(createSituationAssessor(situations));
 situations.subscribe(createAutoResponder());
 
 // Now emit raw signs - the system interprets and acts
-var consumerLag = queues.get(cortex().name("consumer-1.lag"));
+var consumerLag = queues.percept(cortex().name("consumer-1.lag"));
 consumerLag.overflow();  // → OBSERVE → ORIENT → DECIDE → ACT
 
 circuit.await();
@@ -214,7 +214,7 @@ circuit.await();
 
 ```java
 // GOOD
-Pipe<MetricValue> pipe = conduit.get(cortex().name("kafka.broker.1.bytes-in"));
+Pipe<MetricValue> pipe = conduit.percept(cortex().name("kafka.broker.1.bytes-in"));
 
 for (int i = 0; i < 1000000; i++) {
     pipe.emit(new MetricValue(System.currentTimeMillis(), bytesIn));
@@ -222,12 +222,12 @@ for (int i = 0; i < 1000000; i++) {
 
 // BAD
 for (int i = 0; i < 1000000; i++) {
-    conduit.get(cortex().name("kafka.broker.1.bytes-in"))
+    conduit.percept(cortex().name("kafka.broker.1.bytes-in"))
         .emit(new MetricValue(System.currentTimeMillis(), bytesIn));
 }
 ```
 
-**Why:** `conduit.get()` involves a map lookup. Cache the Pipe once and reuse it.
+**Why:** `conduit.percept()` involves a map lookup. Cache the Pipe once and reuse it.
 
 ---
 
@@ -242,7 +242,7 @@ Name bytesInName = metricsName.name("bytes-in");
 
 // BAD
 String name = "kafka.broker.1.metrics.bytes-in";
-Pipe<MetricValue> pipe = conduit.get(cortex().name(name));
+Pipe<MetricValue> pipe = conduit.percept(cortex().name(name));
 ```
 
 **Why:** Hierarchical names preserve parent-child relationships.
@@ -372,7 +372,7 @@ flow.sample(10).sift(n -> n > 100)
 
 ```java
 statuses.subscribe(
-    cortex().subscriber(
+    circuit.subscriber(
         cortex().name("health-aggregator"),
         (subject, registrar) -> {
             registrar.register(signal -> aggregateHealth(signal));
@@ -396,8 +396,8 @@ sub.close();
 ### Performance Summary
 
 **Test Suite:**
-- 387 TCK tests passing (100% compliance)
-- 846 JMH benchmarks across Substrates and Serventis
+- 220+ tests passing
+- 150+ JMH benchmarks
 
 **Key Fullerstack Advantages:**
 | Category | Benchmark | Improvement |
@@ -421,11 +421,11 @@ sub.close();
 
 ```
 FsCircuit:
-  Ingress (JCTools MPSC) → Virtual Thread → Process in Order
+  Ingress (IngressQueue) → Virtual Thread → Process in Order
   Transit (Intrusive FIFO) ↗   (depth-first)
 
 Benefits:
-✓ Wait-free producer path (JCTools MPSC)
+✓ Wait-free producer path (IngressQueue)
 ✓ Eager thread initialization
 ✓ Precise ordering (depth-first for cascading)
 ✓ Spin-then-park (low wake-up latency)
@@ -436,13 +436,18 @@ Benefits:
 #### Component Caching
 
 ```java
-// FsConduit caches channels internally
-private final Map<Name, FsChannel<E>> channels = new ConcurrentHashMap<>();
+// FsConduit uses copy-on-write IdentityHashMap for fast reads
+private volatile Map<Name, P> percepts = new IdentityHashMap<>();
 
-public P get(Name name) {
-    return channels.computeIfAbsent(name, n ->
-        new FsChannel<>(new FsSubject<>(n, parent, Channel.class), circuit, composer, configurer)
-    ).percept();
+public P percept(Name name) {
+    // Fast path: same name as last lookup (identity check, ~2ns)
+    Name last = lastLookupName;
+    if (last != null && name == last) return lastLookupPercept;
+    // Normal path: map lookup (~7ns)
+    P cached = percepts.get(name);
+    if (cached != null) return cached;
+    // Slow path: create and cache
+    return createAndCachePercept(name);
 }
 ```
 
@@ -506,14 +511,14 @@ Estimated Resource Usage:
 
 ```java
 // FAST - Cache once
-Pipe<T> pipe = conduit.get(name);
+Pipe<T> pipe = conduit.percept(name);
 for (T value : values) {
     pipe.emit(value);
 }
 
 // SLOW - Repeated lookups
 for (T value : values) {
-    conduit.get(name).emit(value);
+    conduit.percept(name).emit(value);
 }
 ```
 
@@ -524,7 +529,7 @@ for (T value : values) {
 ```java
 // GOOD - Batch processing
 List<Statuses.Signal> signals = collectSignals();
-var status = statuses.get(name);
+var status = statuses.percept(name);
 for (var signal : signals) {
     status.signal(signal.sign(), signal.dimension());
 }
@@ -548,7 +553,7 @@ flow.sift(expensiveCheck)    // Expensive filter first
 **BAD:**
 ```java
 conduit.subscribe(
-    cortex().subscriber(name, (subject, registrar) -> {
+    circuit.subscriber(name, (subject, registrar) -> {
         registrar.register(event -> {
             Thread.sleep(1000);  // Blocks event processing!
         });
@@ -560,7 +565,7 @@ conduit.subscribe(
 ```java
 ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
 conduit.subscribe(
-    cortex().subscriber(name, (subject, registrar) -> {
+    circuit.subscriber(name, (subject, registrar) -> {
         registrar.register(event -> {
             executor.submit(() -> processSlowly(event));
         });
@@ -605,7 +610,7 @@ Circuit brokers51to100 = cortex().circuit(cortex().name("brokers-51-100"));
 
 ```
 FsName:        ~64 bytes
-FsCircuit:     ~1KB (includes JCTools queue)
+FsCircuit:     ~1KB (includes IngressQueue)
 FsConduit:     ~512 bytes
 FsChannel:     ~256 bytes
 FsPipe:        ~128 bytes
@@ -661,13 +666,13 @@ void testPipeEmission() {
     List<String> received = new CopyOnWriteArrayList<>();
 
     conduit.subscribe(
-        cortex().subscriber(
+        circuit.subscriber(
             cortex().name("collector"),
             (subject, registrar) -> registrar.register(received::add)
         )
     );
 
-    Pipe<String> pipe = conduit.get(cortex().name("test-subject"));
+    Pipe<String> pipe = conduit.percept(cortex().name("test-subject"));
     pipe.emit("Hello");
     pipe.emit("World");
 
@@ -696,13 +701,13 @@ void testStatusEmission() {
 
     List<Statuses.Signal> received = new CopyOnWriteArrayList<>();
     statuses.subscribe(
-        cortex().subscriber(
+        circuit.subscriber(
             cortex().name("collector"),
             (subject, registrar) -> registrar.register(received::add)
         )
     );
 
-    var status = statuses.get(cortex().name("service"));
+    var status = statuses.percept(cortex().name("service"));
     status.stable(Statuses.Dimension.CONFIRMED);
     status.degraded(Statuses.Dimension.MEASURED);
 
@@ -732,13 +737,13 @@ void testSiftTransformation() {
 
     List<Integer> received = new CopyOnWriteArrayList<>();
     conduit.subscribe(
-        cortex().subscriber(
+        circuit.subscriber(
             cortex().name("collector"),
             (subject, registrar) -> registrar.register(received::add)
         )
     );
 
-    Pipe<Integer> pipe = conduit.get(cortex().name("test"));
+    Pipe<Integer> pipe = conduit.percept(cortex().name("test"));
     pipe.emit(-1);  // Filtered out
     pipe.emit(0);   // Filtered out
     pipe.emit(1);   // Passes
@@ -814,8 +819,8 @@ public class MonitoringService {
 Conduit<Pipe<Object>, Object> mixed =
     circuit.conduit(cortex().name("mixed"), Composer.pipe());
 
-mixed.get(name).emit(new StatusSignal(/* ... */));
-mixed.get(name).emit("A string?");  // Type safety lost!
+mixed.percept(name).emit(new StatusSignal(/* ... */));
+mixed.percept(name).emit("A string?");  // Type safety lost!
 ```
 
 **SOLUTION:**
@@ -823,7 +828,7 @@ mixed.get(name).emit("A string?");  // Type safety lost!
 var statuses = circuit.conduit(
     cortex().name("statuses"), Statuses::composer);
 
-statuses.get(name).stable(Statuses.Dimension.CONFIRMED);
+statuses.percept(name).stable(Statuses.Dimension.CONFIRMED);
 ```
 
 ---
@@ -848,7 +853,7 @@ var counters = kafkaCircuit.conduit(
     cortex().name("counters"), Counters::composer);
 
 for (String metric : metrics) {
-    counters.get(cortex().name(metric)).increment();
+    counters.percept(cortex().name(metric)).increment();
 }
 ```
 
@@ -861,7 +866,7 @@ for (String metric : metrics) {
 List<String> received = new ArrayList<>();
 
 conduit.subscribe(
-    cortex().subscriber(name, (subject, registrar) ->
+    circuit.subscriber(name, (subject, registrar) ->
         registrar.register(received::add)
     )
 );
@@ -875,7 +880,7 @@ assertEquals(1, received.size());  // FAILS! Async processing not complete
 List<String> received = new CopyOnWriteArrayList<>();
 
 conduit.subscribe(
-    cortex().subscriber(name, (subject, registrar) ->
+    circuit.subscriber(name, (subject, registrar) ->
         registrar.register(received::add)
     )
 );
@@ -893,7 +898,7 @@ assertEquals(1, received.size());  // Now passes
 **PROBLEM:**
 ```java
 conduit.subscribe(
-    cortex().subscriber(name, (subject, registrar) -> {
+    circuit.subscriber(name, (subject, registrar) -> {
         registrar.register(event -> {
             expensiveBlockingOperation();  // BLOCKS CIRCUIT!
         });
@@ -906,7 +911,7 @@ conduit.subscribe(
 ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
 
 conduit.subscribe(
-    cortex().subscriber(name, (subject, registrar) -> {
+    circuit.subscriber(name, (subject, registrar) -> {
         registrar.register(event -> {
             executor.submit(() -> expensiveBlockingOperation());
         });

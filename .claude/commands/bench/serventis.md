@@ -1,8 +1,8 @@
 ---
-description: Run ALL Serventis JMH benchmarks comparing Fullerstack vs Humainary
+description: Run ALL Serventis JMH benchmarks (30 groups) comparing Fullerstack vs Humainary
 ---
 
-Run Serventis JMH benchmarks using Humainary's official jmh.sh with Fullerstack as the SPI provider.
+Run Serventis JMH benchmarks using Fullerstack's jmh.sh with Fullerstack as the SPI provider.
 
 ## Usage
 
@@ -16,16 +16,15 @@ Run Serventis JMH benchmarks using Humainary's official jmh.sh with Fullerstack 
 Use the pattern from $ARGUMENTS, or if empty use `io.humainary.serventis.jmh` for all Serventis benchmarks.
 
 ```bash
-source /usr/local/sdkman/bin/sdkman-init.sh && sdk use java 25.0.1-open && \
-cd /workspaces/fullerstack-humainary/fullerstack-substrates && mvn clean install -DskipTests -q && \
-SPI_GROUP=io.fullerstack SPI_ARTIFACT=fullerstack-substrates SPI_VERSION=1.0.0-RC1 \
-/workspaces/fullerstack-humainary/substrates-api-java/jmh.sh $ARGUMENTS 2>&1 | tee /workspaces/fullerstack-humainary/benchmark-results/serventis-latest.txt
+cd /workspaces/fullerstack-humainary/fullerstack-substrates && ./jmh.sh ${ARGUMENTS:-io.humainary.serventis.jmh} -rf json -rff /workspaces/fullerstack-humainary/benchmark-results/serventis-latest.json 2>&1 | tee /workspaces/fullerstack-humainary/benchmark-results/serventis-latest.txt
 ```
 
 When complete, present comparison table using Humainary baselines from BENCHMARKS.md.
 Diff = ((Fullerstack - Humainary) / Humainary * 100). Winner = lower time.
 
-## Serventis Modules
+Results saved to `/workspaces/fullerstack-humainary/benchmark-results/`
+
+## Serventis Modules (30 groups)
 
 | Module | Instruments |
 |--------|-------------|

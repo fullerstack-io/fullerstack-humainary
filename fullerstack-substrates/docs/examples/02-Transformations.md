@@ -28,7 +28,7 @@ public class TransformationsExample {
 
         // Subscribe to see what gets through
         conduit.subscribe(
-            cortex().subscriber(
+            circuit.subscriber(
                 cortex().name("consumer"),
                 (subject, registrar) -> {
                     registrar.register(n -> {
@@ -39,7 +39,7 @@ public class TransformationsExample {
         );
 
         // Emit numbers from -10 to 50
-        Pipe<Integer> pipe = conduit.get(cortex().name("counter"));
+        Pipe<Integer> pipe = conduit.percept(cortex().name("counter"));
         for (int i = -10; i <= 50; i++) {
             pipe.emit(i);
         }
@@ -149,7 +149,7 @@ segment -> segment
 
 ## Performance Note
 
-Transformations execute **inline** during `pipe.emit()`:
+Transformations execute on the **circuit thread** after dequeuing, as part of the receiver chain:
 - Keep chains short for best performance
 - Use `guard()` early to filter before expensive operations
 - `limit()` short-circuits remaining emissions

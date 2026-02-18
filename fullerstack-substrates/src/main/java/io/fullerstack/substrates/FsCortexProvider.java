@@ -11,8 +11,27 @@ import io.humainary.substrates.spi.CortexProvider;
  */
 public final class FsCortexProvider extends CortexProvider {
 
+  static {
+    try {
+      java.nio.file.Files.writeString (
+        java.nio.file.Path.of ( "/tmp/fscortex-loaded.log" ),
+        "FsCortexProvider class loaded!\n",
+        java.nio.file.StandardOpenOption.CREATE,
+        java.nio.file.StandardOpenOption.APPEND
+      );
+    } catch ( Exception e ) { }
+  }
+
   @Override
   protected Cortex create () {
+    try {
+      java.nio.file.Files.writeString (
+        java.nio.file.Path.of ( "/tmp/fscortex-loaded.log" ),
+        "FsCortex.create() called!\n",
+        java.nio.file.StandardOpenOption.CREATE,
+        java.nio.file.StandardOpenOption.APPEND
+      );
+    } catch ( Exception e ) { }
     return new FsCortex ();
   }
 

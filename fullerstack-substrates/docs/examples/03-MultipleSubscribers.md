@@ -23,7 +23,7 @@ public class FanOutExample {
 
         // Subscriber 1: Console logger
         conduit.subscribe(
-            cortex().subscriber(
+            circuit.subscriber(
                 cortex().name("console"),
                 (subject, registrar) -> {
                     registrar.register(msg -> {
@@ -36,7 +36,7 @@ public class FanOutExample {
         // Subscriber 2: Error counter
         AtomicInteger errorCount = new AtomicInteger(0);
         conduit.subscribe(
-            cortex().subscriber(
+            circuit.subscriber(
                 cortex().name("error-counter"),
                 (subject, registrar) -> {
                     registrar.register(msg -> {
@@ -51,7 +51,7 @@ public class FanOutExample {
 
         // Subscriber 3: Length analyzer
         conduit.subscribe(
-            cortex().subscriber(
+            circuit.subscriber(
                 cortex().name("length-analyzer"),
                 (subject, registrar) -> {
                     registrar.register(msg -> {
@@ -62,7 +62,7 @@ public class FanOutExample {
         );
 
         // Emit messages
-        Pipe<String> pipe = conduit.get(cortex().name("producer"));
+        Pipe<String> pipe = conduit.percept(cortex().name("producer"));
         pipe.emit("INFO: System started");
         pipe.emit("ERROR: Connection failed");
         pipe.emit("WARN: High memory usage");
@@ -116,7 +116,7 @@ Subscribe only to specific subjects:
 
 ```java
 conduit.subscribe(
-    cortex().subscriber(
+    circuit.subscriber(
         cortex().name("filtered"),
         (subject, registrar) -> {
             // Only subscribe to "important" subjects

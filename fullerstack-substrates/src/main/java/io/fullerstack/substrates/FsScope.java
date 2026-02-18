@@ -149,6 +149,10 @@ final class FsScope implements Scope {
     if ( resources == null ) {
       resources = new ArrayList <> ();
     }
+    // Idempotent: same instance (by identity) is a no-op
+    for ( int i = 0, len = resources.size (); i < len; i++ ) {
+      if ( resources.get ( i ) == resource ) return resource;
+    }
     resources.add ( resource );
     return resource;
   }

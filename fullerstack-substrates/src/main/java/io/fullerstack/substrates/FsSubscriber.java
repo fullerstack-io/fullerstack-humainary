@@ -8,7 +8,8 @@ import io.humainary.substrates.api.Substrates.Subject;
 import io.humainary.substrates.api.Substrates.Subscriber;
 import io.humainary.substrates.api.Substrates.Subscription;
 
-import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.function.BiConsumer;
 
 /// A subscriber that holds a callback to be invoked when channels are activated.
@@ -17,6 +18,10 @@ import java.util.function.BiConsumer;
 /// to Source.subscribe(). When a channel receives its first emission, the
 /// callback is invoked with the channel's subject and a registrar for
 /// registering pipes to receive emissions.
+///
+/// Closing a subscriber sets the closed flag. Subsequent channel activations
+/// see closed=true and skip callback invocation. Lazy rebuild on next emission
+/// detects no pipes registered and cleans up the channel state.
 ///
 /// @param <E> the emission type
 @Provided
@@ -29,10 +34,13 @@ public final class FsSubscriber < E > implements Subscriber < E > {
   private final BiConsumer < Subject < Channel < E > >, Registrar < E > > callback;
 
   /// Whether this subscriber has been closed.
+  /// Volatile: read by activate() on circuit thread, written by close() from any thread.
   private volatile boolean closed;
 
-  /// Subscriptions created for this subscriber (to close when subscriber closes).
-  private final CopyOnWriteArrayList < Subscription > subscriptions = new CopyOnWriteArrayList <> ();
+  /// Tracked subscriptions — closed on subscriber.close().
+  /// Guarded by synchronization: written by trackSubscription() from any thread,
+  /// read and cleared by close() from any thread.
+  private List < Subscription > subscriptions;
 
   /// Creates a new subscriber with the given subject and callback.
   ///
@@ -56,27 +64,30 @@ public final class FsSubscriber < E > implements Subscriber < E > {
     }
   }
 
-  /// Tracks a subscription created for this subscriber.
-  void trackSubscription ( Subscription subscription ) {
-    if ( !closed ) {
-      subscriptions.add ( subscription );
-    } else {
-      // Already closed, close the new subscription immediately
+  /// Tracks a subscription so it will be closed when this subscriber is closed.
+  synchronized void trackSubscription ( Subscription subscription ) {
+    if ( closed ) {
       subscription.close ();
+      return;
     }
+    if ( subscriptions == null ) {
+      subscriptions = new ArrayList <> ();
+    }
+    subscriptions.add ( subscription );
   }
 
-  /// Closes this subscriber and all its tracked subscriptions.
+  /// Closes this subscriber. Closes all tracked subscriptions and
+  /// subsequent activations become no-ops.
   @Idempotent
   @Override
-  public void close () {
-    if ( !closed ) {
-      closed = true;
-      // Close all tracked subscriptions
-      for ( Subscription subscription : subscriptions ) {
-        subscription.close ();
+  public synchronized void close () {
+    if ( closed ) return;
+    closed = true;
+    if ( subscriptions != null ) {
+      for ( Subscription s : subscriptions ) {
+        s.close ();
       }
-      subscriptions.clear ();
+      subscriptions = null;
     }
   }
 

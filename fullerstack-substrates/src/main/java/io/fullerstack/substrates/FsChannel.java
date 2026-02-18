@@ -7,8 +7,13 @@ import io.humainary.substrates.api.Substrates.New;
 import io.humainary.substrates.api.Substrates.NotNull;
 import io.humainary.substrates.api.Substrates.Pipe;
 import io.humainary.substrates.api.Substrates.Provided;
+import io.humainary.substrates.api.Substrates.Receptor;
 import io.humainary.substrates.api.Substrates.Subject;
 
+import java.util.ArrayList;
+import java.util.IdentityHashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.function.Consumer;
 
 /// A named port in a conduit that provides a pipe for emission.
@@ -18,10 +23,14 @@ import java.util.function.Consumer;
 /// to the channel are routed through the conduit's Flow pipeline to registered
 /// subscribers.
 ///
+/// Channels are pooled by name within a conduit (`@Tenure INTERNED`).
+/// The channel holds per-channel subscriber state and implements `Receptor`
+/// for direct emission dispatch on the circuit thread.
+///
 /// @param <E> the class type of emitted value
 /// @see FsConduit
 @Provided
-final class FsChannel < E > implements Channel < E > {
+final class FsChannel < E > implements Channel < E >, Receptor < E > {
 
   /// The subject identity for this channel.
   private final Subject < Channel < E > > subject;
@@ -29,27 +38,59 @@ final class FsChannel < E > implements Channel < E > {
   /// The circuit that owns this channel.
   private final FsCircuit circuit;
 
-  /// The emission consumer for routing emissions to subscribers.
-  private final Consumer < E > router;
+  /// The emission consumer for routing emissions through the pipeline.
+  /// Non-final: for conduit-managed channels, set after construction
+  /// to break the circular dependency (channel wraps itself via ReceptorReceiver).
+  Consumer < E > router;
+
+  /// The owning conduit (null for standalone channels, e.g. FsCell).
+  private final FsConduit < ?, E > conduit;
 
   /// Cached pipe subject - all pipes from this channel share the same identity.
   /// Lazy initialized on first pipe() call.
   private volatile Subject < Pipe < E > > cachedPipeSubject;
 
-  /// Creates a new channel with the given subject and emission router.
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Subscriber state — circuit-thread only (no synchronization needed)
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  /// Receptors per subscriber — for proper unsubscribe handling.
+  final Map < FsSubscriber < E >, List < Receptor < ? super E > > > subscriberReceptors = new IdentityHashMap <> ();
+
+  /// Cached flat array for fast iteration (rebuilt when subscribers change).
+  Receptor < ? super E >[] receptors;
+
+  /// Dirty flag — start dirty to force first rebuild.
+  boolean dirty = true;
+
+  /// Version tracking for FsTap — tracks which subscriber version this channel
+  /// was last built against. Uses -1 as sentinel to force initial rebuild.
+  int builtVersion = -1;
+
+  /// Creates a conduit-managed channel with subscriber support.
+  ///
+  /// @param subject the subject identity for this channel
+  /// @param circuit the circuit that owns this channel
+  /// @param conduit the owning conduit for subscriber rebuild
+  /// @param router the consumer that routes emissions to subscribers
+  FsChannel ( Subject < Channel < E > > subject, FsCircuit circuit, FsConduit < ?, E > conduit, Consumer < E > router ) {
+    this.subject = subject;
+    this.circuit = circuit;
+    this.conduit = conduit;
+    this.router = router;
+  }
+
+  /// Creates a standalone channel (no conduit subscriber management).
+  /// Used by FsCell where channels have their own routing logic.
   ///
   /// @param subject the subject identity for this channel
   /// @param circuit the circuit that owns this channel
   /// @param router the consumer that routes emissions to subscribers
   FsChannel ( Subject < Channel < E > > subject, FsCircuit circuit, Consumer < E > router ) {
-    this.subject = subject;
-    this.circuit = circuit;
-    this.router = router;
+    this ( subject, circuit, null, router );
   }
 
   /// Returns the subject identity of this channel.
-  ///
-  /// @return the subject of this channel
   @Override
   public Subject < Channel < E > > subject () {
     return subject;
@@ -67,35 +108,61 @@ final class FsChannel < E > implements Channel < E > {
   }
 
   /// Returns a new pipe for emitting to this channel.
-  /// The pipe shares the channel's pipe subject identity (all pipes from same
-  /// channel have same subject - they represent the same emission endpoint).
-  ///
-  /// The returned pipe enqueues emissions to the circuit. On the circuit thread,
-  /// emissions pass through the conduit's flow pipeline before reaching this
-  /// channel,
-  /// which then dispatches to all registered subscribers.
-  ///
-  /// @return A new pipe routing to this channel
   @New
   @NotNull
   @Override
+  @SuppressWarnings ( "unchecked" )
   public Pipe < E > pipe () {
-    return new FsPipe <> ( pipeSubject (), circuit, router );
+    return circuit.createPipe ( subject.name (), (FsSubject < ? >) subject, (Consumer < Object >) (Consumer < ? >) router );
   }
 
   /// Returns a new pipe with custom flow configuration.
-  /// The pipe shares the channel's pipe subject identity.
-  ///
-  /// @param configurer A configurer responsible for configuring flow
-  /// @return A new pipe instance with the configured flow
+  /// Configurer is invoked eagerly; exceptions are wrapped in Substrates.Exception.
   @New
   @NotNull
   @Override
+  @SuppressWarnings ( "unchecked" )
   public Pipe < E > pipe ( @NotNull Configurer < Flow < E > > configurer ) {
-    Subject < Pipe < E > > ps = pipeSubject ();
-    Pipe < E > basePipe = new FsPipe <> ( ps, circuit, router );
-    FsFlow < E > flow = new FsFlow <> ( ps, circuit, basePipe );
-    configurer.configure ( flow );
-    return flow.pipe ();
+    try {
+      Subject < Pipe < E > > ps = pipeSubject ();
+      Pipe < E > basePipe = circuit.createPipe ( ps.name (), (FsSubject < ? >) subject, (Consumer < Object >) (Consumer < ? >) router );
+      FsFlow < E > flow = new FsFlow <> ( ps, circuit, basePipe );
+      configurer.configure ( flow );
+      return flow.pipe ();
+    } catch ( FsException e ) {
+      throw e;
+    } catch ( RuntimeException e ) {
+      throw new FsException ( "Flow configuration failed", e );
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Receptor — emission dispatch on circuit thread
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  /// Receives an emission on the circuit thread.
+  /// Checks dirty flag and triggers lazy rebuild before dispatching
+  /// to all registered subscriber receptors.
+  @Override
+  public void receive ( E emission ) {
+    if ( dirty || conduit.subscribersDirty ) {
+      conduit.rebuildChannelPipes ( this );
+      dirty = false;
+    }
+    Receptor < ? super E >[] r = receptors;
+    if ( r == null ) return;
+    for ( int i = 0, len = r.length; i < len; i++ ) {
+      r[i].receive ( emission );
+    }
+  }
+
+  /// Rebuilds the flat receptors array from the subscriberReceptors map.
+  @SuppressWarnings ( "unchecked" )
+  void rebuildReceptorsArray () {
+    List < Receptor < ? super E > > all = new ArrayList <> ();
+    for ( List < Receptor < ? super E > > list : subscriberReceptors.values () ) {
+      all.addAll ( list );
+    }
+    receptors = all.isEmpty () ? null : all.toArray ( new Receptor[0] );
   }
 }

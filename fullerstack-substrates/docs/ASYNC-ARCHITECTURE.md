@@ -7,7 +7,7 @@
 
 Substrates uses an **async-first** design where ALL emissions flow through the Circuit Queue asynchronously. This differs fundamentally from reactive frameworks like RxJava which are **synchronous by default**.
 
-**Key Insight**: When you call `pipe.emit(value)`, the emission does NOT execute immediately. Instead, it posts a Job to the Circuit's ingress queue and returns immediately. The actual processing happens later when the Circuit's virtual thread executes the Job.
+**Key Insight**: When you call `pipe.emit(value)`, the emission does NOT execute immediately. Instead, it posts a QNode to the Circuit's ingress queue and returns immediately. The actual processing happens later when the Circuit's virtual thread executes the QNode.
 
 ## Async vs Sync: RxJava Comparison
 
@@ -48,13 +48,13 @@ Conduit<Pipe<String>, String> conduit = circuit.conduit(
 );
 
 AtomicReference<String> received = new AtomicReference<>();
-conduit.subscribe(cortex().subscriber(
+conduit.subscribe(circuit.subscriber(
     cortex().name("sub"),
     (subject, registrar) -> registrar.register(received::set)
 ));
 
-Pipe<String> pipe = conduit.get(cortex().name("channel"));
-pipe.emit("hello");  // ← Returns IMMEDIATELY (enqueues Job to circuit)
+Pipe<String> pipe = conduit.percept(cortex().name("channel"));
+pipe.emit("hello");  // ← Returns IMMEDIATELY (enqueues QNode to circuit)
 
 // ✗ WRONG: received.get() is still NULL (async hasn't executed yet)
 assertNull(received.get());
@@ -68,15 +68,15 @@ assertEquals("hello", received.get());  // Now it's available
 ```
 pipe.emit("hello")
   ↓
-FsPipe.emit() → circuit.submit(new EmitJob(receiver, emission))
+FsPipe.emit() → circuit.submitIngress(receiver, emission)
   ↓
-ingress.offer(job)  // ← Returns immediately (async boundary)
+ingress.add(receiver, value)  // ← Returns immediately (async boundary)
   ↓
-[Time passes - job queued, emitter continues]
+[Time passes - node queued, emitter continues]
   ↓
 Circuit virtual thread: drains ingress queue
   ↓
-job.run() → receiver.accept(value) → conduit.dispatch(subject, value)
+node.run() → receiver.accept(value) → conduit.dispatch(subject, value)
   ↓
 subscriber callback executes
   ↓
@@ -89,47 +89,47 @@ received.set("hello")
 
 ### Single Circuit Implementation
 
-Fullerstack uses a single `FsCircuit` implementation with **JCTools MPSC queue + intrusive transit queue**:
+Fullerstack uses a single `FsCircuit` implementation with **custom MPSC linked list + transit queue**:
 
 **Implementation (FsCircuit):**
 ```java
 public final class FsCircuit implements Circuit {
-    // JCTools MPSC queue - wait-free producer path, chunked allocation
-    private final MpscUnboundedArrayQueue<Job> ingress = new MpscUnboundedArrayQueue<>(CHUNK_SIZE);
+    // Custom MPSC linked list - wait-free producer path
+    private final IngressQueue ingress = new IngressQueue();
 
-    // Intrusive transit queue for cascading (circuit thread only)
-    private Job transitHead;
-    private Job transitTail;
+    // Transit queue for cascade emissions (circuit thread only)
+    private final TransitQueue transit = new TransitQueue();
 
-    // VarHandle for opaque access to parked flag (cheaper than volatile)
+    // VarHandle for opaque access to parked flag
     private static final VarHandle PARKED;
-    private boolean parked = false;
+    @Contended
+    private volatile boolean parked;
 
     // Eager-started virtual thread
-    private final Thread thread;
+    private final Thread worker;
 }
 ```
 
 **Architecture**:
 ```
 Circuit (FsCircuit)
-  ├─ Ingress (MpscUnboundedArrayQueue)  (External emissions, MPSC, wait-free)
+  ├─ Ingress (IngressQueue)             (External emissions, MPSC, wait-free)
   ├─ Transit (Intrusive FIFO)           (Cascading emissions, priority)
   ├─ Virtual Thread                     (EAGER - starts on construction)
   └─ VarHandle PARKED                   (opaque read for fast signaling)
 
 All Conduits share the same Circuit:
   External Thread:
-    Conduit 1: Pipes → ingress.offer(job)
-    Conduit 2: Pipes → ingress.offer(job)
+    Conduit 1: Pipes → ingress.add(receiver, value)
+    Conduit 2: Pipes → ingress.add(receiver, value)
 
   Circuit Thread (cascading):
-    Subscriber callbacks → transitTail.next = job  (FIFO intrusive list)
+    Subscriber callbacks → transit.enqueue(receiver, value)
 
-Circuit processes jobs with depth-first execution:
+Circuit processes nodes with depth-first execution:
   → Drain transit queue first (FIFO - depth-first)
-  → Drain ingress queue (batch drain with JCTools)
-  → After each ingress job: drain transit again (priority)
+  → Drain ingress queue (batch drain with IngressQueue)
+  → After each ingress node: drain transit again (priority)
   → Spin-then-park if no work
 ```
 
@@ -152,22 +152,19 @@ Circuit processes jobs with depth-first execution:
      │        ↓
      │   [FsPipe.emit()]
      │        │
-     │        ├─→ circuit.submit(new EmitJob(receiver, emission))
+     │        ├─→ FsPipe.emit() → submitIngress/submitTransit
      │        │
-     │        ↓
-     │   [FsCircuit.submit()]
-     │        │
-     │        ├─→ Thread.currentThread() == thread?
+     │        ├─→ Thread.currentThread() == worker?
      │        │        │
-     │        │   YES: Add to intrusive transit queue (FIFO)
+     │        │   YES: circuit.submitTransit(receiver, emission)
      │        │        │
-     │        │   NO:  → ingress.offer(job)        // JCTools MPSC
+     │        │   NO:  → circuit.submitIngress(receiver, value)
      │        │        → if (PARKED.getOpaque(this))
-     │        │            LockSupport.unpark(thread)
+     │        │            wakeWorker() → CAS + unpark
      │        │
      │        └─→ RETURNS IMMEDIATELY (async boundary)
      │
-     │   [Time passes - Job queued, emitter continues]
+     │   [Time passes - QNode queued, emitter continues]
      │
      │   [FsCircuit.loop()]                  // Virtual thread processor
      │        │
@@ -176,7 +173,7 @@ Circuit processes jobs with depth-first execution:
      │        ├─→ drainIngress()             // Then drain ingress (batch)
      │        │        │
      │        │        ↓
-     │        │   job.run()                  // Execute each job
+     │        │   node.run()                  // Execute each node
      │        │        │
      │        │        ↓
      │        │   drainTransit()             // After each: drain transit (priority)
@@ -201,38 +198,40 @@ Circuit processes jobs with depth-first execution:
 
 `circuit.await()` blocks the calling thread until all pending work is complete.
 
-### Implementation - CountDownLatch Sentinel
+### Implementation - VarHandle Park/Unpark Await
 
-The await mechanism uses a CountDownLatch sentinel pattern:
+The await mechanism uses a VarHandle park/unpark pattern:
 
 ```java
-// FsCircuit.java - CountDownLatch-based await
+// FsCircuit.java - VarHandle park/unpark await
 public void await() {
-    if (Thread.currentThread() == thread) {
+    if (Thread.currentThread() == worker) {
         throw new IllegalStateException("Cannot await from circuit thread");
     }
-    if (!running) {
-        try { thread.join(); } catch (InterruptedException e) { ... }
+    if (closed) { worker.join(); return; }
+    awaitImpl();
+}
+
+private void awaitImpl() {
+    Thread current = Thread.currentThread();
+    // CAS to register as awaiter, piggyback if another thread awaiting
+    Thread existing = (Thread) AWAITER.compareAndExchange(this, null, current);
+    if (existing != null) {
+        while (AWAITER.getOpaque(this) == existing) LockSupport.parkNanos(1_000_000);
         return;
     }
-
-    // Submit a sentinel job and wait for it to complete.
-    // When it runs, all prior work is done (FIFO ordering).
-    var latch = new CountDownLatch(1);
-    submit(new EmitJob(ignored -> latch.countDown(), null));
-    try {
-        latch.await();
-    } catch (InterruptedException e) {
-        Thread.currentThread().interrupt();
-    }
+    // Inject marker node (uses pre-allocated ReceptorReceiver)
+    submitIngress(awaitMarkerReceiver, null);
+    LockSupport.unpark(worker);
+    while (AWAITER.getOpaque(this) == current) LockSupport.park();
 }
 ```
 
 **How It Works:**
-- A sentinel job (`latch::countDown`) is submitted to the circuit queue
-- The caller blocks on `latch.await()` until the sentinel executes
-- FIFO ordering guarantees all prior jobs complete before the sentinel
-- Zero-polling - efficient blocking with CountDownLatch
+- An await marker (pre-allocated ReceptorReceiver) is submitted via submitIngress
+- The caller parks via `LockSupport.park()` until the marker executes
+- FIFO ordering guarantees all prior nodes complete before the sentinel
+- Zero-polling - efficient blocking with direct park/unpark
 
 ### When to Use circuit.await()
 
@@ -251,13 +250,13 @@ void testEmission() throws Exception {
     );
 
     AtomicReference<String> received = new AtomicReference<>();
-    conduit.subscribe(cortex().subscriber(
+    conduit.subscribe(circuit.subscriber(
         cortex().name("sub"),
         (subject, registrar) -> registrar.register(received::set)
     ));
 
     // Act
-    Pipe<String> pipe = conduit.get(cortex().name("channel"));
+    Pipe<String> pipe = conduit.percept(cortex().name("channel"));
     pipe.emit("hello");
 
     // Assert - MUST wait for async processing
@@ -329,7 +328,7 @@ void testEmission_WRONG() throws Exception {
     CountDownLatch latch = new CountDownLatch(1);
     AtomicReference<String> received = new AtomicReference<>();
 
-    conduit.subscribe(cortex().subscriber(
+    conduit.subscribe(circuit.subscriber(
         cortex().name("sub"),
         (subject, registrar) -> registrar.register(value -> {
             received.set(value);
@@ -355,14 +354,14 @@ void testEmission_WRONG() throws Exception {
 void testEmission_CORRECT() throws Exception {
     AtomicReference<String> received = new AtomicReference<>();
 
-    conduit.subscribe(cortex().subscriber(
+    conduit.subscribe(circuit.subscriber(
         cortex().name("sub"),
         (subject, registrar) -> registrar.register(received::set)
     ));
 
     pipe.emit("hello");
 
-    // Wait for Circuit to process all pending Jobs
+    // Wait for Circuit to process all pending QNodes
     circuit.await();
 
     // Now safe to assert
@@ -407,7 +406,7 @@ void testConcurrentAccess() throws Exception {
 ### Async Queue Overhead
 
 **Cost of async boundary**:
-- Job enqueue: ~10-15ns (offer to JCTools MPSC queue)
+- Node enqueue: ~10-15ns (add to IngressQueue via getAndSet)
 - VarHandle parked check: ~2-3ns (opaque read)
 - Context switch: ~50-100ns (virtual thread)
 - **Total overhead**: ~60-120ns per emission
@@ -424,7 +423,7 @@ From JMH benchmarks:
 
 | Operation | Latency | Notes |
 |-----------|---------|-------|
-| Pipe.emit() (hot path) | ~10-18ns | Async enqueue (JCTools MPSC) |
+| Pipe.emit() (hot path) | ~10-18ns | Async enqueue (IngressQueue) |
 | Full path (lookup + emit) | ~100-300ns | conduit → channel → pipe → emit |
 | Subscriber callback | ~50-100ns | End-to-end: emit → queue → callback |
 | Multi-threaded emission | Linear scaling | Wait-free producers (MPSC queue) |
@@ -438,8 +437,8 @@ Cells also use async emission through the Circuit Queue:
 ```java
 // Cell hierarchy: cluster → broker → partition
 Cell<KafkaMetric, Alert> cluster = circuit.cell(composer);
-Cell<KafkaMetric, Alert> broker1 = cluster.get(name("broker-1"));
-Cell<KafkaMetric, Alert> partition0 = broker1.get(name("partition-0"));
+Cell<KafkaMetric, Alert> broker1 = cluster.percept(name("broker-1"));
+Cell<KafkaMetric, Alert> partition0 = broker1.percept(name("partition-0"));
 
 // Emit at leaf level
 partition0.emit(metric);  // ← Returns immediately (async)
@@ -448,7 +447,7 @@ partition0.emit(metric);  // ← Returns immediately (async)
 // 1. partition0 transforms metric → alert
 // 2. Emits to broker1's Source
 // 3. Emits to cluster's Source
-// All via Circuit Jobs
+// All via Circuit QNodes
 
 circuit.await();  // Wait for async processing
 ```
@@ -460,7 +459,7 @@ circuit.await();  // Wait for async processing
 broker1.emit(metric);  // ← Returns immediately
 
 // Async flow:
-// 1. Job posted to Circuit's ingress queue
+// 1. QNode posted to Circuit's ingress queue
 // 2. Circuit processes: broadcast to all child Cells
 // 3. Each child transforms metric → alert (async)
 // 4. Each child emits to broker1's Source (async)
@@ -520,7 +519,7 @@ assertEquals("hello", received.get());  // Works - async completed
 pipe.emit(value);  // Log: "Emitting: value"
 
 // Circuit processor
-job.run();  // Log: "Executing job"
+node.run();  // Log: "Executing node"
 
 // Subscriber callback
 registrar.register(value -> {
@@ -530,9 +529,9 @@ registrar.register(value -> {
 
 **Timeline**:
 ```
-T+0ms:   emit("hello") - enqueues Job
+T+0ms:   emit("hello") - enqueues QNode
 T+0ms:   emit() returns (immediate)
-T+10μs:  Circuit picks up Job
+T+10μs:  Circuit picks up QNode
 T+10μs:  conduit.dispatch(subject, value)
 T+10μs:  Subscriber receives "hello"
 ```
@@ -544,11 +543,11 @@ Circuit circuit = cortex().circuit(cortex().name("test"));
 
 pipe.emit("value");
 
-// Job is queued, not yet executed
+// QNode is queued, not yet executed
 
-circuit.await();  // Block until all pending jobs complete
+circuit.await();  // Block until all pending nodes complete
 
-// Now all jobs are executed
+// Now all nodes are executed
 ```
 
 ## Summary Table
@@ -591,4 +590,4 @@ circuit.await();  // Block until all pending jobs complete
 
 ## Key Takeaway
 
-**Substrates is async-first by design**. Every emission posts a Job to the Circuit's ingress queue and returns immediately. Subscriber callbacks execute asynchronously on the Circuit's virtual thread with depth-first execution. Use `circuit.await()` in tests to synchronize with async processing, but avoid using it after every emit() in production - leverage the async dual-queue architecture for throughput.
+**Substrates is async-first by design**. Every emission posts a QNode to the Circuit's ingress queue and returns immediately. Subscriber callbacks execute asynchronously on the Circuit's virtual thread with depth-first execution. Use `circuit.await()` in tests to synchronize with async processing, but avoid using it after every emit() in production - leverage the async dual-queue architecture for throughput.

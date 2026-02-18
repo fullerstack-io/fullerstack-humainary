@@ -5,8 +5,9 @@ A **fully compliant implementation** of the [Humainary Substrates API](https://g
 ## Status
 
 - **Version:** 1.0.0-RC2
-- **TCK Compliance:** 387/387 tests passing (100%)
+- **TCK Compliance:** 463 tests (447 passing, 16 skipped in CellTest)
 - **Java Version:** 25 (Virtual Threads + Preview Features)
+- **Substrates API:** 1.0.0-PREVIEW
 
 ## Quick Start
 
@@ -55,13 +56,13 @@ Conduit<Pipe<String>, String> messages = circuit.conduit(
 );
 
 // Subscribe to emissions
-messages.subscribe(cortex().subscriber(
+messages.subscribe(circuit.subscriber(
     cortex().name("logger"),
     (subject, registrar) -> registrar.register(msg -> System.out.println(msg))
 ));
 
 // Emit messages
-Pipe<String> pipe = messages.get(cortex().name("user-1"));
+Pipe<String> pipe = messages.percept(cortex().name("user-1"));
 pipe.emit("Hello, Substrates!");
 
 // Wait for async processing
@@ -78,14 +79,14 @@ circuit.close();
 Each Circuit uses a single virtual thread with dual-queue architecture:
 
 ```
-External Emissions → Ingress Queue (JCTools MPSC, wait-free) →
+External Emissions → Ingress Queue (IngressQueue, wait-free) →
                                                                → Virtual Thread
 Cascading Emissions → Transit Queue (Intrusive FIFO) →           → Depth-First Execution
 ```
 
 **Key Features:**
-- **Wait-free producer path** - JCTools MPSC queue for external emissions
-- **Intrusive transit queue** - Zero allocation for cascading emissions
+- **Wait-free producer path** - Custom IngressQueue for external emissions
+- **TransitQueue** - Separate class for cascading emissions
 - **VarHandle optimization** - Opaque reads for parked flag (cheaper than volatile)
 - **Eager thread start** - Thread created immediately on circuit construction
 - **Depth-first execution** - Transit queue has priority for causality preservation
@@ -102,23 +103,37 @@ Cascading Emissions → Transit Queue (Intrusive FIFO) →           → Depth-F
 | `Cell` | `FsCell` | Hierarchical transformation |
 | `Name` | `FsName` | Hierarchical dot-notation names |
 | `Subject` | `FsSubject` | Contextual entity identity |
+| `Scope` | `FsScope` | Resource lifecycle management |
+| `Subscriber` | `FsSubscriber` | Emission observer |
+| `Tap` | `FsTap` | Conduit emission transformation |
+| `Reservoir` | `FsReservoir` | Buffered emission capture |
+| `Current` | `FsCurrent` | Circuit execution context |
+| `State` | `FsState` | Slot-based state container |
+| `Slot` | `FsSlot` | Typed state value holder |
+| `Flow` | `FsFlow` | Emission processing pipeline |
+
+Internal support classes: `IngressQueue` (wait-free external queue), `TransitQueue` (intrusive cascade FIFO), `QChunk` (unrolled linked list with cache-line isolation).
 
 ## Performance
 
-### Benchmark Highlights
+Benchmarks are run using JMH (Java Microbenchmark Harness) in average time mode (ns/op).
+See [Benchmark Comparison](docs/BENCHMARK-COMPARISON.md) for full results across all 14 benchmark groups.
 
-| Benchmark | Fullerstack | Humainary | Notes |
-|-----------|-------------|-----------|-------|
-| hot_pipe_async | 4.7ns | 8.7ns | 46% faster |
-| subject_compare | 1.5ns | 3.6ns | 142% faster |
-| name_path_generation | 0.84ns | 33ns | 3865% faster |
-| create_await_close | 5.5μs | 175μs | 97% faster |
+### Selected Results (Fullerstack ns/op)
 
-### Design Target
+| Benchmark | ns/op | Group |
+|-----------|------:|-------|
+| hot_pipe_async | 12.2 | CircuitOps |
+| hot_conduit_create | 20.1 | CircuitOps |
+| async_emit_single | 11.0 | PipeOps |
+| name_from_string | 2.2 | NameOps |
+| scope_create_and_close | 0.7 | ScopeOps |
+| subject_compare | 2.9 | SubjectOps |
+| baseline_no_flow_await | 18.6 | FlowOps |
+| cyclic_emit | 2.6 | CyclicOps |
 
-- 100k+ metrics @ 1Hz
-- ~2% CPU usage
-- ~200-300MB memory
+> Hardware: AMD EPYC 7763 (2 vCPU), 8 GB, JDK 25.0.1 (GitHub Codespaces).
+> See the comparison doc for Humainary baselines collected on Apple M4.
 
 ## Documentation
 
@@ -128,25 +143,37 @@ Cascading Emissions → Transit Queue (Intrusive FIFO) →           → Depth-F
 - [Developer Guide](docs/DEVELOPER-GUIDE.md) - Best practices and patterns
 - [Benchmark Comparison](docs/BENCHMARK-COMPARISON.md) - Full JMH results
 - [Serventis Integration](docs/SERVENTIS.md) - Semiotic observability instruments
+- [Kitchen Model](docs/KITCHEN-MODEL.md) - Kitchen analogy for Substrates concepts
+- [Use Cases](docs/USE-CASES.md) - Practical application scenarios
 
 ## Running TCK
 
 ```bash
 # Build Fullerstack first
-cd fullerstack-substrates && mvn clean install -DskipTests
+cd fullerstack-substrates && mvn clean install -DskipTests -Deditorconfig.skip=true
 
 # Run TCK via Humainary's tck.sh
 cd ../substrates-api-java
 SPI_GROUP=io.fullerstack SPI_ARTIFACT=fullerstack-substrates SPI_VERSION=1.0.0-RC2 ./tck.sh
 ```
 
-**Expected:** 387 tests, 0 failures
+Or run directly with Maven:
+
+```bash
+cd substrates-api-java
+mvn test -pl tck -Dtck \
+  -Dsubstrates.spi.groupId=io.fullerstack \
+  -Dsubstrates.spi.artifactId=fullerstack-substrates \
+  -Dsubstrates.spi.version=1.0.0-RC2
+```
+
+**Expected:** 463 tests, 0 failures, 16 skipped (CellTest)
 
 ## Running Benchmarks
 
 ```bash
 # Build Fullerstack first
-cd fullerstack-substrates && mvn clean install -DskipTests
+cd fullerstack-substrates && mvn clean install -DskipTests -Deditorconfig.skip=true
 
 # Run benchmarks via Humainary's jmh.sh
 cd ../substrates-api-java

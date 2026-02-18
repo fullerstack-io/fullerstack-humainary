@@ -2,7 +2,7 @@
 
 Practical examples demonstrating common Substrates usage patterns.
 
-**Implementation:** Fullerstack Substrates (FsJctoolsCircuit)
+**Implementation:** Fullerstack Substrates (FsCircuit)
 **API Version:** 1.0.0-PREVIEW
 **Java Version:** 25 (Virtual Threads + Preview Features)
 
@@ -100,15 +100,15 @@ try (Scope scope = cortex().scope(cortex().name("request"))) {
 3. **Subscribe early** before emitting to avoid missed events
 4. **Use circuit.await()** to wait for async processing (not Thread.sleep())
 5. **Check Subject.name()** in subscribers for conditional logic
-6. **Cache Pipes** for repeated emissions - don't call conduit.get() in loops
-7. **Lazy thread start** - Virtual thread only starts on first emission
+6. **Cache Pipes** for repeated emissions - don't call conduit.percept() in loops
+7. **Eager thread start** - Virtual thread starts immediately on circuit construction
 
 ## Key Implementation Details
 
-- **FsJctoolsCircuit** - JCTools MPSC queue for wait-free producer path
-- **Lazy Thread** - Virtual thread starts only on first emission
-- **Depth-First** - Transit stack processed before ingress queue (cascading priority)
-- **CountDownLatch await** - Precise synchronization without polling
+- **FsCircuit** - Custom IngressQueue for wait-free producer path
+- **Eager Thread** - Virtual thread starts on circuit construction
+- **Depth-First** - Transit queue (FIFO) processed before ingress queue (cascading priority)
+- **VarHandle park/unpark await** - Lightweight synchronization without polling
 
 ## Next Steps
 

@@ -71,7 +71,7 @@ echo "=== Running Benchmarks via Humainary jmh.sh ==="
 cd "${HUMAINARY_ROOT}"
 SPI_GROUP=io.fullerstack \
 SPI_ARTIFACT=fullerstack-substrates \
-SPI_VERSION=1.0.0-RC1 \
+SPI_VERSION=1.0.0-RC2 \
 ./jmh.sh -rf json -rff "${JSON_FILE}" "$@" 2>&1 | tee "${TXT_FILE}"
 
 echo ""

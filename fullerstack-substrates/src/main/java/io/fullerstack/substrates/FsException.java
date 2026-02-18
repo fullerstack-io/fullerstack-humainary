@@ -7,4 +7,8 @@ public final class FsException extends io.humainary.substrates.api.Substrates.Ex
     super ( message );
   }
 
+  public FsException ( String message, Throwable cause ) {
+    super ( message, cause );
+  }
+
 }

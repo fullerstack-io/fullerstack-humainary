@@ -44,8 +44,8 @@ public class SemioticObservabilityExample {
 
         // Get Queue instruments for specific entities
         // Each get() creates a Channel with a unique Subject (entity identity)
-        Queue producerBuffer = queues.get(cortex().name("producer-1.buffer"));
-        Queue consumerLag = queues.get(cortex().name("consumer-1.lag"));
+        Queue producerBuffer = queues.percept(cortex().name("producer-1.buffer"));
+        Queue consumerLag = queues.percept(cortex().name("consumer-1.lag"));
 
         // ===== ORIENT PHASE: Condition Assessment =====
 
@@ -56,11 +56,11 @@ public class SemioticObservabilityExample {
         );
 
         // Subscribe to Queue signals and assess conditions BASED ON CONTEXT
-        queues.subscribe(cortex().subscriber(
+        queues.subscribe(circuit.subscriber(
             cortex().name("queue-health-assessor"),
             (Subject<Channel<Queues.Signal>> subject, Registrar<Queues.Signal> registrar) -> {
                 // Get Monitor for this specific entity
-                Monitor monitor = monitors.get(subject.name());
+                Monitor monitor = monitors.percept(subject.name());
 
                 registrar.register(signal -> {
                     String entityName = subject.name().toString();
@@ -105,12 +105,12 @@ public class SemioticObservabilityExample {
         );
 
         // Subscribe to Monitor status and determine urgency
-        monitors.subscribe(cortex().subscriber(
+        monitors.subscribe(circuit.subscriber(
             cortex().name("situation-assessor"),
             (Subject<Channel<Monitors.Status>> subject, Registrar<Monitors.Status> registrar) -> {
                 // Extract cluster name from entity path
                 String clusterName = "kafka-cluster-1";  // Simplified
-                Reporter reporter = reporters.get(cortex().name(clusterName));
+                Reporter reporter = reporters.percept(cortex().name(clusterName));
 
                 registrar.register(status -> {
                     System.out.println("🔍 Assessing condition: " + status.condition() +
@@ -136,7 +136,7 @@ public class SemioticObservabilityExample {
         // ===== ACT PHASE: Automated Response =====
 
         // Subscribe to situation reports and take action
-        reporters.subscribe(cortex().subscriber(
+        reporters.subscribe(circuit.subscriber(
             cortex().name("auto-responder"),
             (Subject<Channel<Reporters.Situation>> subject, Registrar<Reporters.Situation> registrar) -> {
                 registrar.register(situation -> {

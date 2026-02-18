@@ -43,3 +43,9 @@ CLAUDE.md
 
 # External dependencies (cloned separately)
 substrates-api-java/
+
+# Claude Flow
+.claude-flow/
+.claude/
+.hive-mind/
+.swarm/

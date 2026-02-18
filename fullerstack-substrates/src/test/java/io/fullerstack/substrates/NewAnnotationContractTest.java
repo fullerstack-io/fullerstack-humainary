@@ -255,15 +255,30 @@ class NewAnnotationContractTest {
     }
 
     @Test
-    @DisplayName ( "circuit.pipe(target) returns new instance each call" )
-    void pipe_withTarget_returnsNewInstance () {
-      // Create a target pipe first
+    @DisplayName ( "circuit.pipe(target) returns same instance for same-circuit target (@New conditional)" )
+    void pipe_withTarget_sameCircuit_returnsSameInstance () {
+      // Create a target pipe on the same circuit
       Pipe < Integer > targetPipe = circuit.pipe ( receptor );
 
-      Pipe < Integer > pipe1 = circuit.pipe ( targetPipe );
-      Pipe < Integer > pipe2 = circuit.pipe ( targetPipe );
+      // @New(conditional=true): same-circuit target returns as-is
+      Pipe < Integer > result = circuit.pipe ( targetPipe );
 
-      assertNotSame ( pipe1, pipe2, "pipe(target) must return new instance each call" );
+      assertSame ( targetPipe, result, "pipe(target) for same-circuit must return target as-is" );
+    }
+
+    @Test
+    @DisplayName ( "circuit.pipe(target) returns new instance for cross-circuit target (@New conditional)" )
+    void pipe_withTarget_crossCircuit_returnsNewInstance () {
+      Circuit otherCircuit = cortex ().circuit ( cortex ().name ( "other" ) );
+      try {
+        Pipe < Integer > targetPipe = otherCircuit.pipe ( receptor );
+
+        Pipe < Integer > result = circuit.pipe ( targetPipe );
+
+        assertNotSame ( targetPipe, result, "pipe(target) for cross-circuit must return new instance" );
+      } finally {
+        otherCircuit.close ();
+      }
     }
 
     @Test
@@ -292,15 +307,31 @@ class NewAnnotationContractTest {
     }
 
     @Test
-    @DisplayName ( "circuit.pipe(name, target) returns new instance each call" )
-    void pipe_withNameAndTarget_returnsNewInstance () {
+    @DisplayName ( "circuit.pipe(name, target) returns same instance for same-circuit target (@New conditional)" )
+    void pipe_withNameAndTarget_sameCircuit_returnsSameInstance () {
       Name pipeName = cortex ().name ( "producer" );
       Pipe < Integer > targetPipe = circuit.pipe ( receptor );
 
-      Pipe < Integer > pipe1 = circuit.pipe ( pipeName, targetPipe );
-      Pipe < Integer > pipe2 = circuit.pipe ( pipeName, targetPipe );
+      // @New(conditional=true): same-circuit target returns as-is
+      Pipe < Integer > result = circuit.pipe ( pipeName, targetPipe );
 
-      assertNotSame ( pipe1, pipe2, "pipe(name, target) must return new instance each call" );
+      assertSame ( targetPipe, result, "pipe(name, target) for same-circuit must return target as-is" );
+    }
+
+    @Test
+    @DisplayName ( "circuit.pipe(name, target) returns new instance for cross-circuit target (@New conditional)" )
+    void pipe_withNameAndTarget_crossCircuit_returnsNewInstance () {
+      Name pipeName = cortex ().name ( "producer" );
+      Circuit otherCircuit = cortex ().circuit ( cortex ().name ( "other" ) );
+      try {
+        Pipe < Integer > targetPipe = otherCircuit.pipe ( receptor );
+
+        Pipe < Integer > result = circuit.pipe ( pipeName, targetPipe );
+
+        assertNotSame ( targetPipe, result, "pipe(name, target) for cross-circuit must return new instance" );
+      } finally {
+        otherCircuit.close ();
+      }
     }
 
     @Test

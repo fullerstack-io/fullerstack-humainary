@@ -9,6 +9,7 @@ import java.util.Iterator;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Function;
 
 /// A hierarchical dot-separated name using path-less interning.
@@ -17,6 +18,9 @@ import java.util.function.Function;
 @Identity
 @Provided
 public final class FsName implements Name {
+
+  /// Counter for generating unique anonymous names.
+  private static final AtomicLong ANONYMOUS_COUNTER = new AtomicLong ( 0 );
 
   /// Unified cache: interned path string → FsName. Single lookup for all paths.
   /// Uses ConcurrentHashMap with high initial capacity to minimize rehashing.
@@ -140,6 +144,12 @@ public final class FsName implements Name {
     }
   }
 
+  /// Creates an anonymous name with a unique suffix.
+  /// Used for pipes and other components that don't have explicit names.
+  static FsName anonymous ( String prefix ) {
+    return parse ( prefix + "-" + ANONYMOUS_COUNTER.incrementAndGet () );
+  }
+
   /// Creates a Name from an Enum (fully qualified: declaring.class.CONSTANT).
   static FsName fromEnum ( Enum < ? > e ) {
     Objects.requireNonNull ( e, "enum must not be null" );
@@ -173,80 +183,129 @@ public final class FsName implements Name {
   }
 
   /// Creates a Name from an Iterable of parts.
-  /// Chains directly through the tree - no string building.
+  /// Uses indexed access for List inputs to avoid iterator allocation.
+  /// First element validated by parse(); subsequent elements use internChild
+  /// with inline guard for null/empty/dot edge cases.
+  @SuppressWarnings ( "unchecked" )
   static FsName fromIterable ( Iterable < String > parts ) {
     Objects.requireNonNull ( parts, "parts must not be null" );
-    FsName current = null;
-    for ( String part : parts ) {
-      Objects.requireNonNull ( part, "part must not be null" );
-      if ( current == null ) {
-        current = parse ( part ); // First segment - get root
+    if ( parts instanceof java.util.List < String > list ) {
+      return fromList ( list );
+    }
+    Iterator < String > it = parts.iterator ();
+    if ( !it.hasNext () ) {
+      throw new IllegalArgumentException ( "parts must not be empty" );
+    }
+    FsName current = parse ( it.next () );
+    while ( it.hasNext () ) {
+      String part = it.next ();
+      if ( part == null || part.isEmpty () || part.indexOf ( FULLSTOP ) >= 0 ) {
+        current = (FsName) current.name ( part );
       } else {
-        current = current.internChild ( part ); // Chain via tree
+        current = current.internChild ( part );
       }
     }
-    if ( current == null ) {
+    return current;
+  }
+
+  /// Fast path for List inputs — indexed access avoids iterator allocation.
+  private static FsName fromList ( java.util.List < String > parts ) {
+    int size = parts.size ();
+    if ( size == 0 ) {
       throw new IllegalArgumentException ( "parts must not be empty" );
+    }
+    FsName current = parse ( parts.get ( 0 ) );
+    for ( int i = 1; i < size; i++ ) {
+      String part = parts.get ( i );
+      if ( part == null || part.isEmpty () || part.indexOf ( FULLSTOP ) >= 0 ) {
+        current = (FsName) current.name ( part );
+      } else {
+        current = current.internChild ( part );
+      }
     }
     return current;
   }
 
   /// Creates a Name from an Iterable with mapper.
-  /// Chains directly through the tree - no string building.
+  /// Uses indexed access for List inputs to avoid iterator allocation.
+  @SuppressWarnings ( "unchecked" )
   static < T > FsName fromIterable ( Iterable < ? extends T > parts, Function < T, String > mapper ) {
     Objects.requireNonNull ( parts, "parts must not be null" );
     Objects.requireNonNull ( mapper, "mapper must not be null" );
-    FsName current = null;
-    for ( T item : parts ) {
-      String part = mapper.apply ( item );
-      if ( current == null ) {
-        current = parse ( part );
+    if ( parts instanceof java.util.List < ? > list ) {
+      return fromListMapped ( (java.util.List < ? extends T >) list, mapper );
+    }
+    Iterator < ? extends T > it = parts.iterator ();
+    if ( !it.hasNext () ) {
+      throw new IllegalArgumentException ( "parts must not be empty" );
+    }
+    FsName current = parse ( mapper.apply ( it.next () ) );
+    while ( it.hasNext () ) {
+      String part = mapper.apply ( it.next () );
+      if ( part == null || part.isEmpty () || part.indexOf ( FULLSTOP ) >= 0 ) {
+        current = (FsName) current.name ( part );
       } else {
         current = current.internChild ( part );
       }
     }
-    if ( current == null ) {
+    return current;
+  }
+
+  /// Fast path for List inputs with mapper — indexed access avoids iterator allocation.
+  private static < T > FsName fromListMapped ( java.util.List < ? extends T > parts, Function < T, String > mapper ) {
+    int size = parts.size ();
+    if ( size == 0 ) {
       throw new IllegalArgumentException ( "parts must not be empty" );
+    }
+    FsName current = parse ( mapper.apply ( parts.get ( 0 ) ) );
+    for ( int i = 1; i < size; i++ ) {
+      String part = mapper.apply ( parts.get ( i ) );
+      if ( part == null || part.isEmpty () || part.indexOf ( FULLSTOP ) >= 0 ) {
+        current = (FsName) current.name ( part );
+      } else {
+        current = current.internChild ( part );
+      }
     }
     return current;
   }
 
   /// Creates a Name from an Iterator of parts.
-  /// Chains directly through the tree - no string building.
+  /// First element validated by parse(); subsequent elements use internChild
+  /// with inline guard for null/empty/dot edge cases.
   static FsName fromIterator ( Iterator < String > parts ) {
     Objects.requireNonNull ( parts, "parts must not be null" );
-    FsName current = null;
+    if ( !parts.hasNext () ) {
+      throw new IllegalArgumentException ( "parts must not be empty" );
+    }
+    FsName current = parse ( parts.next () );
     while ( parts.hasNext () ) {
       String part = parts.next ();
-      Objects.requireNonNull ( part, "part must not be null" );
-      if ( current == null ) {
-        current = parse ( part );
+      if ( part == null || part.isEmpty () || part.indexOf ( FULLSTOP ) >= 0 ) {
+        current = (FsName) current.name ( part );
       } else {
         current = current.internChild ( part );
       }
-    }
-    if ( current == null ) {
-      throw new IllegalArgumentException ( "parts must not be empty" );
     }
     return current;
   }
 
   /// Creates a Name from an Iterator with mapper.
-  /// Chains directly through the tree - no string building.
+  /// First element validated by parse(); subsequent elements use internChild
+  /// with inline guard for null/empty/dot edge cases.
   static < T > FsName fromIterator ( Iterator < ? extends T > parts, Function < T, String > mapper ) {
     Objects.requireNonNull ( parts, "parts must not be null" );
     Objects.requireNonNull ( mapper, "mapper must not be null" );
-    FsName current = null;
+    if ( !parts.hasNext () ) {
+      throw new IllegalArgumentException ( "parts must not be empty" );
+    }
+    FsName current = parse ( mapper.apply ( parts.next () ) );
     while ( parts.hasNext () ) {
       String part = mapper.apply ( parts.next () );
-      if ( current == null ) {
-        current = parse ( part );
+      if ( part == null || part.isEmpty () || part.indexOf ( FULLSTOP ) >= 0 ) {
+        current = (FsName) current.name ( part );
       } else {
         current = current.internChild ( part );
       }
-    }
-    if ( current == null ) {
-      throw new IllegalArgumentException ( "parts must not be empty" );
     }
     return current;
   }
@@ -358,6 +417,21 @@ public final class FsName implements Name {
 
   @Override
   public Name name ( String suffix ) {
+    // Validate suffix
+    Objects.requireNonNull ( suffix, "suffix must not be null" );
+    if ( suffix.isEmpty () ) {
+      throw new IllegalArgumentException ( "Name suffix cannot be empty" );
+    }
+    if ( suffix.charAt ( 0 ) == FULLSTOP ) {
+      throw new IllegalArgumentException ( "Name suffix cannot start with a dot: " + suffix );
+    }
+    if ( suffix.charAt ( suffix.length () - 1 ) == FULLSTOP ) {
+      throw new IllegalArgumentException ( "Name suffix cannot end with a dot: " + suffix );
+    }
+    if ( suffix.contains ( ".." ) ) {
+      throw new IllegalArgumentException ( "Name suffix cannot contain consecutive dots: " + suffix );
+    }
+
     // Check for dots in suffix
     int dot = suffix.indexOf ( FULLSTOP );
     if ( dot < 0 ) {
@@ -499,6 +573,7 @@ public final class FsName implements Name {
 
   @Override
   public int compareTo ( Name other ) {
+    Objects.requireNonNull ( other, "other must not be null" );
     // Identity check first - interned names are identity-comparable
     if ( this == other )
       return 0;

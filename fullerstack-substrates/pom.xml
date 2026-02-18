@@ -116,6 +116,13 @@
       <scope>provided</scope>
     </dependency>
 
+    <!-- JCTools - High-performance concurrent queues -->
+    <dependency>
+      <groupId>org.jctools</groupId>
+      <artifactId>jctools-core</artifactId>
+      <version>4.0.5</version>
+    </dependency>
+
     <!-- Vavr (functional data structures) -->
     <dependency>
       <groupId>io.vavr</groupId>
@@ -191,9 +198,12 @@
         <artifactId>maven-compiler-plugin</artifactId>
         <version>${maven-compiler-plugin.version}</version>
         <configuration>
-          <release>${java.version}</release>
+          <source>${java.version}</source>
+          <target>${java.version}</target>
           <compilerArgs>
             <arg>--enable-preview</arg>
+            <arg>--add-exports</arg>
+            <arg>java.base/jdk.internal.vm.annotation=ALL-UNNAMED</arg>
           </compilerArgs>
           <annotationProcessorPaths>
             <path>
@@ -212,6 +222,7 @@
           <argLine>
             --enable-preview
             -XX:+EnableDynamicAgentLoading
+            -XX:-RestrictContended
             -Dnet.bytebuddy.experimental=true
             --add-opens java.base/java.lang=ALL-UNNAMED
             --add-opens java.base/java.util=ALL-UNNAMED

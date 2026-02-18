@@ -1,6 +1,7 @@
 package io.fullerstack.substrates;
 
 import io.humainary.substrates.api.Substrates.Idempotent;
+import io.humainary.substrates.api.Substrates.Name;
 import io.humainary.substrates.api.Substrates.Provided;
 import io.humainary.substrates.api.Substrates.Subject;
 import io.humainary.substrates.api.Substrates.Subscription;
@@ -22,8 +23,11 @@ import io.humainary.substrates.api.Substrates.Subscription;
 @Provided
 public final class FsSubscription implements Subscription {
 
-  /// The subject identity for this subscription.
-  private final Subject < Subscription > subject;
+  /// Lazy subject - only allocated when subject() is called.
+  /// Saves FsSubject + FsId + AtomicLong CAS per subscribe in the common case.
+  private final    Name                     name;
+  private final    FsSubject < ? >          parent;
+  private volatile Subject < Subscription > subject;
 
   /// Action to run on close.
   private final Runnable onClose;
@@ -31,21 +35,26 @@ public final class FsSubscription implements Subscription {
   /// Whether this subscription has been closed.
   private volatile boolean closed;
 
-  /// Creates a new subscription with the given subject and close action.
+  /// Creates a new subscription with lazy subject creation.
   ///
-  /// @param subject the subject identity for this subscription
+  /// @param name   the name for the subscription subject
+  /// @param parent the parent subject for hierarchy
   /// @param onClose action to run when subscription is closed
-  public FsSubscription ( Subject < Subscription > subject, Runnable onClose ) {
-    this.subject = subject;
+  FsSubscription ( Name name, FsSubject < ? > parent, Runnable onClose ) {
+    this.name = name;
+    this.parent = parent;
     this.onClose = onClose;
   }
 
-  /// Returns the subject identity of this subscription.
-  ///
-  /// @return the subject of this subscription
+  /// Returns the subject identity of this subscription (lazy creation).
   @Override
   public Subject < Subscription > subject () {
-    return subject;
+    Subject < Subscription > s = subject;
+    if ( s == null ) {
+      s = new FsSubject <> ( name, parent, Subscription.class );
+      subject = s;
+    }
+    return s;
   }
 
   /// Closes this subscription, unregistering from the source.

@@ -15,19 +15,19 @@ public class ResourceManagementExample {
         // Cortex accessed via static cortex() method
 
         // Example 1: Manual lifecycle
-        manualLifecycle(cortex);
+        manualLifecycle();
 
         // Example 2: Scope-based lifecycle
-        scopeBasedLifecycle(cortex);
+        scopeBasedLifecycle();
 
         // Example 3: Closure pattern (ARM)
-        closurePattern(cortex);
+        closurePattern();
 
         // Example 4: Try-with-resources
-        tryWithResources(cortex);
+        tryWithResources();
     }
 
-    static void manualLifecycle(Cortex cortex) {
+    static void manualLifecycle() {
         System.out.println("=== Manual Lifecycle ===");
 
         Circuit circuit = cortex().circuit(cortex().name("manual"));
@@ -38,7 +38,7 @@ public class ResourceManagementExample {
 
         // Use resources...
         System.out.println("Using resources...");
-        Pipe<String> pipe = conduit.get(cortex().name("producer"));
+        Pipe<String> pipe = conduit.percept(cortex().name("producer"));
         pipe.emit("test");
 
         // Manual cleanup
@@ -47,7 +47,7 @@ public class ResourceManagementExample {
         System.out.println("Manually closed\n");
     }
 
-    static void scopeBasedLifecycle(Cortex cortex) {
+    static void scopeBasedLifecycle() {
         System.out.println("=== Scope-based Lifecycle ===");
 
         Scope scope = cortex().scope(cortex().name("transaction"));
@@ -63,7 +63,7 @@ public class ResourceManagementExample {
 
         // Use resources...
         System.out.println("Using scoped resources...");
-        Pipe<String> pipe = conduit.get(cortex().name("producer"));
+        Pipe<String> pipe = conduit.percept(cortex().name("producer"));
         pipe.emit("scoped message");
 
         // Close scope → closes all registered resources
@@ -72,7 +72,7 @@ public class ResourceManagementExample {
         System.out.println("Scope closed (auto-closed circuit and conduit)\n");
     }
 
-    static void closurePattern(Cortex cortex) {
+    static void closurePattern() {
         System.out.println("=== Closure Pattern (ARM) ===");
 
         Scope scope = cortex().scope(cortex().name("closure-scope"));
@@ -87,7 +87,7 @@ public class ResourceManagementExample {
                 Composer.pipe()
             );
 
-            Pipe<String> pipe = conduit.get(cortex().name("p"));
+            Pipe<String> pipe = conduit.percept(cortex().name("p"));
             pipe.emit("Temporary message");
 
             // Circuit automatically closed when this block exits
@@ -97,7 +97,7 @@ public class ResourceManagementExample {
         scope.close();
     }
 
-    static void tryWithResources(Cortex cortex) {
+    static void tryWithResources() {
         System.out.println("=== Try-with-Resources ===");
 
         try (Scope scope = cortex().scope(cortex().name("try-scope"))) {
@@ -112,7 +112,7 @@ public class ResourceManagementExample {
                 Composer.pipe()
             );
 
-            Pipe<Integer> pipe = conduit.get(cortex().name("counter"));
+            Pipe<Integer> pipe = conduit.percept(cortex().name("counter"));
             pipe.emit(42);
 
         } // Scope auto-closes, cleaning up circuit
