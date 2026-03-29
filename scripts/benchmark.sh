@@ -2,82 +2,84 @@
 #
 # Benchmark runner for Fullerstack Substrates
 #
-# This script wraps Humainary's jmh.sh with Fullerstack as the SPI provider.
-# Results are saved to benchmark-results/ directory.
+# Builds the shaded JMH jar and runs benchmarks directly.
 #
 # Usage:
-#   ./scripts/benchmark.sh                    # Run ALL Substrates benchmarks
+#   ./scripts/benchmark.sh                    # Run ALL benchmarks
 #   ./scripts/benchmark.sh PipeOps            # Run specific benchmark group
 #   ./scripts/benchmark.sh "Pipe|Circuit"     # Regex pattern for multiple groups
 #   ./scripts/benchmark.sh -l                 # List available benchmarks
 #
-# JMH Options (passed through to jmh.sh):
-#   ./scripts/benchmark.sh -wi 5 -i 10 -f 2   # Custom warmup/iterations/forks
-#
-# Available Benchmark Groups:
-#   Substrates: CircuitOps, ConduitOps, CortexOps, FlowOps, NameOps,
-#               PipeOps, ReservoirOps, ScopeOps, StateOps, SubscriberOps
-#   Serventis:  CacheOps, CounterOps, GaugeOps, ProbeOps, etc.
+# Available Benchmark Groups (14):
+#   CircuitOps, ConduitOps, CortexOps, CyclicOps, FlowOps, IdOps,
+#   NameOps, PipeOps, ReservoirOps, ScopeOps, StateOps, SubjectOps,
+#   SubscriberOps, TapOps
 #
 
 set -e
 
-# Configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
-HUMAINARY_ROOT="${PROJECT_ROOT}/substrates-api-java"
-FULLERSTACK_ROOT="${PROJECT_ROOT}/fullerstack-substrates"
-RESULTS_DIR="${PROJECT_ROOT}/benchmark-results"
+SUBSTRATES_DIR="${PROJECT_ROOT}/fullerstack-substrates"
 
-# Setup Java 25
-echo "=== Setting up Java 25 ==="
+# Setup Java 26
+echo "=== Setting up Java 26 ==="
 if [[ -f /usr/local/sdkman/bin/sdkman-init.sh ]]; then
     source /usr/local/sdkman/bin/sdkman-init.sh
-    sdk use java 25.0.1-open
+    sdk use java 26.ea.35-open
 elif [[ -f ~/.sdkman/bin/sdkman-init.sh ]]; then
     source ~/.sdkman/bin/sdkman-init.sh
-    sdk use java 25.0.1-open
+    sdk use java 26.ea.35-open
 else
-    echo "ERROR: SDKMAN not found. Please install Java 25."
+    echo "ERROR: SDKMAN not found. Please install Java 26."
     exit 1
 fi
 
-# Create results directory
-mkdir -p "${RESULTS_DIR}"
-
-# Build Fullerstack first (must be installed to local repo)
+# Build shaded benchmark jar
 echo ""
-echo "=== Building Fullerstack Substrates ==="
-mvn -f "${FULLERSTACK_ROOT}/pom.xml" clean install -DskipTests -q
+echo "=== Building benchmark jar ==="
+mvn -f "${SUBSTRATES_DIR}/pom.xml" clean install -DskipTests -Deditorconfig.skip=true -q
 
-# Generate output filenames
-TIMESTAMP=$(date +%Y%m%d-%H%M%S)
-if [[ -z "$1" ]] || [[ "$1" == -* ]]; then
-    PATTERN_NAME="all"
-else
-    PATTERN_NAME=$(echo "$1" | tr '|' '-' | tr '[:upper:]' '[:lower:]')
+BENCHMARK_JAR="${SUBSTRATES_DIR}/target/benchmarks.jar"
+if [[ ! -f "${BENCHMARK_JAR}" ]]; then
+    echo "ERROR: Benchmark jar not found at ${BENCHMARK_JAR}"
+    exit 1
 fi
-JSON_FILE="${RESULTS_DIR}/${PATTERN_NAME}-${TIMESTAMP}.json"
-TXT_FILE="${RESULTS_DIR}/${PATTERN_NAME}-${TIMESTAMP}.txt"
+
+# Default JMH options
+JMH_OPTS="-f 1 -wi 3 -i 5 -w 2s -r 2s -tu ns -bm avgt"
+
+# Handle arguments
+if [[ "$1" == "-l" ]]; then
+    echo ""
+    echo "=== Available Benchmarks ==="
+    java --enable-preview \
+        --add-exports java.base/jdk.internal.vm.annotation=ALL-UNNAMED \
+        -XX:-RestrictContended \
+        -jar "${BENCHMARK_JAR}" -l
+    exit 0
+fi
+
+FILTER=""
+if [[ -n "$1" ]] && [[ "$1" != -* ]]; then
+    FILTER="$1"
+    shift
+fi
+
+# Override defaults with any remaining args
+if [[ $# -gt 0 ]]; then
+    JMH_OPTS="$@"
+fi
 
 echo ""
-echo "=== Configuration ==="
-echo "  Results JSON: ${JSON_FILE}"
-echo "  Results Text: ${TXT_FILE}"
+echo "=== Running Benchmarks ==="
+echo "  Filter: ${FILTER:-ALL}"
+echo "  Options: ${JMH_OPTS}"
 echo ""
 
-# Run benchmarks using Humainary's jmh.sh with Fullerstack SPI
-echo "=== Running Benchmarks via Humainary jmh.sh ==="
-cd "${HUMAINARY_ROOT}"
-SPI_GROUP=io.fullerstack \
-SPI_ARTIFACT=fullerstack-substrates \
-SPI_VERSION=1.0.0-RC3 \
-./jmh.sh -rf json -rff "${JSON_FILE}" "$@" 2>&1 | tee "${TXT_FILE}"
-
-echo ""
-echo "=========================================="
-echo "Benchmark Complete!"
-echo "  JSON Results: ${JSON_FILE}"
-echo "  Text Results: ${TXT_FILE}"
-echo "=========================================="
-
+java --enable-preview \
+    --add-exports java.base/jdk.internal.vm.annotation=ALL-UNNAMED \
+    -XX:-RestrictContended \
+    -jar "${BENCHMARK_JAR}" \
+    ${FILTER:+"$FILTER"} \
+    ${JMH_OPTS}

@@ -8,20 +8,19 @@ This repository provides concrete runtime implementations of Humainary's observa
 
 ### [Fullerstack Substrates](fullerstack-substrates/)
 
-A **fully compliant implementation** of the [Humainary Substrates API](https://github.com/humainary-io/substrates-api-java) (version 1.0.0-PREVIEW).
+A **fully compliant implementation** of the [Humainary Substrates API](https://github.com/humainary-io/substrates-api-java) (version 1.0.0).
 
 **Status:** Production-ready
-**TCK Compliance:** ✅ 387/387 tests passing (100%)
-**Java Version:** 25 (Virtual Threads)
+**Tests:** 703 tests passing (255 contract + 448 TCK)
+**Java Version:** 26 (Virtual Threads)
 
 Substrates provides the infrastructure for building observable, event-driven systems with deterministic event ordering and semiotic signal interpretation.
 
 **Key Features:**
 - **Sequential Processing** - Virtual CPU Core pattern with dual-queue architecture
 - **Dynamic Routing** - On-demand channel creation and flow transformations
-- **Hierarchical Computation** - Cell-based bidirectional type transformation
 - **SPI-Based Loading** - Automatic provider discovery via ServiceLoader
-- **Full TCK Compliance** - Passes all 383 Humainary specification tests
+- **Comprehensive Tests** - 703 tests (255 contract + 448 TCK) covering annotation contracts and API compliance
 
 **Quick Start:**
 ```xml
@@ -64,13 +63,26 @@ We don't change the API or add features - we implement exactly what the Substrat
 
 ### Prerequisites
 
+**Java 26** is required (install via [SDKMAN](https://sdkman.io/)):
+
+```bash
+sdk install java 26.ea.35-open
+sdk use java 26.ea.35-open
+```
+
 Install the Humainary APIs locally (not yet published to Maven Central):
 
 ```bash
-# Install Substrates API (includes Serventis extensions)
+# Install Substrates API
 git clone https://github.com/humainary-io/substrates-api-java.git
-cd substrates-api-java
-mvn clean install
+cd substrates-api-java/api
+mvn clean install -DskipTests
+
+# Install Serventis API
+cd ../..
+git clone https://github.com/humainary-io/serventis-api-java.git
+cd serventis-api-java/api
+mvn clean install -DskipTests
 ```
 
 ### Build This Implementation
@@ -81,23 +93,18 @@ cd fullerstack-humainary/fullerstack-substrates
 mvn clean install
 ```
 
-### Run TCK Tests
+### Run Tests
 
 ```bash
-# Run the Humainary TCK against our implementation
-cd /path/to/substrates-api-java/tck
-mvn test \
-  -Dtck \
-  -Dtck.spi.groupId=io.fullerstack \
-  -Dtck.spi.artifactId=fullerstack-substrates \
-  -Dtck.spi.version=1.0.0-RC3
+cd fullerstack-humainary/fullerstack-substrates
+mvn test
 ```
 
-**Expected:** 387 tests, 0 failures, 0 errors
+**Expected:** 703 tests, 0 failures, 0 errors
 
 ## Requirements
 
-- **Java 25** (uses Virtual Threads)
+- **Java 26** (uses Virtual Threads)
 - **Maven 3.9+**
 
 ## License

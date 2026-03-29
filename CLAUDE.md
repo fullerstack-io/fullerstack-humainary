@@ -2,13 +2,13 @@
 
 ## Project Overview
 
-Java 25 implementation of the [Humainary Substrates API](https://github.com/humainary-io/substrates-api-java) — an SPI-based runtime for observable, event-driven systems with semiotic signal interpretation. We implement the API; all design credit goes to **William Louth** and the **Humainary** project.
+Java 26 implementation of the [Humainary Substrates API](https://github.com/humainary-io/substrates-api-java) — an SPI-based runtime for observable, event-driven systems with semiotic signal interpretation. We implement the API; all design credit goes to **William Louth** and the **Humainary** project.
 
-- **Language:** Java 25 (preview features enabled)
+- **Language:** Java 26 (preview features enabled)
 - **Build:** Maven 3.9+
-- **Package:** `io.fullerstack:fullerstack-substrates:1.0.0-RC2`
-- **API:** `io.humainary.substrates` (1.0.0-PREVIEW)
-- **TCK:** 387 tests passing (100% compliance)
+- **Package:** `io.fullerstack:fullerstack-substrates:1.0.0-RC3`
+- **API:** `io.humainary.substrates` (1.0.0)
+- **Tests:** 703 tests passing (255 contract + 448 TCK)
 - **License:** Apache 2.0
 
 ## Repository Layout
@@ -19,9 +19,10 @@ fullerstack-humainary/
 │   ├── pom.xml                      # Build configuration
 │   ├── spi.env                      # SPI env vars for scripts
 │   ├── src/
-│   │   ├── main/java/io/fullerstack/substrates/   # Implementation (26 classes)
+│   │   ├── main/java/io/fullerstack/substrates/   # Implementation (25 classes)
 │   │   ├── main/resources/META-INF/services/       # SPI provider registration
-│   │   ├── test/java/io/fullerstack/substrates/    # Unit + contract tests
+│   │   ├── test/java/io/fullerstack/substrates/    # Unit + contract tests (255)
+│   │   ├── test/java/io/humainary/substrates/tck/  # Integrated TCK tests (448)
 │   │   └── jmh/java/                               # JMH benchmark sources
 │   ├── docs/                        # Architecture, guides, benchmarks
 │   ├── jmh.sh                       # Direct JMH runner
@@ -41,11 +42,16 @@ fullerstack-humainary/
 
 ### Prerequisites
 
-The Humainary API must be installed locally (not on Maven Central):
+The Humainary APIs must be installed locally (not on Maven Central):
 
 ```bash
 git clone https://github.com/humainary-io/substrates-api-java.git
-cd substrates-api-java
+cd substrates-api-java/api
+mvn clean install -DskipTests
+cd ../..
+
+git clone https://github.com/humainary-io/serventis-api-java.git
+cd serventis-api-java/api
 mvn clean install -DskipTests
 ```
 
@@ -63,10 +69,11 @@ cd fullerstack-substrates
 mvn test
 ```
 
-### Run TCK (Humainary specification compliance)
+### Run Tests (all: contract + TCK)
 
 ```bash
-./scripts/tck.sh                    # All TCK tests (387 expected)
+cd fullerstack-substrates
+mvn test                            # All 703 tests (255 contract + 448 TCK)
 ./scripts/tck.sh CircuitTest        # Specific test class
 ```
 
@@ -78,7 +85,7 @@ mvn test
 ./scripts/benchmark.sh -l           # List available benchmarks
 ```
 
-Benchmark groups: CircuitOps, ConduitOps, CortexOps, FlowOps, NameOps, PipeOps, ReservoirOps, ScopeOps, StateOps, SubscriberOps (Substrates) + 30 Serventis groups.
+Benchmark groups (14): CircuitOps, ConduitOps, CortexOps, CyclicOps, FlowOps, IdOps, NameOps, PipeOps, ReservoirOps, ScopeOps, StateOps, SubjectOps, SubscriberOps, TapOps.
 
 ### Format Code
 
@@ -89,11 +96,11 @@ Benchmark groups: CircuitOps, ConduitOps, CortexOps, FlowOps, NameOps, PipeOps, 
 
 ## Java & JVM Configuration
 
-- Java 25 with `--enable-preview`
+- Java 26 with `--enable-preview`
 - Compiler flags: `--add-exports java.base/jdk.internal.vm.annotation=ALL-UNNAMED`
 - Surefire flags: `-XX:-RestrictContended`, `-XX:+EnableDynamicAgentLoading`, multiple `--add-opens`
 - JMH flags: `-XX:+UseCompactObjectHeaders`, `-XX:ParallelGCThreads=2`
-- SDKMAN used for Java version management: `sdk use java 25.0.1-open`
+- SDKMAN used for Java version management: `sdk use java 26.ea.35-open`
 
 ## Architecture
 
@@ -112,38 +119,46 @@ Benchmark groups: CircuitOps, ConduitOps, CortexOps, FlowOps, NameOps, PipeOps, 
 | Conduit | FsConduit | Channel factory and subscriber management |
 | Channel | FsChannel | Named emission port |
 | Pipe | FsPipe | Async emission carrier |
-| Cell | FsCell | Bidirectional hierarchical transformation |
 | Name | FsName | Hierarchical dot-notation names with caching |
 | Subject | FsSubject | Contextual entity identity |
 | Scope | FsScope | Resource lifecycle management |
 | Subscriber | FsSubscriber | Emission observer |
+| Subscription | FsSubscription | Subscriber lifecycle handle |
 | Flow | FsFlow | Emission processing pipeline |
+| Sift | FsSift | Comparative filtering operations |
 | State | FsState | Slot-based state container |
+| Slot | FsSlot | Typed state value holder |
 | Reservoir | FsReservoir | Buffered emission capture |
+| Tap | FsTap | Conduit emission transformation |
+| Closure | FsClosure | Block-scoped resource management |
+| Current | FsCurrent | Circuit execution context |
+| Registrar | FsRegistrar | Pipe registration during subscriber callback |
+| Substrate | FsSubstrate | Base substrate implementation |
+| Exception | FsException | Provider error handling |
 
 ### Infrastructure Classes
 
 | Class | Purpose |
 |-------|---------|
+| FsCortexProvider | SPI provider entry point |
 | IngressQueue | Wait-free MPSC queue for external emissions |
 | TransitQueue | Single-threaded FIFO for cascading emissions |
 | QChunk | Unified 64-slot chunk with interleaved [receiver, value] layout |
-| FsCurrent | Circuit execution context with thread-local cache |
 
 ### Key Design Patterns
 
 - **Dual-queue architecture:** IngressQueue (MPSC, wait-free) + TransitQueue (single-threaded cascade)
 - **VarHandle semantics:** release/acquire for memory ordering, opaque reads for parked flag
 - **@Contended annotation:** False-sharing prevention on hot fields
-- **Virtual threads:** Java 25 virtual CPU core pattern
+- **Virtual threads:** Java 26 virtual CPU core pattern
 - **Intrusive data structures:** No wrapper objects, cache-friendly layout
 
 ## Dependencies
 
 | Dependency | Version | Purpose |
 |-----------|---------|---------|
-| humainary-substrates-api | 1.0.0-PREVIEW | Substrates API interfaces |
-| humainary-substrates-ext-serventis | 1.0.0-PREVIEW | Serventis observability extension |
+| humainary-substrates-api | 1.0.0 | Substrates API interfaces |
+| humainary-serventis-api | 1.0.0 | Serventis semiotic observability API |
 | jctools-core | 4.0.5 | High-performance concurrent queues |
 | vavr | 0.10.4 | Functional data structures |
 | lombok | 1.18.34 | Compile-time code generation |
@@ -153,7 +168,6 @@ Benchmark groups: CircuitOps, ConduitOps, CortexOps, FlowOps, NameOps, PipeOps, 
 | junit-jupiter | 5.11.0 | Testing framework |
 | assertj | 3.26.3 | Fluent test assertions |
 | mockito | 5.15.2 | Mocking framework |
-| humainary-substrates-tck | 1.0.0-PREVIEW | TCK compliance tests |
 
 ## Code Style
 
@@ -170,7 +184,7 @@ Benchmark groups: CircuitOps, ConduitOps, CortexOps, FlowOps, NameOps, PipeOps, 
 - **Workflow:** `.github/workflows/publish-package.yml`
 - **Trigger:** Push to `main` with changes in `fullerstack-substrates/`
 - **Target:** GitHub Packages Maven registry
-- **Java:** Temurin 25
+- **Java:** Temurin 26
 
 ## Behavioral Rules
 

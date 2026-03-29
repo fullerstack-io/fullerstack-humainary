@@ -229,7 +229,7 @@ public final class FsName implements Name {
   /// Creates a Name from an Iterable with mapper.
   /// Uses indexed access for List inputs to avoid iterator allocation.
   @SuppressWarnings ( "unchecked" )
-  static < T > FsName fromIterable ( Iterable < ? extends T > parts, Function < T, String > mapper ) {
+  static < T > FsName fromIterable ( Iterable < ? extends T > parts, Function < ? super T, String > mapper ) {
     Objects.requireNonNull ( parts, "parts must not be null" );
     Objects.requireNonNull ( mapper, "mapper must not be null" );
     if ( parts instanceof java.util.List < ? > list ) {
@@ -292,7 +292,7 @@ public final class FsName implements Name {
   /// Creates a Name from an Iterator with mapper.
   /// First element validated by parse(); subsequent elements use internChild
   /// with inline guard for null/empty/dot edge cases.
-  static < T > FsName fromIterator ( Iterator < ? extends T > parts, Function < T, String > mapper ) {
+  static < T > FsName fromIterator ( Iterator < ? extends T > parts, Function < ? super T, String > mapper ) {
     Objects.requireNonNull ( parts, "parts must not be null" );
     Objects.requireNonNull ( mapper, "mapper must not be null" );
     if ( !parts.hasNext () ) {
@@ -469,7 +469,7 @@ public final class FsName implements Name {
   }
 
   @Override
-  public < T > Name name ( Iterable < ? extends T > parts, Function < T, String > mapper ) {
+  public < T > Name name ( Iterable < ? extends T > parts, Function < ? super T, String > mapper ) {
     FsName current = this;
     for ( T part : parts ) {
       current = (FsName) current.name ( mapper.apply ( part ) );
@@ -489,7 +489,7 @@ public final class FsName implements Name {
   }
 
   @Override
-  public < T > Name name ( Iterator < ? extends T > parts, Function < T, String > mapper ) {
+  public < T > Name name ( Iterator < ? extends T > parts, Function < ? super T, String > mapper ) {
     FsName current = this;
     while ( parts.hasNext () ) {
       current = (FsName) current.name ( mapper.apply ( parts.next () ) );

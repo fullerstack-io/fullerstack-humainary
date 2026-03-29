@@ -451,53 +451,6 @@ class NewAnnotationContractTest {
   }
 
   // ============================================================
-  // Circuit @New cell methods
-  // ============================================================
-
-  @Nested
-  @DisplayName ( "Circuit @New cell methods" )
-  class CircuitCellMethods {
-
-    @Test
-    @DisplayName ( "circuit.cell(ingress, egress, receptor) returns new instance each call" )
-    void cell_withoutName_returnsNewInstance () {
-      var cell1 = circuit.cell ( Composer.pipe (), // ingress
-        Composer.pipe (), // egress
-        (Receptor < Integer >) value -> {
-        } // receptor
-      );
-
-      var cell2 = circuit.cell ( Composer.pipe (), // ingress
-        Composer.pipe (), // egress
-        (Receptor < Integer >) value -> {
-        } // receptor
-      );
-
-      assertNotSame ( cell1, cell2, "cell(ingress, egress, receptor) must return new instance each call" );
-    }
-
-    @Test
-    @DisplayName ( "circuit.cell(name, ingress, egress, receptor) returns new instance each call" )
-    void cell_returnsNewInstance () {
-      Name cellName = cortex ().name ( "processor" );
-
-      var cell1 = circuit.cell ( cellName, Composer.pipe (), // ingress
-        Composer.pipe (), // egress
-        (Receptor < Integer >) value -> {
-        } // receptor
-      );
-
-      var cell2 = circuit.cell ( cellName, Composer.pipe (), // ingress
-        Composer.pipe (), // egress
-        (Receptor < Integer >) value -> {
-        } // receptor
-      );
-
-      assertNotSame ( cell1, cell2, "cell(name, ingress, egress, receptor) must return new instance each call" );
-    }
-  }
-
-  // ============================================================
   // Circuit @New subscriber method
   // ============================================================
 

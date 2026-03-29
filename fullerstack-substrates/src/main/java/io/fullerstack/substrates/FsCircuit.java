@@ -2,7 +2,6 @@ package io.fullerstack.substrates;
 
 import static java.util.Objects.requireNonNull;
 
-import io.humainary.substrates.api.Substrates.Cell;
 import io.humainary.substrates.api.Substrates.Channel;
 import io.humainary.substrates.api.Substrates.Circuit;
 import io.humainary.substrates.api.Substrates.Composer;
@@ -267,7 +266,7 @@ public final class FsCircuit implements Circuit {
     return new FsPipe <> ( name, this, (FsSubject < ? >) subject, receiver );
   }
 
-  /** Package-private pipe factory for FsChannel, FsConduit, FsFlow, FsCell */
+  /** Package-private pipe factory for FsChannel, FsConduit, FsFlow */
   < E > FsPipe < E > createPipe ( Name name, FsSubject < ? > parent, Consumer < Object > receiver ) {
     return new FsPipe <> ( name, this, parent, receiver );
   }
@@ -383,26 +382,6 @@ public final class FsCircuit implements Circuit {
 
 
   // ===================================================================================
-  // Factory Methods - Cell
-  // ===================================================================================
-
-  @New
-  @NotNull
-  @Override
-  public < I, E > Cell < I, E > cell (
-    @NotNull Name name,
-    @NotNull Composer < E, Pipe < I > > ingress,
-    @NotNull Composer < E, Pipe < E > > egress,
-    @NotNull Receptor < ? super E > receptor ) {
-    requireNonNull ( name );
-    requireNonNull ( ingress );
-    requireNonNull ( egress );
-    requireNonNull ( receptor );
-    return new FsCell <> (
-      new FsSubject <> ( name, (FsSubject < ? >) subject, Cell.class ), this, ingress, egress, receptor );
-  }
-
-  // ===================================================================================
   // Factory Methods - Conduit
   // ===================================================================================
 
@@ -422,7 +401,7 @@ public final class FsCircuit implements Circuit {
   public < P extends Percept, E > Conduit < P, E > conduit (
     @NotNull Name name,
     @NotNull Composer < E, ? extends P > composer,
-    @NotNull Configurer < Flow < E > > configurer ) {
+    @NotNull Configurer < ? super Flow < E > > configurer ) {
     requireNonNull ( name );
     requireNonNull ( composer );
     requireNonNull ( configurer );
@@ -447,8 +426,8 @@ public final class FsCircuit implements Circuit {
    * Extract receiver for same-circuit FsPipe targets to avoid double-queue.
    * For cross-circuit targets, wrap with target.emit() as normal.
    */
-  private < E > Consumer < Object > targetReceiver ( Pipe < E > target ) {
-    if ( target instanceof FsPipe < E > fsPipe && fsPipe.circuit () == this ) {
+  private < E > Consumer < Object > targetReceiver ( Pipe < ? super E > target ) {
+    if ( target instanceof FsPipe < ? > fsPipe && fsPipe.circuit () == this ) {
       return fsPipe.receiver ();
     }
     return new ReceptorReceiver <> ( target::emit );
@@ -476,7 +455,7 @@ public final class FsCircuit implements Circuit {
   @New
   @NotNull
   @Override
-  public < E > Pipe < E > pipe ( @NotNull Pipe < E > target, @NotNull Configurer < ? super Flow < E > > configurer ) {
+  public < E > Pipe < E > pipe ( @NotNull Pipe < ? super E > target, @NotNull Configurer < ? super Flow < E > > configurer ) {
     requireNonNull ( target );
     requireNonNull ( configurer );
     Pipe < E > basePipe = newPipe ( null, targetReceiver ( target ) );
@@ -526,7 +505,7 @@ public final class FsCircuit implements Circuit {
   @NotNull
   @Override
   public < E > Pipe < E > pipe (
-    @NotNull Name name, @NotNull Pipe < E > target, @NotNull Configurer < ? super Flow < E > > configurer ) {
+    @NotNull Name name, @NotNull Pipe < ? super E > target, @NotNull Configurer < ? super Flow < E > > configurer ) {
     requireNonNull ( name );
     requireNonNull ( target );
     requireNonNull ( configurer );
@@ -560,7 +539,7 @@ public final class FsCircuit implements Circuit {
   @NotNull
   @Override
   public < E > Subscriber < E > subscriber (
-    @NotNull Name name, @NotNull BiConsumer < Subject < Channel < E > >, Registrar < E > > callback ) {
+    @NotNull Name name, @NotNull BiConsumer < ? super Subject < Channel < E > >, ? super Registrar < E > > callback ) {
     requireNonNull ( name );
     requireNonNull ( callback );
     return new FsSubscriber <> (

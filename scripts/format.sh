@@ -15,7 +15,7 @@ JAVALINT_JAR="$ROOT_DIR/tools/javalint.jar"
 # Ensure Java is available
 if command -v sdk &> /dev/null; then
   source /usr/local/sdkman/bin/sdkman-init.sh 2>/dev/null || true
-  sdk use java 25.0.1-open > /dev/null 2>&1 || true
+  sdk use java 26.ea.35-open > /dev/null 2>&1 || true
 fi
 
 cd "$ROOT_DIR/fullerstack-substrates"

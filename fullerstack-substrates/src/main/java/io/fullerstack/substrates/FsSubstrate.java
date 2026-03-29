@@ -14,7 +14,7 @@ import io.humainary.substrates.api.Substrates.Substrate;
  *
  * <p>
  * Subclasses must implement a specific non-sealed Substrate interface (Conduit,
- * Pipe, Cell, etc.) and delegate their {@code subject()} method to
+ * Pipe, etc.) and delegate their {@code subject()} method to
  * {@link #lazySubject()}.
  *
  * @param <S>

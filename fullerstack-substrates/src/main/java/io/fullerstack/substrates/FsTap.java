@@ -37,7 +37,7 @@ final class FsTap < E, T > implements Tap < T > {
   private final Subject < Tap < T > >               subject;
   private final FsCircuit                           circuit;
   private final Function < ? super E, ? extends T > mapper;
-  private final Configurer < Flow < T > >           flowConfigurer;
+  private final Configurer < ? super Flow < T > >    flowConfigurer;
   private final Subscription                        sourceSubscription;
 
   /// Channels by name - mirrors source conduit's channel structure.
@@ -59,7 +59,7 @@ final class FsTap < E, T > implements Tap < T > {
     FsConduit < P, E > sourceConduit,
     FsCircuit circuit,
     Function < ? super E, ? extends T > mapper,
-    Configurer < Flow < T > > flowConfigurer ) {
+    Configurer < ? super Flow < T > > flowConfigurer ) {
     this.subject = new FsSubject <> ( name, parent, Tap.class );
     this.circuit = circuit;
     this.mapper = mapper;
@@ -99,8 +99,9 @@ final class FsTap < E, T > implements Tap < T > {
       rebuildChannelPipes ( channel );
     }
 
-    // Transform and deliver through router
+    // Transform and deliver through router (null = filtered out)
     T transformed = mapper.apply ( emission );
+    if ( transformed == null ) return;
 
     Consumer < T > router = channel.router;
     if ( router != null ) {
@@ -210,6 +211,7 @@ final class FsTap < E, T > implements Tap < T > {
   @NotNull
   @Override
   public Subscription subscribe ( @NotNull Subscriber < T > subscriber ) {
+    java.util.Objects.requireNonNull ( subscriber, "subscriber must not be null" );
     if ( closed ) {
       throw new IllegalStateException ( "Tap is closed" );
     }

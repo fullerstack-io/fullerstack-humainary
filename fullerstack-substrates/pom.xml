@@ -11,20 +11,21 @@
   <packaging>jar</packaging>
 
   <name>Substrates (Java)</name>
-  <description>Event-driven runtime implementation of Humainary Substrates API for Java 25
+  <description>Event-driven runtime implementation of Humainary Substrates API for Java 26
   </description>
 
   <url>https://github.com/fullerstack-io/fullerstack-humainary</url>
 
   <properties>
-    <!-- Java 25 (required for Substrates API PREVIEW) -->
-    <java.version>25</java.version>
-    <maven.compiler.source>25</maven.compiler.source>
-    <maven.compiler.target>25</maven.compiler.target>
+    <!-- Java 26 (required for Substrates API) -->
+    <java.version>26</java.version>
+    <maven.compiler.source>26</maven.compiler.source>
+    <maven.compiler.target>26</maven.compiler.target>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 
     <!-- Dependency Versions -->
-    <substrates-api.version>1.0.0-PREVIEW</substrates-api.version>
+    <substrates-api.version>1.0.0</substrates-api.version>
+    <serventis-api.version>1.0.0</serventis-api.version>
     <junit.version>5.11.0</junit.version>
     <assertj.version>3.26.3</assertj.version>
     <mockito.version>5.15.2</mockito.version>
@@ -94,11 +95,11 @@
       <version>${substrates-api.version}</version>
     </dependency>
 
-    <!-- Serventis Extension (ext/serventis) - part of Substrates API repo -->
+    <!-- Humainary Serventis API -->
     <dependency>
-      <groupId>io.humainary.substrates.ext</groupId>
-      <artifactId>humainary-substrates-ext-serventis</artifactId>
-      <version>${substrates-api.version}</version>
+      <groupId>io.humainary.serventis</groupId>
+      <artifactId>humainary-serventis-api</artifactId>
+      <version>${serventis-api.version}</version>
     </dependency>
 
     <!-- Logging (SLF4J API only, implementation provided by consumer) -->
@@ -146,14 +147,6 @@
       <groupId>net.bytebuddy</groupId>
       <artifactId>byte-buddy</artifactId>
       <version>1.15.11</version>
-      <scope>test</scope>
-    </dependency>
-
-    <!-- Substrates TCK (Test Compatibility Kit) -->
-    <dependency>
-      <groupId>io.humainary.substrates</groupId>
-      <artifactId>humainary-substrates-tck</artifactId>
-      <version>${substrates-api.version}</version>
       <scope>test</scope>
     </dependency>
 

@@ -20,17 +20,23 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up Java 25
+      - name: Set up Java 26
         uses: actions/setup-java@v4
         with:
-          java-version: '25'
+          java-version: '26-ea'
           distribution: 'temurin'
           cache: maven
 
       - name: Clone and install Humainary Substrates API
         run: |
           git clone https://github.com/humainary-io/substrates-api-java.git
-          cd substrates-api-java
+          cd substrates-api-java/api
+          mvn clean install -DskipTests
+
+      - name: Clone and install Humainary Serventis API
+        run: |
+          git clone https://github.com/humainary-io/serventis-api-java.git
+          cd serventis-api-java/api
           mvn clean install -DskipTests
 
       - name: Build and publish to GitHub Packages

@@ -3,7 +3,6 @@ package io.fullerstack.substrates;
 import static io.humainary.substrates.api.Substrates.*;
 import static org.junit.jupiter.api.Assertions.*;
 
-import io.humainary.substrates.api.Substrates.Cell;
 import io.humainary.substrates.api.Substrates.Circuit;
 import io.humainary.substrates.api.Substrates.Composer;
 import io.humainary.substrates.api.Substrates.Conduit;
@@ -362,26 +361,6 @@ class TenureAnnotationContractTest {
       }
     }
 
-    @Test
-    @DisplayName ( "Cell: each creation returns new instance (ephemeral standalone)" )
-    void cell_eachCreation_isIndependent () {
-      var cell1 = circuit.cell (
-        Composer.pipe (),
-        Composer.pipe (),
-        (Receptor < Integer >) value -> {
-        }
-      );
-
-      var cell2 = circuit.cell (
-        Composer.pipe (),
-        Composer.pipe (),
-        (Receptor < Integer >) value -> {
-        }
-      );
-
-      assertNotSame ( cell1, cell2,
-        "Each Cell creation must return a new instance" );
-    }
   }
 
   // ============================================================
@@ -391,27 +370,6 @@ class TenureAnnotationContractTest {
   @Nested
   @DisplayName ( "ANCHORED attachment transitions" )
   class AnchoredTransitions {
-
-    @Test
-    @DisplayName ( "Cell: children are anchored by parent (lookup returns same)" )
-    void cell_children_anchoredByParent () {
-      var parent = circuit.cell (
-        cortex ().name ( "parent" ),
-        Composer.pipe (),
-        Composer.pipe (),
-        (Receptor < Integer >) value -> {
-        }
-      );
-
-      Name childName = cortex ().name ( "child" );
-
-      // Lookup by name should return the same child (anchored/retained)
-      var child1 = parent.percept ( childName );
-      var child2 = parent.percept ( childName );
-
-      assertSame ( child1, child2,
-        "Cell children must be anchored: same name returns same child" );
-    }
 
     @Test
     @DisplayName ( "Subject: different circuits have different subjects" )

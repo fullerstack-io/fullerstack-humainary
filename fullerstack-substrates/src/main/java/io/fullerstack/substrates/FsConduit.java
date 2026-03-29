@@ -39,7 +39,7 @@ import io.humainary.substrates.api.Substrates.Tap;
 public final class FsConduit < P extends Percept, E > extends FsSubstrate < Conduit < P, E > > implements Conduit < P, E > {
 
   private final Function < Channel < E >, P > composer;
-  private final Configurer < Flow < E > >     flowConfigurer;
+  private final Configurer < ? super Flow < E > > flowConfigurer;
   private final FsCircuit                     circuit;
 
   /// Cache of percepts by name - copy-on-write for fast reads.
@@ -95,7 +95,7 @@ public final class FsConduit < P extends Percept, E > extends FsSubstrate < Cond
   }
 
   public FsConduit ( FsSubject < ? > parent, Name name, Function < Channel < E >, P > composer, FsCircuit circuit,
-                     Configurer < Flow < E > > flowConfigurer ) {
+                     Configurer < ? super Flow < E > > flowConfigurer ) {
     super ( parent, name );
     this.composer = composer;
     this.circuit = circuit;
@@ -350,7 +350,7 @@ public final class FsConduit < P extends Percept, E > extends FsSubstrate < Cond
   @Override
   public < T > Tap < T > tap (
     @NotNull Function < ? super E, ? extends T > mapper,
-    @NotNull Configurer < Flow < T > > configurer ) {
+    @NotNull Configurer < ? super Flow < T > > configurer ) {
     java.util.Objects.requireNonNull ( mapper, "mapper must not be null" );
     java.util.Objects.requireNonNull ( configurer, "configurer must not be null" );
     // Eager validation: invoke configurer against temporary flow per API contract

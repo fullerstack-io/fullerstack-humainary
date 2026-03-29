@@ -565,47 +565,6 @@ class NotNullAnnotationContractTest {
   }
 
   // ============================================================
-  // Cell @NotNull contracts
-  // ============================================================
-
-  @Nested
-  @DisplayName ( "Cell @NotNull contracts" )
-  class CellNotNullContracts {
-
-    @Test
-    @DisplayName ( "circuit.cell(null, ingress, egress, receptor) throws NullPointerException" )
-    void circuitCell_nullNameThrowsNPE () {
-      assertThrows ( NullPointerException.class,
-        () -> circuit.cell ( null, Composer.pipe (), Composer.pipe (), (Receptor < Integer >) v -> {
-        } ), "circuit.cell(null, ...) must throw NullPointerException" );
-    }
-
-    @Test
-    @DisplayName ( "circuit.cell(name, null, egress, receptor) throws NullPointerException" )
-    void circuitCell_nullIngressThrowsNPE () {
-      assertThrows ( NullPointerException.class,
-        () -> circuit.cell ( cortex ().name ( "cell" ), null, Composer.pipe (), (Receptor < Integer >) v -> {
-        } ), "circuit.cell(..., null ingress, ...) must throw NullPointerException" );
-    }
-
-    @Test
-    @DisplayName ( "circuit.cell(name, ingress, null, receptor) throws NullPointerException" )
-    void circuitCell_nullEgressThrowsNPE () {
-      assertThrows ( NullPointerException.class,
-        () -> circuit.cell ( cortex ().name ( "cell" ), Composer.pipe (), null, (Receptor < Integer >) v -> {
-        } ), "circuit.cell(..., null egress, ...) must throw NullPointerException" );
-    }
-
-    @Test
-    @DisplayName ( "circuit.cell(name, ingress, egress, null) throws NullPointerException" )
-    void circuitCell_nullReceptorThrowsNPE () {
-      assertThrows ( NullPointerException.class,
-        () -> circuit.cell ( cortex ().name ( "cell" ), Composer.pipe (), Composer.pipe (), null ),
-        "circuit.cell(..., null receptor) must throw NullPointerException" );
-    }
-  }
-
-  // ============================================================
   // Reservoir @NotNull contracts
   // ============================================================
 

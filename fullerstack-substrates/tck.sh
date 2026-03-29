@@ -1,23 +1,20 @@
 #!/bin/bash
-# Run TCK tests against Fullerstack SPI
-# Usage: ./tck.sh [test-pattern]
+# Run TCK + contract tests against Fullerstack SPI
 #
-# Examples:
-#   ./tck.sh                    # Run all TCK tests
-#   ./tck.sh CircuitTest        # Run specific test class
+# The upstream TCK source files were integrated directly into this repository
+# when the TCK module was removed in API 1.0.0. All 448 TCK tests now run
+# alongside our 255 contract tests (703 total).
+#
+# Usage: ./tck.sh [test-pattern]
 
 set -e
+
+echo "=== Fullerstack Test Runner ==="
+echo ""
+echo "Running 255 contract tests + 448 integrated TCK tests (703 total)"
+echo ""
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-# Extract version from pom.xml
-SPI_VERSION=$(grep -m1 '<version>' pom.xml | sed 's/.*<version>\(.*\)<\/version>.*/\1/')
-
-# Build first
-echo "Building Fullerstack $SPI_VERSION..."
-mvn clean install -DskipTests -Deditorconfig.skip=true -q
-
-# Run TCK via Humainary's tck.sh
-cd ../substrates-api-java
-SPI_GROUP=io.fullerstack SPI_ARTIFACT=fullerstack-substrates SPI_VERSION="$SPI_VERSION" ./tck.sh "$@"
+mvn test -Deditorconfig.skip=true "$@"

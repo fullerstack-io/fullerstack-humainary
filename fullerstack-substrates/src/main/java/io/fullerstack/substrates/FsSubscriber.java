@@ -31,7 +31,7 @@ public final class FsSubscriber < E > implements Subscriber < E > {
   private final Subject < Subscriber < E > > subject;
 
   /// The callback invoked when a channel is activated.
-  private final BiConsumer < Subject < Channel < E > >, Registrar < E > > callback;
+  private final BiConsumer < ? super Subject < Channel < E > >, ? super Registrar < E > > callback;
 
   /// Whether this subscriber has been closed.
   /// Volatile: read by activate() on circuit thread, written by close() from any thread.
@@ -46,7 +46,7 @@ public final class FsSubscriber < E > implements Subscriber < E > {
   ///
   /// @param subject the subject identity for this subscriber
   /// @param callback the callback to invoke when channels are activated
-  public FsSubscriber ( Subject < Subscriber < E > > subject, BiConsumer < Subject < Channel < E > >, Registrar < E > > callback ) {
+  public FsSubscriber ( Subject < Subscriber < E > > subject, BiConsumer < ? super Subject < Channel < E > >, ? super Registrar < E > > callback ) {
     this.subject = subject;
     this.callback = callback;
   }

@@ -1,10 +1,9 @@
 # Fullerstack Substrates - Architecture & Core Concepts
 
-**Substrates API:** 1.0.0-PREVIEW (sealed hierarchy + Cell API + Flow)
-**Serventis API:** 1.0.0-PREVIEW (24+ Instrument APIs for semiotic observability)
-**Java Version:** 25 (Virtual Threads + Preview Features)
-**Status:** 220+ tests passing (100% compliance)
-**Benchmarks:** 150+ benchmarks across 10 groups (see [BENCHMARK-COMPARISON.md](BENCHMARK-COMPARISON.md))
+**Substrates API:** 1.0.0 (sealed hierarchy + Flow)
+**Java Version:** 26 (Virtual Threads + Preview Features)
+**Status:** 703 tests passing (255 contract + 448 TCK)
+**Benchmarks:** 185 benchmarks across 14 groups (see [BENCHMARK-COMPARISON.md](BENCHMARK-COMPARISON.md))
 
 ---
 
@@ -19,6 +18,7 @@
 7. [Implementation Details](#implementation-details)
 8. [Thread Safety](#thread-safety)
 9. [Resource Lifecycle](#resource-lifecycle)
+
 
 ---
 
@@ -214,7 +214,7 @@ This is **semiotic observability** - meaning arises from the interplay between s
 ### Architecture Principles
 
 1. **Simplified Design** - Flat package structure, single implementations, no factory abstractions
-2. **PREVIEW Sealed Hierarchy** - Type-safe API contracts enforced by sealed interfaces
+2. **Sealed Hierarchy** - Type-safe API contracts enforced by sealed interfaces
 3. **Single Circuit Implementation** - FsCircuit with custom IngressQueue + TransitQueue
 4. **Dual-Queue Architecture** - Ingress (external) + Transit (cascading) with priority ordering
 5. **Eager Thread Initialization** - Virtual thread starts on circuit construction
@@ -243,22 +243,21 @@ This is **semiotic observability** - meaning arises from the interplay between s
 
 ---
 
-## PREVIEW Sealed Hierarchy
+## Sealed Hierarchy
 
 ### Sealed Interfaces (Java JEP 409)
 
-PREVIEW uses sealed interfaces to restrict which classes can implement them:
+Substrates uses sealed interfaces to restrict which classes can implement them:
 
 ```java
 sealed interface Source<E> permits Context
 sealed interface Context<E, S> permits Component
 sealed interface Component<E, S> permits Circuit, Container
-sealed interface Container<P, E, S> permits Conduit, Cell
+sealed interface Container<P, E, S> permits Conduit
 
 // Non-sealed extension points (we implement these)
 non-sealed interface Circuit extends Component
 non-sealed interface Conduit<P, E> extends Container
-non-sealed interface Cell<I, E> extends Container
 non-sealed interface Channel<E>
 non-sealed interface Pipe<E>
 non-sealed interface Sink<E>
@@ -266,7 +265,7 @@ non-sealed interface Sink<E>
 
 ### What This Means
 
-- **You CAN implement:** Circuit, Conduit, Cell, Channel, Pipe, Sink
+- **You CAN implement:** Circuit, Conduit, Channel, Pipe, Sink
 - **You CANNOT implement:** Source, Context, Component, Container (sealed)
 
 The API controls the type hierarchy to prevent incorrect compositions.
@@ -279,9 +278,8 @@ The API controls the type hierarchy to prevent incorrect compositions.
 // FsCircuit implements Circuit directly
 public final class FsCircuit implements Circuit { }  // ✓
 
-// Conduit and Cell are non-sealed
+// Conduit is non-sealed
 public class FsConduit<P extends Percept, E> implements Conduit<P, E> { }  // ✓
-public class FsCell<I, E> implements Cell<I, E> { }  // ✓
 ```
 
 ### Everything is a Subject
@@ -368,7 +366,7 @@ Circuit circuit = cortex().circuit(cortex().name("kafka"));
 Name brokerName = cortex().name("kafka.broker.1");
 ```
 
-**PREVIEW Change:** Cortex is now accessed statically via `Substrates.Cortex`, not instantiated.
+Cortex is accessed statically via `Substrates.Cortex`, not instantiated.
 
 **Implementation (FsCortex):**
 
@@ -394,7 +392,7 @@ public class FsCortex implements Cortex {
 **Key Features:**
 - Single virtual thread processes events with depth-first execution
 - Thread starts **eagerly** on circuit construction
-- Contains Conduits and Cells
+- Contains Conduits
 - Custom IngressQueue for wait-free producer path
 - TransitQueue for cascading emissions
 - VarHandle-based parked flag for efficient synchronization
@@ -405,12 +403,6 @@ Circuit circuit = cortex().circuit(cortex().name("kafka.monitoring"));
 Conduit<Pipe<MonitorSignal>, MonitorSignal> monitors =
     circuit.conduit(cortex().name("monitors"), Composer.pipe());
 
-// Or use Cells for hierarchical structure
-Cell<Signal, Signal> cell = circuit.cell(
-    Composer.pipe(),
-    Composer.pipe(),
-    outputPipe
-);
 ```
 
 **Virtual CPU Core Pattern (Dual-Queue Architecture):**
@@ -507,7 +499,7 @@ Conduit<Pipe<String>, String> messages =
 Pipe<String> pipe = messages.percept(cortex().name("user.login"));
 pipe.emit("User logged in");
 
-// Subscribe to all subjects (Conduit IS-A Source in PREVIEW)
+// Subscribe to all subjects (Conduit IS-A Source)
 messages.subscribe(
     circuit.subscriber(
         cortex().name("logger"),
@@ -638,63 +630,7 @@ Conduit<Pipe<Integer>, Integer> conduit = circuit.conduit(
 
 ---
 
-### 6. Cell (Hierarchical Transformation)
-
-**Purpose:** Type transformation with parent-child hierarchy (I → E)
-
-```java
-// Level 1: JMX stats → Broker health
-Cell<JMXStats, BrokerHealth> brokerCell = circuit.cell(
-    cortex().name("broker-1"),
-    stats -> assessBrokerHealth(stats)
-);
-
-// Level 2: Broker health → Cluster health
-Cell<BrokerHealth, ClusterHealth> clusterCell = brokerCell.cell(
-    cortex().name("cluster"),
-    health -> aggregateClusterHealth(health)
-);
-
-// Subscribe to cluster health
-clusterCell.subscribe(
-    circuit.subscriber(
-        cortex().name("alerting"),
-        (subject, registrar) -> registrar.register(health -> {
-            if (health.status() == ClusterStatus.CRITICAL) {
-                sendAlert(health);
-            }
-        })
-    )
-);
-
-// Input at top level
-brokerCell.input(jmxClient.fetchStats());
-// Transformed through hierarchy → cluster health emitted
-```
-
-**Implementation (FsCell):**
-
-```java
-public class FsCell<I, E> implements Cell<I, E> {
-    private final FsCircuit circuit;
-    private final Composer<E, Pipe<I>> ingress;
-    private final Composer<E, Pipe<E>> egress;
-    private final Receptor<? super E> receptor;
-    private final Map<Name, FsCell<E, ?>> children = new ConcurrentHashMap<>();
-
-    @Override
-    public <O> Cell<E, O> cell(Name name, Composer<O, Pipe<E>> ingress,
-                                Composer<O, Pipe<O>> egress, Receptor<? super O> receptor) {
-        return children.computeIfAbsent(name, n ->
-            new FsCell<>(new FsSubject<>(n, subject, Cell.class), circuit, ingress, egress, receptor)
-        );
-    }
-}
-```
-
----
-
-### 7. Scope (Resource Lifecycle)
+### 6. Scope (Resource Lifecycle)
 
 **Purpose:** Automatic resource cleanup
 
@@ -713,7 +649,7 @@ scope.close();  // Closes all registered resources automatically
 
 ---
 
-### 8. State & Slot (Immutable State)
+### 7. State & Slot (Immutable State)
 
 **Purpose:** Thread-safe state management
 
@@ -1000,9 +936,6 @@ FsCircuit
 
 FsConduit
 └── percepts: IdentityHashMap<Name, P> (copy-on-write)
-
-FsCell
-└── children: ConcurrentHashMap<Name, Cell>
 ```
 
 **Key Points:**
@@ -1015,8 +948,8 @@ FsCell
 ### Performance Characteristics
 
 **Test Suite:**
-- 220+ tests passing (100% compliance)
-- 150+ JMH benchmarks across 10 groups
+- 703 tests passing (255 contract + 448 TCK)
+- 185 JMH benchmarks across 14 groups
 
 **Key Fullerstack Strengths:**
 | Category | Benchmark | Notes |
@@ -1106,12 +1039,12 @@ try {
 **Fullerstack Substrates:**
 
 - **Simple** - Flat package structure, Fs-prefixed classes, easy to understand
-- **Correct** - 220+ tests passing (100% Humainary API compliance)
+- **Correct** - 703 tests passing (255 contract + 448 TCK)
 - **Lean** - Core implementation only, no application frameworks
 - **Optimized** - VarHandle parked check, custom IngressQueue, TransitQueue
 - **Thread-Safe** - Dual-queue pattern, proper concurrent collections
 - **Clean** - Explicit resource lifecycle management
-- **Benchmarked** - 150+ JMH benchmarks with documented performance
+- **Benchmarked** - 185 JMH benchmarks across 14 groups
 
 **Key Optimizations:**
 - **VarHandle Opaque Access** - Reduced parked check overhead from ~11% to ~4%

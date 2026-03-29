@@ -103,7 +103,7 @@ final class FsCortex implements Cortex {
   }
 
   @Override
-  public < T > Name name ( Iterable < ? extends T > it, Function < T, String > mapper ) {
+  public < T > Name name ( Iterable < ? extends T > it, Function < ? super T, String > mapper ) {
     return FsName.fromIterable ( it, mapper );
   }
 
@@ -113,7 +113,7 @@ final class FsCortex implements Cortex {
   }
 
   @Override
-  public < T > Name name ( Iterator < ? extends T > it, Function < T, String > mapper ) {
+  public < T > Name name ( Iterator < ? extends T > it, Function < ? super T, String > mapper ) {
     return FsName.fromIterator ( it, mapper );
   }
 

@@ -316,7 +316,7 @@ public final class FsFlow < E > implements Flow < E > {
 
   @Fluent
   @Override
-  public Flow < E > sift ( Comparator < ? super E > cmp, Configurer < Sift < E > > cfg ) {
+  public Flow < E > sift ( Comparator < ? super E > cmp, Configurer < ? super Sift < E > > cfg ) {
     Objects.requireNonNull ( cmp, "comparator must not be null" );
     Objects.requireNonNull ( cfg, "configurer must not be null" );
     FsSift < E > s = new FsSift <> ( cmp );

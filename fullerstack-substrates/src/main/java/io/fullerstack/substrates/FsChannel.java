@@ -122,7 +122,7 @@ final class FsChannel < E > implements Channel < E >, Receptor < E > {
   @NotNull
   @Override
   @SuppressWarnings ( "unchecked" )
-  public Pipe < E > pipe ( @NotNull Configurer < Flow < E > > configurer ) {
+  public Pipe < E > pipe ( @NotNull Configurer < ? super Flow < E > > configurer ) {
     try {
       Subject < Pipe < E > > ps = pipeSubject ();
       Pipe < E > basePipe = circuit.createPipe ( ps.name (), (FsSubject < ? >) subject, (Consumer < Object >) (Consumer < ? >) router );

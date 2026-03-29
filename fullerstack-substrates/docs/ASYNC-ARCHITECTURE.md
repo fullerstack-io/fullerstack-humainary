@@ -428,45 +428,6 @@ From JMH benchmarks:
 | Subscriber callback | ~50-100ns | End-to-end: emit → queue → callback |
 | Multi-threaded emission | Linear scaling | Wait-free producers (MPSC queue) |
 
-## Cell Hierarchical Architecture and Async
-
-### Cell Emission Flow
-
-Cells also use async emission through the Circuit Queue:
-
-```java
-// Cell hierarchy: cluster → broker → partition
-Cell<KafkaMetric, Alert> cluster = circuit.cell(composer);
-Cell<KafkaMetric, Alert> broker1 = cluster.percept(name("broker-1"));
-Cell<KafkaMetric, Alert> partition0 = broker1.percept(name("partition-0"));
-
-// Emit at leaf level
-partition0.emit(metric);  // ← Returns immediately (async)
-
-// Transformation and distribution happen asynchronously:
-// 1. partition0 transforms metric → alert
-// 2. Emits to broker1's Source
-// 3. Emits to cluster's Source
-// All via Circuit QNodes
-
-circuit.await();  // Wait for async processing
-```
-
-### Parent Broadcast
-
-```java
-// Emit to parent broadcasts to ALL children (asynchronously)
-broker1.emit(metric);  // ← Returns immediately
-
-// Async flow:
-// 1. QNode posted to Circuit's ingress queue
-// 2. Circuit processes: broadcast to all child Cells
-// 3. Each child transforms metric → alert (async)
-// 4. Each child emits to broker1's Source (async)
-
-circuit.await();  // Wait for all children to process
-```
-
 ## Async-First Design Rationale
 
 ### Why Async by Default?

@@ -91,7 +91,6 @@ Substrates is particularly well-suited when you:
 | Need deterministic event ordering | Virtual CPU Core pattern ensures FIFO + depth-first processing |
 | Want semiotic signal interpretation | Same signal = different meaning based on Subject context |
 | Building systems that must observe AND adapt autonomously | Layered hierarchy enables interpretation without human intervention |
-| Require hierarchical computation | Cell-based bidirectional type transformation |
 | Coordinating heterogeneous actors | Unified vocabulary for humans, services, and agents |
 | Performance requirements | 100k+ metrics @ 1Hz with ~2% CPU |
 

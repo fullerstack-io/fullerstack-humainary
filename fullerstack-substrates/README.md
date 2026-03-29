@@ -1,29 +1,35 @@
 # Fullerstack Substrates
 
-A **fully compliant implementation** of the [Humainary Substrates API](https://github.com/humainary-io/substrates-api-java) (version 1.0.0-PREVIEW).
+A **fully compliant implementation** of the [Humainary Substrates API](https://github.com/humainary-io/substrates-api-java) (version 1.0.0).
 
 ## Status
 
 - **Version:** 1.0.0-RC3
-- **TCK Compliance:** 463 tests (447 passing, 16 skipped in CellTest)
-- **Java Version:** 25 (Virtual Threads + Preview Features)
-- **Substrates API:** 1.0.0-PREVIEW
+- **Java Version:** 26 (Virtual Threads + Preview Features)
+- **Substrates API:** 1.0.0
 
 ## Quick Start
 
 ### Prerequisites
 
-1. **Java 25** (install via SDKMAN):
+1. **Java 26** (install via SDKMAN):
    ```bash
-   sdk install java 25.0.1-open
-   sdk use java 25.0.1-open
+   sdk install java 26.ea.35-open
+   sdk use java 26.ea.35-open
    ```
 
-2. **Install Humainary Substrates API** (not yet on Maven Central):
+2. **Install Humainary APIs** (not yet on Maven Central):
    ```bash
+   # Substrates API
    git clone https://github.com/humainary-io/substrates-api-java.git
-   cd substrates-api-java
-   mvn clean install
+   cd substrates-api-java/api
+   mvn clean install -DskipTests
+   cd ../..
+
+   # Serventis API
+   git clone https://github.com/humainary-io/serventis-api-java.git
+   cd serventis-api-java/api
+   mvn clean install -DskipTests
    ```
 
 ### Build
@@ -100,7 +106,6 @@ Cascading Emissions → Transit Queue (Intrusive FIFO) →           → Depth-F
 | `Conduit` | `FsConduit` | Creates Channels, manages subscribers |
 | `Channel` | `FsChannel` | Named emission port |
 | `Pipe` | `FsPipe` | Async emission carrier |
-| `Cell` | `FsCell` | Hierarchical transformation |
 | `Name` | `FsName` | Hierarchical dot-notation names |
 | `Subject` | `FsSubject` | Contextual entity identity |
 | `Scope` | `FsScope` | Resource lifecycle management |
@@ -146,38 +151,21 @@ See [Benchmark Comparison](docs/BENCHMARK-COMPARISON.md) for full results across
 - [Kitchen Model](docs/KITCHEN-MODEL.md) - Kitchen analogy for Substrates concepts
 - [Use Cases](docs/USE-CASES.md) - Practical application scenarios
 
-## Running TCK
+## Running Tests
 
 ```bash
-# Build Fullerstack first
-cd fullerstack-substrates && mvn clean install -DskipTests -Deditorconfig.skip=true
-
-# Run TCK via Humainary's tck.sh
-cd ../substrates-api-java
-SPI_GROUP=io.fullerstack SPI_ARTIFACT=fullerstack-substrates SPI_VERSION=1.0.0-RC3 ./tck.sh
+cd fullerstack-substrates && mvn test
 ```
 
-Or run directly with Maven:
-
-```bash
-cd substrates-api-java
-mvn test -pl tck -Dtck \
-  -Dsubstrates.spi.groupId=io.fullerstack \
-  -Dsubstrates.spi.artifactId=fullerstack-substrates \
-  -Dsubstrates.spi.version=1.0.0-RC3
-```
-
-**Expected:** 463 tests, 0 failures, 16 skipped (CellTest)
+> **703 tests** (255 contract + 448 TCK). The upstream TCK source files were integrated directly
+> into this repository when the TCK module was removed in API 1.0.0.
 
 ## Running Benchmarks
 
 ```bash
-# Build Fullerstack first
-cd fullerstack-substrates && mvn clean install -DskipTests -Deditorconfig.skip=true
-
-# Run benchmarks via Humainary's jmh.sh
-cd ../substrates-api-java
-SPI_GROUP=io.fullerstack SPI_ARTIFACT=fullerstack-substrates SPI_VERSION=1.0.0-RC3 ./jmh.sh
+./scripts/benchmark.sh              # Run all 14 benchmark groups
+./scripts/benchmark.sh PipeOps      # Run a specific group
+./scripts/benchmark.sh -l           # List available benchmarks
 ```
 
 ## License

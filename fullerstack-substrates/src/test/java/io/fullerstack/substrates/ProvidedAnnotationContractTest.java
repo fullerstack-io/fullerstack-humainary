@@ -44,7 +44,6 @@ import org.junit.jupiter.api.Test;
  *           <li>Circuit - Event orchestration hub
  *           <li>Conduit - Emission routing container
  *           <li>Channel - Named emission port
- *           <li>Cell - Hierarchical computation unit
  *           <li>Name - Hierarchical identifier
  *           <li>Subject - Substrate identity
  *           <li>State - Immutable slot collection

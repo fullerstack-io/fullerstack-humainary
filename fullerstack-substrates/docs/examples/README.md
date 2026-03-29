@@ -3,7 +3,7 @@
 Practical examples demonstrating common Substrates usage patterns.
 
 **Implementation:** Fullerstack Substrates (FsCircuit)
-**API Version:** 1.0.0-PREVIEW
+**API Version:** 1.0.0
 **Java Version:** 25 (Virtual Threads + Preview Features)
 
 ## Quick Start Examples
