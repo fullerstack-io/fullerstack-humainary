@@ -1,6 +1,6 @@
-# Example 2: Transformations with Sequencer
+# Example 2: Transformations with Configurer
 
-Shows how to use Sequencer to transform emissions with filter, limit, and sampling.
+Shows how to use Configurer to transform emissions with filter, limit, and sampling.
 
 ## Code
 
@@ -125,7 +125,7 @@ Only emit when value changes.
 .diff()  // Suppress duplicates
 ```
 
-### sift(Comparator, Sequencer<Sift>)
+### sift(Comparator, Configurer<Sift>)
 Advanced filtering based on ordering.
 
 ```java

@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-Java 26 implementation of the [Humainary Substrates API](https://github.com/humainary-io/substrates-api-java) — an SPI-based runtime for observable, event-driven systems with semiotic signal interpretation. We implement the API; all design credit goes to **William Louth** and the **Humainary** project.
+Java 26 implementation of the [Humainary Substrates API](https://github.com/humainary-io/substrates-api-java) — deterministic signal circulation infrastructure. We implement the [specification](https://github.com/humainary-io/substrates-api-spec); all design credit goes to **William Louth** and the **Humainary** project.
 
 - **Language:** Java 26 (preview features enabled)
 - **Build:** Maven 3.9+

@@ -135,25 +135,26 @@ final void submitTransit(Consumer<Object> receiver, Object value) {
 - **Causality preservation**: Cascading effects complete before next ingress item
 - **Wait-free producer**: `getAndSet` on ingress tail always succeeds in one atomic operation
 
-### VarHandle for Parked Flag
+### VarHandle for Await Coordination
 
-We use VarHandle with opaque/release semantics for the parked flag instead of volatile:
+The circuit uses a VarHandle-managed `awaiterThread` field for `circuit.await()` coordination:
 
 ```java
-private static final VarHandle PARKED;
+private static final VarHandle AWAITER;
+static {
+    AWAITER = l.findVarHandle(FsCircuit.class, "awaiterThread", Thread.class);
+}
 
-@SuppressWarnings("unused") // Accessed via VarHandle
-@Contended
-private volatile boolean parked;
+@SuppressWarnings("unused") // accessed via VarHandle
+private volatile Thread awaiterThread;
 ```
 
 **Access patterns**:
-- **Read (producer)**: `PARKED.getOpaque(this)` - cheaper than volatile read
-- **Write before park**: `PARKED.setRelease(this, true)` - ensures visibility before parking
-- **Write after wake**: `PARKED.setOpaque(this, false)` - cheaper, already running
-- **Wake (CAS)**: `PARKED.compareAndSet(this, true, false)` - only one producer wakes
+- **Register awaiter**: `AWAITER.compareAndExchange(this, null, current)` — CAS to become the awaiter
+- **Check completion**: `AWAITER.getOpaque(this) == current` — spin while awaiting
+- **Release awaiter**: `AWAITER.getAndSet(this, null)` — clear and unpark
 
-`@Contended` prevents false sharing between parked flag and other fields.
+`@Contended` is used on IngressQueue's `tail` and `freeHead` fields to prevent false sharing between producer atomics and consumer reads.
 
 ### ReceptorReceiver Pattern (JIT Monomorphism)
 
