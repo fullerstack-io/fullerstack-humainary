@@ -6,7 +6,7 @@ Java 26 implementation of the [Humainary Substrates API](https://github.com/huma
 
 - **Language:** Java 26 (preview features enabled)
 - **Build:** Maven 3.9+
-- **Package:** `io.fullerstack:fullerstack-substrates:1.0.0-RC3`
+- **Package:** `io.fullerstack:fullerstack-substrates:1.0.0-RC4`
 - **API:** `io.humainary.substrates` (1.0.0)
 - **Tests:** 703 tests passing (255 contract + 448 TCK)
 - **License:** Apache 2.0
