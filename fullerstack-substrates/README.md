@@ -1,45 +1,40 @@
 # Fullerstack Substrates
 
-A **fully compliant implementation** of the [Humainary Substrates API](https://github.com/humainary-io/substrates-api-java) (version 1.0.0).
+SPI provider implementation of the [Humainary Substrates API](https://github.com/humainary-io/substrates-api-java) — deterministic signal circulation infrastructure for Java 26.
 
-## Status
+| | |
+|---|---|
+| **Version** | 1.0.0-RC3 |
+| **API** | Substrates 1.0.0 + Serventis 1.0.0 |
+| **Java** | 26 (Virtual Threads + Preview) |
+| **Tests** | 703 (255 contract + 448 TCK) |
+| **Benchmarks** | 14 JMH groups, 185 benchmarks |
 
-- **Version:** 1.0.0-RC3
-- **Java Version:** 26 (Virtual Threads + Preview Features)
-- **Substrates API:** 1.0.0
+## Prerequisites
 
-## Quick Start
-
-### Prerequisites
-
-1. **Java 26** (install via SDKMAN):
+1. **Java 26** via [SDKMAN](https://sdkman.io/):
    ```bash
    sdk install java 26.ea.35-open
    sdk use java 26.ea.35-open
    ```
 
-2. **Install Humainary APIs** (not yet on Maven Central):
+2. **Humainary APIs** (not yet on Maven Central):
    ```bash
-   # Substrates API
    git clone https://github.com/humainary-io/substrates-api-java.git
-   cd substrates-api-java/api
-   mvn clean install -DskipTests
-   cd ../..
+   cd substrates-api-java/api && mvn clean install -DskipTests && cd ../..
 
-   # Serventis API
    git clone https://github.com/humainary-io/serventis-api-java.git
-   cd serventis-api-java/api
-   mvn clean install -DskipTests
+   cd serventis-api-java/api && mvn clean install -DskipTests && cd ../..
    ```
 
-### Build
+## Build & Test
 
 ```bash
-cd fullerstack-substrates
-mvn clean install
+mvn clean install        # Build + run all 703 tests
+mvn test                 # Tests only
 ```
 
-### Usage
+## Usage
 
 ```xml
 <dependency>
@@ -49,135 +44,84 @@ mvn clean install
 </dependency>
 ```
 
+The `FsCortexProvider` is discovered automatically via `ServiceLoader`. No configuration needed — just add the dependency and call `Substrates.cortex()`.
+
 ```java
 import static io.humainary.substrates.api.Substrates.*;
 
-// Create circuit with sequential processing
-Circuit circuit = cortex().circuit(cortex().name("example"));
+var cortex  = cortex();
+var circuit = cortex.circuit(cortex.name("example"));
 
-// Create conduit for typed emissions
-Conduit<Pipe<String>, String> messages = circuit.conduit(
-    cortex().name("messages"),
+var conduit = circuit.conduit(
+    cortex.name("events"),
     Composer.pipe()
 );
 
-// Subscribe to emissions
-messages.subscribe(circuit.subscriber(
-    cortex().name("logger"),
-    (subject, registrar) -> registrar.register(msg -> System.out.println(msg))
+conduit.subscribe(circuit.subscriber(
+    cortex.name("logger"),
+    (subject, registrar) -> registrar.register(System.out::println)
 ));
 
-// Emit messages
-Pipe<String> pipe = messages.percept(cortex().name("user-1"));
-pipe.emit("Hello, Substrates!");
-
-// Wait for async processing
+conduit.percept(cortex.name("source")).emit("hello");
 circuit.await();
-
-// Cleanup
 circuit.close();
 ```
 
 ## Architecture
 
-### Virtual CPU Core Pattern
+Each circuit runs on a single virtual thread with two internal queues:
 
-Each Circuit uses a single virtual thread with dual-queue architecture:
+- **IngressQueue** — wait-free MPSC for external emissions (~13ns per emit)
+- **TransitQueue** — single-threaded FIFO for cascading emissions (priority over ingress)
 
+Transit queue priority ensures **causal completion** — all cascading effects resolve atomically before the next external emission is processed. This eliminates race conditions without locks.
+
+See [Circuit Design](docs/CIRCUIT-DESIGN.md) for VarHandle memory ordering, `@Contended` false-sharing prevention, and the QChunk interleaved array layout.
+
+For the conceptual model, read [Kitchen Model](docs/KITCHEN-MODEL.md) — the dual-queue architecture explained as a restaurant kitchen with one chef.
+
+## Benchmarks
+
+```bash
+./scripts/benchmark.sh              # All 14 groups
+./scripts/benchmark.sh PipeOps      # Specific group
+./scripts/benchmark.sh -l           # List available
 ```
-External Emissions → Ingress Queue (IngressQueue, wait-free) →
-                                                               → Virtual Thread
-Cascading Emissions → Transit Queue (Intrusive FIFO) →           → Depth-First Execution
-```
 
-**Key Features:**
-- **Wait-free producer path** - Custom IngressQueue for external emissions
-- **TransitQueue** - Separate class for cascading emissions
-- **VarHandle optimization** - Opaque reads for parked flag (cheaper than volatile)
-- **Eager thread start** - Thread created immediately on circuit construction
-- **Depth-first execution** - Transit queue has priority for causality preservation
+Selected results (ns/op, JDK 26, GitHub Codespaces 2 vCPU):
 
-### Implementation Classes
-
-| API Interface | Implementation | Description |
-|---------------|----------------|-------------|
-| `Cortex` | `FsCortex` | Entry point, creates Circuits and Scopes |
-| `Circuit` | `FsCircuit` | Event orchestration with dual-queue processing |
-| `Conduit` | `FsConduit` | Creates Channels, manages subscribers |
-| `Channel` | `FsChannel` | Named emission port |
-| `Pipe` | `FsPipe` | Async emission carrier |
-| `Name` | `FsName` | Hierarchical dot-notation names |
-| `Subject` | `FsSubject` | Contextual entity identity |
-| `Scope` | `FsScope` | Resource lifecycle management |
-| `Subscriber` | `FsSubscriber` | Emission observer |
-| `Tap` | `FsTap` | Conduit emission transformation |
-| `Reservoir` | `FsReservoir` | Buffered emission capture |
-| `Current` | `FsCurrent` | Circuit execution context |
-| `State` | `FsState` | Slot-based state container |
-| `Slot` | `FsSlot` | Typed state value holder |
-| `Flow` | `FsFlow` | Emission processing pipeline |
-
-Internal support classes: `IngressQueue` (wait-free external queue), `TransitQueue` (intrusive cascade FIFO), `QChunk` (unrolled linked list with cache-line isolation).
-
-## Performance
-
-Benchmarks are run using JMH (Java Microbenchmark Harness) in average time mode (ns/op).
-See [Benchmark Comparison](docs/BENCHMARK-COMPARISON.md) for full results across all 14 benchmark groups.
-
-### Selected Results (Fullerstack ns/op)
-
-| Benchmark | ns/op | Group |
-|-----------|------:|-------|
-| hot_pipe_async | 12.2 | CircuitOps |
-| hot_conduit_create | 20.1 | CircuitOps |
-| async_emit_single | 11.0 | PipeOps |
-| name_from_string | 2.2 | NameOps |
-| scope_create_and_close | 0.7 | ScopeOps |
-| subject_compare | 2.9 | SubjectOps |
-| baseline_no_flow_await | 18.6 | FlowOps |
-| cyclic_emit | 2.6 | CyclicOps |
-
-> Hardware: AMD EPYC 7763 (2 vCPU), 8 GB, JDK 25.0.1 (GitHub Codespaces).
-> See the comparison doc for Humainary baselines collected on Apple M4.
+| Benchmark | ns/op | What it measures |
+|-----------|------:|------------------|
+| `hot_pipe_async` | 13.7 | Emission through pre-warmed pipe |
+| `conduit.get_by_name` | 2.8 | Percept lookup by name |
+| `name_from_string` | 2.7 | Name creation + interning |
+| `scope_create_and_close` | 0.95 | Scope lifecycle |
+| `cyclic_emit` | 3.8 | Cyclic pipe network emission |
+| `flow_guard_await` | 35.2 | Emission through guard flow operator |
 
 ## Documentation
 
-- [Architecture Overview](docs/ARCHITECTURE.md) - Core concepts and design
-- [Async Architecture](docs/ASYNC-ARCHITECTURE.md) - Async-first design details
-- [Circuit Design](docs/CIRCUIT-DESIGN.md) - Dual-queue implementation
-- [Developer Guide](docs/DEVELOPER-GUIDE.md) - Best practices and patterns
-- [Benchmark Comparison](docs/BENCHMARK-COMPARISON.md) - Full JMH results
-- [Serventis Integration](docs/SERVENTIS.md) - Semiotic observability instruments
-- [Kitchen Model](docs/KITCHEN-MODEL.md) - Kitchen analogy for Substrates concepts
-- [Use Cases](docs/USE-CASES.md) - Practical application scenarios
+**Start here**: [Kitchen Model](docs/KITCHEN-MODEL.md) — explains everything as a story.
 
-## Running Tests
+| Document | What it covers |
+|----------|---------------|
+| [Kitchen Model](docs/KITCHEN-MODEL.md) | Dual-queue architecture as a restaurant kitchen |
+| [Architecture](docs/ARCHITECTURE.md) | Core design, sealed hierarchy, data flow, thread safety |
+| [Circuit Design](docs/CIRCUIT-DESIGN.md) | Queue internals, VarHandle, performance optimizations |
+| [Async Architecture](docs/ASYNC-ARCHITECTURE.md) | Why everything is async, testing patterns, await() |
+| [Developer Guide](docs/DEVELOPER-GUIDE.md) | Usage patterns, best practices, Serventis integration |
+| [Use Cases](docs/USE-CASES.md) | Problem domains and when to use Substrates |
 
-```bash
-cd fullerstack-substrates && mvn test
-```
+### External References
 
-> **703 tests** (255 contract + 448 TCK). The upstream TCK source files were integrated directly
-> into this repository when the TCK module was removed in API 1.0.0.
-
-## Running Benchmarks
-
-```bash
-./scripts/benchmark.sh              # Run all 14 benchmark groups
-./scripts/benchmark.sh PipeOps      # Run a specific group
-./scripts/benchmark.sh -l           # List available benchmarks
-```
+| Resource | Description |
+|----------|-------------|
+| [Substrates Specification](https://github.com/humainary-io/substrates-api-spec) | Formal spec + design rationale |
+| [Substrates API](https://github.com/humainary-io/substrates-api-java) | API interfaces |
+| [Serventis API](https://github.com/humainary-io/serventis-api-java) | Semiotic observability instruments |
 
 ## License
 
 Apache License 2.0
 
-## Acknowledgments
-
-This implementation is based entirely on the Humainary Substrates API designed by **William Louth**.
-
-- **William Louth** - API design and architectural vision
-- **Humainary** - Substrates and Serventis specifications
-- [Humainary Website](https://humainary.io/)
-- [Substrates API](https://github.com/humainary-io/substrates-api-java)
-- [Observability X Blog](https://humainary.io/blog/category/observability-x/)
+All API design by **[William Louth](https://humainary.io/)** and the **[Humainary](https://humainary.io/)** project.
