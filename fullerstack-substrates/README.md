@@ -7,7 +7,7 @@ SPI provider implementation of the [Humainary Substrates API](https://github.com
 | **Version** | 1.0.0-RC4 |
 | **API** | Substrates 1.0.0 + Serventis 1.0.0 |
 | **Java** | 26 (Virtual Threads + Preview) |
-| **Tests** | 703 (255 contract + 448 TCK) |
+| **Tests** | 722 (274 contract + 448 TCK) |
 | **Benchmarks** | 14 JMH groups, 185 benchmarks |
 
 ## Prerequisites
@@ -30,7 +30,7 @@ SPI provider implementation of the [Humainary Substrates API](https://github.com
 ## Build & Test
 
 ```bash
-mvn clean install        # Build + run all 703 tests
+mvn clean install        # Build + run all 722 tests
 mvn test                 # Tests only
 ```
 

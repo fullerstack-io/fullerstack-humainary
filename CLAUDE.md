@@ -8,7 +8,7 @@ Java 26 implementation of the [Humainary Substrates API](https://github.com/huma
 - **Build:** Maven 3.9+
 - **Package:** `io.fullerstack:fullerstack-substrates:1.0.0-RC4`
 - **API:** `io.humainary.substrates` (1.0.0)
-- **Tests:** 703 tests passing (255 contract + 448 TCK)
+- **Tests:** 722 tests passing (274 contract + 448 TCK)
 - **License:** Apache 2.0
 
 ## Repository Layout
@@ -73,7 +73,7 @@ mvn test
 
 ```bash
 cd fullerstack-substrates
-mvn test                            # All 703 tests (255 contract + 448 TCK)
+mvn test                            # All 722 tests (274 contract + 448 TCK)
 ./scripts/tck.sh CircuitTest        # Specific test class
 ```
 
