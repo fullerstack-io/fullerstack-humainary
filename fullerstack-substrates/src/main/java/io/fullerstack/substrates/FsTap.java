@@ -37,7 +37,7 @@ final class FsTap < E, T > implements Tap < T > {
   private final Subject < Tap < T > >               subject;
   private final FsCircuit                           circuit;
   private final Function < ? super E, ? extends T > mapper;
-  private final Configurer < ? super Flow < T > >    flowConfigurer;
+  private final Configurer < ? super Flow < T > >   flowConfigurer;
   private final Subscription                        sourceSubscription;
 
   /// Channels by name - mirrors source conduit's channel structure.

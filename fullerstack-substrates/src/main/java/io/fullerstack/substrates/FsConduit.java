@@ -38,9 +38,9 @@ import io.humainary.substrates.api.Substrates.Tap;
 @Provided
 public final class FsConduit < P extends Percept, E > extends FsSubstrate < Conduit < P, E > > implements Conduit < P, E > {
 
-  private final Function < Channel < E >, P > composer;
+  private final Function < Channel < E >, P >     composer;
   private final Configurer < ? super Flow < E > > flowConfigurer;
-  private final FsCircuit                     circuit;
+  private final FsCircuit                         circuit;
 
   /// Cache of percepts by name - copy-on-write for fast reads.
   /// Using IdentityHashMap since FsName is interned (same path = same object).
