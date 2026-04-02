@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+                             http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>io.fullerstack</groupId>
+  <artifactId>agent-observability</artifactId>
+  <version>0.1.0-SNAPSHOT</version>
+  <packaging>jar</packaging>
+
+  <name>Agent Observability</name>
+  <description>Semiotic observability for AI agent workflows.
+    Instruments Spring AI ChatClient with Serventis signs,
+    runs health assessment in-process via Substrates circuits.</description>
+
+  <properties>
+    <java.version>26</java.version>
+    <maven.compiler.source>26</maven.compiler.source>
+    <maven.compiler.target>26</maven.compiler.target>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <substrates-api.version>1.0.0</substrates-api.version>
+    <serventis-api.version>1.0.0</serventis-api.version>
+    <fullerstack.version>1.0.0-RC4</fullerstack.version>
+    <spring-ai.version>1.0.0</spring-ai.version>
+    <junit.version>5.11.0</junit.version>
+    <assertj.version>3.26.3</assertj.version>
+  </properties>
+
+  <repositories>
+    <repository>
+      <id>spring-milestones</id>
+      <url>https://repo.spring.io/milestone</url>
+    </repository>
+    <repository>
+      <id>spring-snapshots</id>
+      <url>https://repo.spring.io/snapshot</url>
+    </repository>
+  </repositories>
+
+  <dependencies>
+    <!-- Fullerstack Substrates -->
+    <dependency>
+      <groupId>io.fullerstack</groupId>
+      <artifactId>fullerstack-substrates</artifactId>
+      <version>${fullerstack.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>io.humainary.substrates</groupId>
+      <artifactId>humainary-substrates-api</artifactId>
+      <version>${substrates-api.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>io.humainary.serventis</groupId>
+      <artifactId>humainary-serventis-api</artifactId>
+      <version>${serventis-api.version}</version>
+    </dependency>
+
+    <!-- Spring AI Client (ChatClient, Advisors) -->
+    <dependency>
+      <groupId>org.springframework.ai</groupId>
+      <artifactId>spring-ai-client-chat</artifactId>
+      <version>${spring-ai.version}</version>
+    </dependency>
+
+    <!-- Testing -->
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <version>${junit.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.assertj</groupId>
+      <artifactId>assertj-core</artifactId>
+      <version>${assertj.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <!-- Spring AI in test scope (overrides provided for tests) -->
+    <!-- Using same spring-ai-core dependency with provided scope above -->
+  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <version>3.13.0</version>
+        <configuration>
+          <source>${java.version}</source>
+          <target>${java.version}</target>
+          <compilerArgs>
+            <arg>--enable-preview</arg>
+          </compilerArgs>
+        </configuration>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <version>3.5.1</version>
+        <configuration>
+          <argLine>
+            --enable-preview
+            -XX:+EnableDynamicAgentLoading
+            -XX:-RestrictContended
+            --add-opens java.base/java.lang=ALL-UNNAMED
+            --add-opens java.base/java.util=ALL-UNNAMED
+          </argLine>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+</project>
