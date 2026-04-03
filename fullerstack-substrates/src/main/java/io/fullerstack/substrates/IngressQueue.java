@@ -40,12 +40,12 @@ public final class IngressQueue {
   // Producer state (contended)
   @Contended
   @SuppressWarnings ( "unused" )  // accessed via TAIL VarHandle
-  private volatile QChunk tail;
+  private QChunk tail;
 
   // Free list (Treiber stack)
   @Contended
   @SuppressWarnings ( "unused" )  // accessed via FREE_HEAD VarHandle
-  private volatile QChunk freeHead;
+  private QChunk freeHead;
 
 
   public IngressQueue () {
@@ -61,7 +61,7 @@ public final class IngressQueue {
    */
   @jdk.internal.vm.annotation.ForceInline
   public void enqueue ( Consumer < Object > receiver, Object value ) {
-    QChunk chunk = tail;                                          // volatile read
+    QChunk chunk = (QChunk) TAIL.getOpaque ( this );               // opaque read
     int slot = (int) QChunk.CLAIMED.getAndAdd ( chunk, 1 );      // wait-free claim
     if ( slot < QChunk.CAPACITY ) {
       int base = slot << 1;
