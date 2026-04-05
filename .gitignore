@@ -43,6 +43,11 @@ CLAUDE.md
 
 # External dependencies (cloned separately)
 substrates-api-java/
+serventis-api-java/
+
+# Separate repos (not part of fullerstack-humainary)
+agent-insight/
+client-demos/
 
 # Claude Flow
 .claude-flow/
