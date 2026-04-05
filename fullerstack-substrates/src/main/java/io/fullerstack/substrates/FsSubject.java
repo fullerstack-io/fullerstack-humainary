@@ -35,6 +35,7 @@ public final class FsSubject < S extends Substrate < S > > implements Subject < 
   private final FsSubject < ? > parent;
   private final Class < ? >     type;
   private final FsId            id; // unique id
+  private       State           state = FsState.EMPTY; // mutable on circuit thread
 
   /// Creates a root subject with the given name and type.
   public FsSubject ( Name name, Class < ? > type ) {
@@ -66,7 +67,14 @@ public final class FsSubject < S extends Substrate < S > > implements Subject < 
 
   @Override
   public State state () {
-    return FsState.EMPTY;
+    return state;
+  }
+
+  /// Update the State on this Subject. Called on the circuit thread —
+  /// no synchronisation needed. State is immutable; this replaces the
+  /// reference to the current State with a new one.
+  public void state ( State state ) {
+    this.state = state;
   }
 
   @Override
