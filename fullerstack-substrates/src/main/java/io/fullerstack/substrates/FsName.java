@@ -1,5 +1,6 @@
 package io.fullerstack.substrates;
 
+import io.humainary.substrates.api.Substrates.Extent;
 import io.humainary.substrates.api.Substrates.Identity;
 import io.humainary.substrates.api.Substrates.Name;
 import io.humainary.substrates.api.Substrates.Provided;
@@ -28,7 +29,11 @@ public final class FsName implements Name {
   private static final ConcurrentHashMap < String, FsName >     NAME_CACHE = new ConcurrentHashMap <> ( 256, 0.75f, 1 );
   /// Enum cache: Enum instance → FsName. Avoids redundant getDeclaringClass() +
   /// getCanonicalName() calls.
-  private static final ConcurrentHashMap < Enum < ? >, FsName > ENUM_CACHE = new ConcurrentHashMap <> ( 64, 0.75f, 1 );
+  private static final ConcurrentHashMap < Enum < ? >, FsName >   ENUM_CACHE  = new ConcurrentHashMap <> ( 64, 0.75f, 1 );
+  /// Class cache: Class → FsName. Avoids redundant getCanonicalName() + intern() calls.
+  private static final ConcurrentHashMap < Class < ? >, FsName >  CLASS_CACHE      = new ConcurrentHashMap <> ( 64, 0.75f, 1 );
+  /// Class name cache: Class → canonical name string. Avoids redundant reflection.
+  private static final ConcurrentHashMap < Class < ? >, String >  CLASS_NAME_CACHE = new ConcurrentHashMap <> ( 64, 0.75f, 1 );
   private static final char                                     FULLSTOP   = '.';
   private final        String                                   segment;
   /// Parent reference - null for root names.
@@ -153,33 +158,40 @@ public final class FsName implements Name {
   /// Creates a Name from an Enum (fully qualified: declaring.class.CONSTANT).
   static FsName fromEnum ( Enum < ? > e ) {
     Objects.requireNonNull ( e, "enum must not be null" );
-    // Check enum cache first (hot path optimization)
     FsName cached = ENUM_CACHE.get ( e );
     if ( cached != null )
       return cached;
-    // Cache miss: compute and cache
-    Class < ? > declClass = e.getDeclaringClass ();
-    String canonical = declClass.getCanonicalName ();
-    String className = canonical != null ? canonical : declClass.getName ();
-    FsName name = intern ( className + FULLSTOP + e.name () );
+    FsName name = intern ( classNameOf ( e.getDeclaringClass () ) + FULLSTOP + e.name () );
     ENUM_CACHE.putIfAbsent ( e, name );
+    return name;
+  }
+
+  /// Returns the canonical or simple name for a Class, cached to avoid reflection.
+  private static String classNameOf ( Class < ? > type ) {
+    String cached = CLASS_NAME_CACHE.get ( type );
+    if ( cached != null )
+      return cached;
+    String canonical = type.getCanonicalName ();
+    String name = canonical != null ? canonical : type.getName ();
+    CLASS_NAME_CACHE.putIfAbsent ( type, name );
     return name;
   }
 
   /// Creates a Name from a Class.
   static FsName fromClass ( Class < ? > type ) {
     Objects.requireNonNull ( type, "type must not be null" );
-    String canonical = type.getCanonicalName ();
-    return intern ( canonical != null ? canonical : type.getName () );
+    FsName cached = CLASS_CACHE.get ( type );
+    if ( cached != null )
+      return cached;
+    FsName name = intern ( classNameOf ( type ) );
+    CLASS_CACHE.putIfAbsent ( type, name );
+    return name;
   }
 
   /// Creates a Name from a Member (declaring class + member name).
   static FsName fromMember ( Member member ) {
     Objects.requireNonNull ( member, "member must not be null" );
-    Class < ? > declClass = member.getDeclaringClass ();
-    String canonical = declClass.getCanonicalName ();
-    String className = canonical != null ? canonical : declClass.getName ();
-    return intern ( className + FULLSTOP + member.getName () );
+    return intern ( classNameOf ( member.getDeclaringClass () ) + FULLSTOP + member.getName () );
   }
 
   /// Creates a Name from an Iterable of parts.
@@ -499,16 +511,12 @@ public final class FsName implements Name {
 
   @Override
   public Name name ( Class < ? > type ) {
-    String canonical = type.getCanonicalName ();
-    return name ( canonical != null ? canonical : type.getName () );
+    return name ( classNameOf ( type ) );
   }
 
   @Override
   public Name name ( Member member ) {
-    Class < ? > declClass = member.getDeclaringClass ();
-    String canonical = declClass.getCanonicalName ();
-    String className = canonical != null ? canonical : declClass.getName ();
-    return name ( className ).name ( member.getName () );
+    return name ( classNameOf ( member.getDeclaringClass () ) ).name ( member.getName () );
   }
 
   @Override
@@ -571,14 +579,42 @@ public final class FsName implements Name {
     return depth;
   }
 
+  /// Optimized within() — walks parent field directly instead of
+  /// using default Extent.within() which allocates Optional per level.
+  /// Adds depth guard when enclosure is FsName to avoid unnecessary traversal.
+  @Override
+  public boolean within ( final Extent < ?, ? > enclosure ) {
+    Objects.requireNonNull ( enclosure, "enclosure must not be null" );
+    // Depth guard: enclosure must be shallower than us to be an ancestor
+    if ( enclosure instanceof FsName target ) {
+      if ( target.depth >= depth ) {
+        return false;
+      }
+      // Walk exactly (depth - target.depth) levels
+      FsName current = this;
+      for ( int i = depth; i > target.depth; i-- ) {
+        current = current.parent;
+      }
+      return current == target;
+    }
+    for ( FsName current = parent; current != null; current = current.parent ) {
+      if ( current == enclosure ) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   @Override
   public int compareTo ( Name other ) {
     Objects.requireNonNull ( other, "other must not be null" );
-    // Identity check first - interned names are identity-comparable
     if ( this == other )
       return 0;
-    // Compare using toString (cached after first call)
-    return toString ().compareTo ( other.toString () );
+    // Fast path: direct field access avoids virtual dispatch on toString()
+    if ( other instanceof FsName fs ) {
+      return path.compareTo ( fs.path );
+    }
+    return path.compareTo ( other.toString () );
   }
 
 }

@@ -180,10 +180,7 @@ final class FsState implements State {
   @Override
   public State state ( @NotNull Enum < ? > value ) {
     Objects.requireNonNull ( value, "value must not be null" );
-    Class < ? > declClass = value.getDeclaringClass ();
-    String canonical = declClass.getCanonicalName ();
-    String className = canonical != null ? canonical : declClass.getName ();
-    Name slotName = cortex ().name ( className );
+    Name slotName = cortex ().name ( value.getDeclaringClass () );
     Name slotValue = FsName.fromEnum ( value );
     return addSlot ( new FsSlot <> ( slotName, slotValue, Name.class ) );
   }

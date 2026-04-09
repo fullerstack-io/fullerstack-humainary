@@ -1,6 +1,7 @@
 package io.fullerstack.substrates;
 
 import io.humainary.substrates.api.Substrates.Closure;
+import io.humainary.substrates.api.Substrates.Extent;
 import io.humainary.substrates.api.Substrates.Idempotent;
 import io.humainary.substrates.api.Substrates.Name;
 import io.humainary.substrates.api.Substrates.New;
@@ -106,6 +107,19 @@ final class FsScope implements Scope {
   @Override
   public Optional < Scope > enclosure () {
     return Optional.ofNullable ( parent );
+  }
+
+  /// Optimized within() — walks parent field directly instead of
+  /// using default Extent.within() which allocates Optional per level.
+  @Override
+  public boolean within ( final Extent < ?, ? > enclosure ) {
+    java.util.Objects.requireNonNull ( enclosure, "enclosure must not be null" );
+    for ( FsScope current = parent; current != null; current = current.parent ) {
+      if ( current == enclosure ) {
+        return true;
+      }
+    }
+    return false;
   }
 
   @New
@@ -219,6 +233,26 @@ final class FsScope implements Scope {
         }
       }
     }
+  }
+
+  /// Optimized path() — walks parent chain directly instead of
+  /// using default Extent.foldTo() which allocates Optional per level.
+  @Override
+  public CharSequence path () {
+    if ( parent == null ) {
+      return part ();
+    }
+    StringBuilder sb = new StringBuilder ();
+    buildPath ( sb );
+    return sb;
+  }
+
+  private void buildPath ( StringBuilder sb ) {
+    if ( parent != null ) {
+      parent.buildPath ( sb );
+      sb.append ( '/' );
+    }
+    sb.append ( part () );
   }
 
   @Override
