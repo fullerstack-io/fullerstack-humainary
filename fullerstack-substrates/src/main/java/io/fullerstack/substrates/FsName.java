@@ -26,7 +26,7 @@ public final class FsName implements Name {
   /// Unified cache: interned path string → FsName. Single lookup for all paths.
   /// Uses ConcurrentHashMap with high initial capacity to minimize rehashing.
   /// The concurrencyLevel=1 optimizes for single-writer scenarios.
-  private static final ConcurrentHashMap < String, FsName >     NAME_CACHE = new ConcurrentHashMap <> ( 256, 0.75f, 1 );
+  private static final ConcurrentHashMap < String, FsName > NAME_CACHE = new ConcurrentHashMap <> ( 256, 0.75f, 1 );
   /// Enum cache: Enum instance → FsName. Avoids redundant getDeclaringClass() +
   /// getCanonicalName() calls.
   private static final ConcurrentHashMap < Enum < ? >, FsName >   ENUM_CACHE  = new ConcurrentHashMap <> ( 64, 0.75f, 1 );
@@ -35,129 +35,104 @@ public final class FsName implements Name {
   /// Class name cache: Class → canonical name string. Avoids redundant reflection.
   private static final ConcurrentHashMap < Class < ? >, String >  CLASS_NAME_CACHE = new ConcurrentHashMap <> ( 64, 0.75f, 1 );
   private static final char                                     FULLSTOP   = '.';
-  private final        String                                   segment;
+  private final String segment;
   /// Parent reference - null for root names.
-  private final        FsName                                   parent;
+  private final FsName parent;
   /// Cached depth - computed at construction, avoids traversal.
-  private final        int                                      depth;
-  /// Path string - computed at construction, never null.
-  private final        String                                   path;
-  /// Cached identity hash code - avoids System.identityHashCode() call on every
-  /// lookup.
-  private final        int                                      cachedHash;
+  private final int    depth;
+  /// Cached Optional wrapper around parent. Allocated once at construction so
+  /// enclosure() never allocates. This makes the default Extent methods that
+  /// we don't override (compareTo, foldTo, path) efficient.
+  private final Optional < Name > enclosure;
+  /// Eager final path. Built at construction. Eliminates the volatile read
+  /// on every toString/path/compareTo call.
+  private final String path;
 
-  // =========================================================================
-  // Per-node children cache for fast chaining
-  // Simple array with linear scan - O(n) but n is typically <10
-  // =========================================================================
-  private volatile FsName[] childNodes = new FsName[0];
-  private final    Object   childLock  = new Object ();
+  /// Direct children of this name. Lazy: null until the first child is added.
+  /// Copy-on-write under synchronized(this); reads are lock-free via volatile.
+  private volatile FsName[] childNodes;
 
   /// Private constructor for root names (depth=1, no parent).
   private FsName ( String segment ) {
-    this.segment = segment;
-    this.parent = null;
-    this.depth = 1;
-    this.path = segment; // Root: path = segment
-    this.cachedHash = System.identityHashCode ( this );
+    this.segment   = segment;
+    this.parent    = null;
+    this.depth     = 1;
+    this.enclosure = Optional.empty ();
+    this.path      = segment;
   }
 
   /// Private constructor with known parent (depth=parent.depth+1).
   private FsName ( String segment, FsName parent ) {
-    this.segment = segment;
-    this.parent = parent;
-    this.depth = parent.depth + 1;
-    this.path = parent.path + FULLSTOP + segment;
-    this.cachedHash = System.identityHashCode ( this );
+    this.segment   = segment;
+    this.parent    = parent;
+    this.depth     = parent.depth + 1;
+    this.enclosure = Optional.of ( parent );
+    this.path      = parent.path + FULLSTOP + segment;
   }
 
   // =========================================================================
   // Static factory methods - all Name creation logic lives here
   // =========================================================================
 
-  /// Parses and interns a path string with validation.
-  /// Cache hit path is a single ConcurrentHashMap.get() - O(1).
-  public static FsName parse ( String path ) {
-    // Hot path: single cache lookup - no null check, no validation
-    // Assumes most calls are cache hits
+  /// Interns a path string, returning the canonical FsName for it.
+  /// Hot path: single ConcurrentHashMap.get() — O(1).
+  /// Cold path: validate then recursively build the parent chain.
+  /// Caller contract: path is @NotNull (NPE from CHM.get if violated).
+  public static FsName intern ( String path ) {
     FsName cached = NAME_CACHE.get ( path );
     if ( cached != null )
       return cached;
-
-    // Cold path: cache miss - validate and build
-    return parseSlowPath ( path );
+    validate ( path );
+    FsName built = getOrCreate ( path );
+    // Cache the leaf under the *original input* string so future intern()
+    // calls with the same String instance hit CHM's reference-equality path.
+    NAME_CACHE.putIfAbsent ( path, built );
+    return built;
   }
 
-  /// Slow path for cache miss. Validates and creates new FsName.
-  private static FsName parseSlowPath ( String path ) {
-    Objects.requireNonNull ( path, "path must not be null" );
-    if ( path.isEmpty () ) {
-      throw new IllegalArgumentException ( "Name path cannot be empty" );
-    }
-
-    // Check if single segment (no dots)
-    int dot = path.indexOf ( FULLSTOP );
+  /// Recursive cold-path builder. Walks the path right-to-left via lastIndexOf,
+  /// creating each prefix on the way back up. Bug-free pattern: get-then-putIfAbsent,
+  /// no nested computeIfAbsent (which is forbidden by ConcurrentHashMap's contract).
+  private static FsName getOrCreate ( String path ) {
+    FsName cached = NAME_CACHE.get ( path );
+    if ( cached != null )
+      return cached;
+    int dot = path.lastIndexOf ( FULLSTOP );
     if ( dot < 0 ) {
-      // Single segment - create root and cache atomically
+      // Root segment — input IS the segment, used directly as both key and value
       return NAME_CACHE.computeIfAbsent ( path, FsName::new );
     }
-
-    // Multi-segment: validate and intern
-    return validateAndIntern ( path );
+    // Recursively obtain (or build) the parent, then attach the new child
+    FsName parent = getOrCreate ( path.substring ( 0, dot ) );
+    return parent.internChild ( path.substring ( dot + 1 ) );
   }
 
-  /// Validates path and interns it. Called only on cache miss.
-  private static FsName validateAndIntern ( String path ) {
-    if ( path.isEmpty () ) {
+  /// Validates a path: not empty, no leading/trailing dot, no consecutive dots.
+  /// Called once on the full path; valid prefixes of a valid path are valid.
+  private static void validate ( String path ) {
+    int len = path.length ();
+    if ( len == 0 ) {
       throw new IllegalArgumentException ( "Name path cannot be empty" );
     }
     if ( path.charAt ( 0 ) == FULLSTOP ) {
       throw new IllegalArgumentException ( "Name path cannot start with a dot: " + path );
     }
-    if ( path.charAt ( path.length () - 1 ) == FULLSTOP ) {
+    if ( path.charAt ( len - 1 ) == FULLSTOP ) {
       throw new IllegalArgumentException ( "Name path cannot end with a dot: " + path );
     }
     if ( path.contains ( ".." ) ) {
       throw new IllegalArgumentException ( "Name path cannot contain consecutive dots: " + path );
-    }
-    return intern ( path );
-  }
-
-  /// Interns a name by full path with eager parent chain building.
-  /// Builds the tree structure via parent→child relationships.
-  static FsName intern ( String path ) {
-    // Check cache first
-    FsName cached = NAME_CACHE.get ( path );
-    if ( cached != null )
-      return cached;
-
-    // Build parent chain eagerly
-    int dot = path.lastIndexOf ( FULLSTOP );
-    if ( dot > 0 ) {
-      // Has parent - intern parent first (recursive), then create child with parent
-      FsName parent = intern ( path.substring ( 0, dot ) );
-      String segment = path.substring ( dot + 1 );
-
-      // Use parent's internChild to register in local children array
-      FsName child = parent.internChild ( segment );
-      // Cache for future lookups
-      NAME_CACHE.putIfAbsent ( child.path, child );
-      return child;
-    } else {
-      // Root name - no parent, depth=1
-      return NAME_CACHE.computeIfAbsent ( path, FsName::new );
     }
   }
 
   /// Creates an anonymous name with a unique suffix.
   /// Used for pipes and other components that don't have explicit names.
   static FsName anonymous ( String prefix ) {
-    return parse ( prefix + "-" + ANONYMOUS_COUNTER.incrementAndGet () );
+    return intern ( prefix + "-" + ANONYMOUS_COUNTER.incrementAndGet () );
   }
 
   /// Creates a Name from an Enum (fully qualified: declaring.class.CONSTANT).
   static FsName fromEnum ( Enum < ? > e ) {
-    Objects.requireNonNull ( e, "enum must not be null" );
     FsName cached = ENUM_CACHE.get ( e );
     if ( cached != null )
       return cached;
@@ -179,7 +154,6 @@ public final class FsName implements Name {
 
   /// Creates a Name from a Class.
   static FsName fromClass ( Class < ? > type ) {
-    Objects.requireNonNull ( type, "type must not be null" );
     FsName cached = CLASS_CACHE.get ( type );
     if ( cached != null )
       return cached;
@@ -190,17 +164,15 @@ public final class FsName implements Name {
 
   /// Creates a Name from a Member (declaring class + member name).
   static FsName fromMember ( Member member ) {
-    Objects.requireNonNull ( member, "member must not be null" );
     return intern ( classNameOf ( member.getDeclaringClass () ) + FULLSTOP + member.getName () );
   }
 
   /// Creates a Name from an Iterable of parts.
   /// Uses indexed access for List inputs to avoid iterator allocation.
-  /// First element validated by parse(); subsequent elements use internChild
+  /// First element validated by intern(); subsequent elements use internChild
   /// with inline guard for null/empty/dot edge cases.
   @SuppressWarnings ( "unchecked" )
   static FsName fromIterable ( Iterable < String > parts ) {
-    Objects.requireNonNull ( parts, "parts must not be null" );
     if ( parts instanceof java.util.List < String > list ) {
       return fromList ( list );
     }
@@ -208,32 +180,24 @@ public final class FsName implements Name {
     if ( !it.hasNext () ) {
       throw new IllegalArgumentException ( "parts must not be empty" );
     }
-    FsName current = parse ( it.next () );
+    FsName current = intern ( it.next () );
     while ( it.hasNext () ) {
-      String part = it.next ();
-      if ( part == null || part.isEmpty () || part.indexOf ( FULLSTOP ) >= 0 ) {
-        current = (FsName) current.name ( part );
-      } else {
-        current = current.internChild ( part );
-      }
+      current = current.internChild ( it.next () );
     }
     return current;
   }
 
   /// Fast path for List inputs — indexed access avoids iterator allocation.
+  /// internChild handles null/empty/dot validation in its slow path, so
+  /// warm-path lookups skip per-element validation entirely.
   private static FsName fromList ( java.util.List < String > parts ) {
     int size = parts.size ();
     if ( size == 0 ) {
       throw new IllegalArgumentException ( "parts must not be empty" );
     }
-    FsName current = parse ( parts.get ( 0 ) );
+    FsName current = intern ( parts.get ( 0 ) );
     for ( int i = 1; i < size; i++ ) {
-      String part = parts.get ( i );
-      if ( part == null || part.isEmpty () || part.indexOf ( FULLSTOP ) >= 0 ) {
-        current = (FsName) current.name ( part );
-      } else {
-        current = current.internChild ( part );
-      }
+      current = current.internChild ( parts.get ( i ) );
     }
     return current;
   }
@@ -242,8 +206,6 @@ public final class FsName implements Name {
   /// Uses indexed access for List inputs to avoid iterator allocation.
   @SuppressWarnings ( "unchecked" )
   static < T > FsName fromIterable ( Iterable < ? extends T > parts, Function < ? super T, String > mapper ) {
-    Objects.requireNonNull ( parts, "parts must not be null" );
-    Objects.requireNonNull ( mapper, "mapper must not be null" );
     if ( parts instanceof java.util.List < ? > list ) {
       return fromListMapped ( (java.util.List < ? extends T >) list, mapper );
     }
@@ -251,14 +213,9 @@ public final class FsName implements Name {
     if ( !it.hasNext () ) {
       throw new IllegalArgumentException ( "parts must not be empty" );
     }
-    FsName current = parse ( mapper.apply ( it.next () ) );
+    FsName current = intern ( mapper.apply ( it.next () ) );
     while ( it.hasNext () ) {
-      String part = mapper.apply ( it.next () );
-      if ( part == null || part.isEmpty () || part.indexOf ( FULLSTOP ) >= 0 ) {
-        current = (FsName) current.name ( part );
-      } else {
-        current = current.internChild ( part );
-      }
+      current = current.internChild ( mapper.apply ( it.next () ) );
     }
     return current;
   }
@@ -269,55 +226,37 @@ public final class FsName implements Name {
     if ( size == 0 ) {
       throw new IllegalArgumentException ( "parts must not be empty" );
     }
-    FsName current = parse ( mapper.apply ( parts.get ( 0 ) ) );
+    FsName current = intern ( mapper.apply ( parts.get ( 0 ) ) );
     for ( int i = 1; i < size; i++ ) {
-      String part = mapper.apply ( parts.get ( i ) );
-      if ( part == null || part.isEmpty () || part.indexOf ( FULLSTOP ) >= 0 ) {
-        current = (FsName) current.name ( part );
-      } else {
-        current = current.internChild ( part );
-      }
+      current = current.internChild ( mapper.apply ( parts.get ( i ) ) );
     }
     return current;
   }
 
   /// Creates a Name from an Iterator of parts.
-  /// First element validated by parse(); subsequent elements use internChild
+  /// First element validated by intern(); subsequent elements use internChild
   /// with inline guard for null/empty/dot edge cases.
   static FsName fromIterator ( Iterator < String > parts ) {
-    Objects.requireNonNull ( parts, "parts must not be null" );
     if ( !parts.hasNext () ) {
       throw new IllegalArgumentException ( "parts must not be empty" );
     }
-    FsName current = parse ( parts.next () );
+    FsName current = intern ( parts.next () );
     while ( parts.hasNext () ) {
-      String part = parts.next ();
-      if ( part == null || part.isEmpty () || part.indexOf ( FULLSTOP ) >= 0 ) {
-        current = (FsName) current.name ( part );
-      } else {
-        current = current.internChild ( part );
-      }
+      current = current.internChild ( parts.next () );
     }
     return current;
   }
 
   /// Creates a Name from an Iterator with mapper.
-  /// First element validated by parse(); subsequent elements use internChild
-  /// with inline guard for null/empty/dot edge cases.
+  /// internChild handles null/empty/dot validation in its slow path,
+  /// so warm-path lookups skip per-element validation entirely.
   static < T > FsName fromIterator ( Iterator < ? extends T > parts, Function < ? super T, String > mapper ) {
-    Objects.requireNonNull ( parts, "parts must not be null" );
-    Objects.requireNonNull ( mapper, "mapper must not be null" );
     if ( !parts.hasNext () ) {
       throw new IllegalArgumentException ( "parts must not be empty" );
     }
-    FsName current = parse ( mapper.apply ( parts.next () ) );
+    FsName current = intern ( mapper.apply ( parts.next () ) );
     while ( parts.hasNext () ) {
-      String part = mapper.apply ( parts.next () );
-      if ( part == null || part.isEmpty () || part.indexOf ( FULLSTOP ) >= 0 ) {
-        current = (FsName) current.name ( part );
-      } else {
-        current = current.internChild ( part );
-      }
+      current = current.internChild ( mapper.apply ( parts.next () ) );
     }
     return current;
   }
@@ -326,40 +265,76 @@ public final class FsName implements Name {
   // Instance methods - extend existing Name with suffix
   // =========================================================================
 
-  /// Extends this name with a single segment (no dots in segment).
-  /// Uses equals() for string comparison - simple and fast for short segments.
+  /// Extends this name with a segment. Fast path: lock-free children scan.
+  /// Slow path: validates the segment (which may itself be a multi-segment
+  /// path like "child.grandchild") and creates / parses as needed.
+  ///
+  /// Critically: the dot validation is paid only once per new child, at creation
+  /// time. Subsequent lookups skip the check entirely.
   private FsName internChild ( String childSegment ) {
-    // Fast path: linear scan with equals() - short segments are fast to compare
     FsName[] nodes = childNodes;
-    for ( int i = 0; i < nodes.length; i++ ) {
-      if ( nodes[i].segment.equals ( childSegment ) ) {
-        return nodes[i];
-      }
-    }
-
-    // Slow path: synchronized creation
-    synchronized ( childLock ) {
-      // Double-check after lock
-      nodes = childNodes;
+    if ( nodes != null ) {
       for ( int i = 0; i < nodes.length; i++ ) {
-        if ( nodes[i].segment.equals ( childSegment ) ) {
+        String s = nodes[i].segment;
+        if ( s == childSegment || s.equals ( childSegment ) ) {
           return nodes[i];
         }
       }
+    }
+    return internChildSlow ( childSegment );
+  }
 
-      // Create child with path computed at construction
-      // Constructor will intern the segment
+  /// Slow path: validates segment, splits multi-segment paths inline,
+  /// or synchronized create-or-find for simple segments. Paid only on cache miss
+  /// (creating a new child) — warm-path lookups skip this entirely.
+  private FsName internChildSlow ( String childSegment ) {
+    Objects.requireNonNull ( childSegment );
+    if ( childSegment.isEmpty () ) {
+      throw new IllegalArgumentException ( "Name segment cannot be empty" );
+    }
+    int dot = childSegment.indexOf ( FULLSTOP );
+    if ( dot >= 0 ) {
+      // Multi-segment: validate dot positions and split inline
+      if ( dot == 0 ) {
+        throw new IllegalArgumentException ( "Name segment cannot start with a dot: " + childSegment );
+      }
+      if ( dot == childSegment.length () - 1 ) {
+        throw new IllegalArgumentException ( "Name segment cannot end with a dot: " + childSegment );
+      }
+      FsName current = this;
+      int start = 0;
+      while ( true ) {
+        int nextDot = childSegment.indexOf ( FULLSTOP, start );
+        if ( nextDot < 0 ) {
+          return current.internChild ( childSegment.substring ( start ) );
+        }
+        if ( nextDot == start ) {
+          throw new IllegalArgumentException ( "Name segment cannot contain consecutive dots: " + childSegment );
+        }
+        current = current.internChild ( childSegment.substring ( start, nextDot ) );
+        start = nextDot + 1;
+      }
+    }
+    // Simple segment: synchronized create-or-find
+    synchronized ( this ) {
+      FsName[] nodes = childNodes;
+      if ( nodes != null ) {
+        for ( int i = 0; i < nodes.length; i++ ) {
+          String s = nodes[i].segment;
+          if ( s == childSegment || s.equals ( childSegment ) ) {
+            return nodes[i];
+          }
+        }
+      }
       FsName child = new FsName ( childSegment, this );
-
-      // Append to children array
-      FsName[] newNodes = new FsName[nodes.length + 1];
-      System.arraycopy ( nodes, 0, newNodes, 0, nodes.length );
-      newNodes[nodes.length] = child;
-      childNodes = newNodes;
-
-      // Also add to global cache for direct path lookups
-      NAME_CACHE.putIfAbsent ( child.path, child );
-
+      if ( nodes == null ) {
+        childNodes = new FsName[] { child };
+      } else {
+        FsName[] newNodes = new FsName[nodes.length + 1];
+        System.arraycopy ( nodes, 0, newNodes, 0, nodes.length );
+        newNodes[nodes.length] = child;
+        childNodes = newNodes;
+      }
       return child;
     }
   }
@@ -369,34 +344,12 @@ public final class FsName implements Name {
     return segment;
   }
 
+  /// Returns the cached Optional wrapper. No allocation per call —
+  /// the Optional was built once at construction. This makes the default
+  /// Extent methods (iterator, within, compareTo, foldTo, ...) efficient.
   @Override
   public Optional < Name > enclosure () {
-    // Direct return - Optional is lightweight, no caching needed
-    return Optional.ofNullable ( parent );
-  }
-
-  /// Optimized iterator that avoids Optional allocation per iteration.
-  /// Iterates from this name (leaf) up to root.
-  @Override
-  public Iterator < Name > iterator () {
-    return new Iterator <> () {
-      private FsName current = FsName.this;
-
-      @Override
-      public boolean hasNext () {
-        return current != null;
-      }
-
-      @Override
-      public Name next () {
-        if ( current == null ) {
-          throw new java.util.NoSuchElementException ();
-        }
-        FsName result = current;
-        current = current.parent; // Direct field access - no Optional allocation
-        return result;
-      }
-    };
+    return enclosure;
   }
 
   @Override
@@ -429,39 +382,9 @@ public final class FsName implements Name {
 
   @Override
   public Name name ( String suffix ) {
-    // Validate suffix
-    Objects.requireNonNull ( suffix, "suffix must not be null" );
-    if ( suffix.isEmpty () ) {
-      throw new IllegalArgumentException ( "Name suffix cannot be empty" );
-    }
-    if ( suffix.charAt ( 0 ) == FULLSTOP ) {
-      throw new IllegalArgumentException ( "Name suffix cannot start with a dot: " + suffix );
-    }
-    if ( suffix.charAt ( suffix.length () - 1 ) == FULLSTOP ) {
-      throw new IllegalArgumentException ( "Name suffix cannot end with a dot: " + suffix );
-    }
-    if ( suffix.contains ( ".." ) ) {
-      throw new IllegalArgumentException ( "Name suffix cannot contain consecutive dots: " + suffix );
-    }
-
-    // Check for dots in suffix
-    int dot = suffix.indexOf ( FULLSTOP );
-    if ( dot < 0 ) {
-      // Simple case: single segment - use internChild for efficiency
-      return internChild ( suffix );
-    }
-    // Multi-segment: split and chain each segment
-    FsName current = this;
-    int start = 0;
-    while ( true ) {
-      int nextDot = suffix.indexOf ( FULLSTOP, start );
-      if ( nextDot < 0 ) {
-        // Last segment
-        return current.internChild ( suffix.substring ( start ) );
-      }
-      current = current.internChild ( suffix.substring ( start, nextDot ) );
-      start = nextDot + 1;
-    }
+    // internChild handles single-segment fast path AND multi-segment splitting
+    // (in its slow path), so chaining hits a hot path with no per-call validation.
+    return internChild ( suffix );
   }
 
   @Override
@@ -474,8 +397,7 @@ public final class FsName implements Name {
   public Name name ( Iterable < String > parts ) {
     FsName current = this;
     for ( String part : parts ) {
-      Objects.requireNonNull ( part, "part must not be null" );
-      current = (FsName) current.name ( part );
+      current = current.internChild ( part );
     }
     return current;
   }
@@ -484,7 +406,7 @@ public final class FsName implements Name {
   public < T > Name name ( Iterable < ? extends T > parts, Function < ? super T, String > mapper ) {
     FsName current = this;
     for ( T part : parts ) {
-      current = (FsName) current.name ( mapper.apply ( part ) );
+      current = current.internChild ( mapper.apply ( part ) );
     }
     return current;
   }
@@ -493,9 +415,7 @@ public final class FsName implements Name {
   public Name name ( Iterator < String > parts ) {
     FsName current = this;
     while ( parts.hasNext () ) {
-      String part = parts.next ();
-      Objects.requireNonNull ( part, "part must not be null" );
-      current = (FsName) current.name ( part );
+      current = current.internChild ( parts.next () );
     }
     return current;
   }
@@ -504,7 +424,7 @@ public final class FsName implements Name {
   public < T > Name name ( Iterator < ? extends T > parts, Function < ? super T, String > mapper ) {
     FsName current = this;
     while ( parts.hasNext () ) {
-      current = (FsName) current.name ( mapper.apply ( parts.next () ) );
+      current = current.internChild ( mapper.apply ( parts.next () ) );
     }
     return current;
   }
@@ -519,45 +439,34 @@ public final class FsName implements Name {
     return name ( classNameOf ( member.getDeclaringClass () ) ).name ( member.getName () );
   }
 
+  /// Optimized: return cached path directly for '.' separator (the common case).
+  /// Other separators fall through to the default Extent.path(char) implementation.
+  @Override
+  public CharSequence path ( char separator ) {
+    return ( separator == FULLSTOP )
+      ? path
+      : Name.super.path ( separator );
+  }
+
+  /// Maps each segment via the mapper and joins with '.'.
+  /// Required because Name.path(Function) is abstract.
   @Override
   public CharSequence path ( Function < ? super String, ? extends CharSequence > mapper ) {
     StringBuilder sb = new StringBuilder ();
-    buildPath ( sb, mapper );
+    appendMappedPath ( sb, mapper );
     return sb;
   }
 
-  private void buildPath ( StringBuilder sb, Function < ? super String, ? extends CharSequence > mapper ) {
+  private void appendMappedPath ( StringBuilder sb, Function < ? super String, ? extends CharSequence > mapper ) {
     if ( parent != null ) {
-      parent.buildPath ( sb, mapper );
+      parent.appendMappedPath ( sb, mapper );
       sb.append ( FULLSTOP );
     }
     sb.append ( mapper.apply ( segment ) );
   }
 
-  /// Optimized: return cached path directly for '.' separator (most common case).
-  /// This is 10-100x faster than the default implementation that walks the tree.
-  public CharSequence path ( char separator ) {
-    // Fast path for '.' separator - return cached path
-    if ( separator == FULLSTOP ) {
-      return path;
-    }
-    // Slow path for other separators - need to rebuild with new separator
-    StringBuilder sb = new StringBuilder ();
-    buildPathWithSeparator ( sb, separator );
-    return sb;
-  }
-
-  private void buildPathWithSeparator ( StringBuilder sb, char separator ) {
-    if ( parent != null ) {
-      parent.buildPathWithSeparator ( sb, separator );
-      sb.append ( separator );
-    }
-    sb.append ( segment );
-  }
-
   @Override
   public String toString () {
-    // Path computed at construction - O(1)
     return path;
   }
 
@@ -569,8 +478,9 @@ public final class FsName implements Name {
 
   @Override
   public int hashCode () {
-    // Return cached identity hash code - computed once at construction
-    return cachedHash;
+    // System.identityHashCode is a JVM intrinsic; cached in the object header
+    // after first call. No need for a per-instance cache field.
+    return System.identityHashCode ( this );
   }
 
   @Override
@@ -579,42 +489,59 @@ public final class FsName implements Name {
     return depth;
   }
 
-  /// Optimized within() — walks parent field directly instead of
-  /// using default Extent.within() which allocates Optional per level.
-  /// Adds depth guard when enclosure is FsName to avoid unnecessary traversal.
+  /// Static iterator class — easier for JIT to inline than an anonymous inner
+  /// class which carries an implicit reference to the enclosing FsName.
+  private static final class ParentIterator implements Iterator < Name > {
+    private FsName cursor;
+    ParentIterator ( FsName start ) { this.cursor = start; }
+
+    @Override
+    public boolean hasNext () {
+      return cursor != null;
+    }
+
+    @Override
+    public Name next () {
+      FsName result = cursor;
+      if ( result == null ) {
+        throw new java.util.NoSuchElementException ();
+      }
+      cursor = result.parent;
+      return result;
+    }
+  }
+
+  @Override
+  public Iterator < Name > iterator () {
+    return new ParentIterator ( this );
+  }
+
+  /// Optimized within() with depth-guard fast-fail and direct parent walk.
+  /// The default Extent.within() walks via enclosure() with Optional unwrapping
+  /// per level. We can short-circuit using cached depth when the enclosure is
+  /// also an FsName.
   @Override
   public boolean within ( final Extent < ?, ? > enclosure ) {
     Objects.requireNonNull ( enclosure, "enclosure must not be null" );
-    // Depth guard: enclosure must be shallower than us to be an ancestor
     if ( enclosure instanceof FsName target ) {
+      // Fast fail: enclosure must be strictly shallower than us
       if ( target.depth >= depth ) {
         return false;
       }
-      // Walk exactly (depth - target.depth) levels
-      FsName current = this;
+      // Walk exactly (depth - target.depth) levels up
+      FsName cursor = this;
       for ( int i = depth; i > target.depth; i-- ) {
-        current = current.parent;
+        cursor = cursor.parent;
       }
-      return current == target;
+      return cursor == target;
     }
-    for ( FsName current = parent; current != null; current = current.parent ) {
-      if ( current == enclosure ) {
+    // Foreign Extent type — walk via parent fields
+    for ( FsName cursor = parent; cursor != null; cursor = cursor.parent ) {
+      if ( cursor == enclosure ) {
         return true;
       }
     }
     return false;
-  }
-
-  @Override
-  public int compareTo ( Name other ) {
-    Objects.requireNonNull ( other, "other must not be null" );
-    if ( this == other )
-      return 0;
-    // Fast path: direct field access avoids virtual dispatch on toString()
-    if ( other instanceof FsName fs ) {
-      return path.compareTo ( fs.path );
-    }
-    return path.compareTo ( other.toString () );
   }
 
 }

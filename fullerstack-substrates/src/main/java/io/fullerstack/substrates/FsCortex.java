@@ -51,7 +51,7 @@ final class FsCortex implements Cortex {
       if ( threadName == null || threadName.isEmpty () ) {
         threadName = "vt-" + t.threadId ();
       }
-      FsSubject < Current > currentSubject = new FsSubject <> ( FsName.parse ( "thread." + threadName ),
+      FsSubject < Current > currentSubject = new FsSubject <> ( FsName.intern ( "thread." + threadName ),
         (FsSubject < ? >) subject, Current.class );
       return new FsCurrent ( currentSubject );
     } );
@@ -89,7 +89,7 @@ final class FsCortex implements Cortex {
 
   @Override
   public Name name ( String path ) {
-    return FsName.parse ( path );
+    return FsName.intern ( path );
   }
 
   @Override
