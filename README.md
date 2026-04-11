@@ -9,18 +9,20 @@ Substrates is a runtime for observable, event-driven systems where every emissio
 | **API** | [Humainary Substrates 1.0.0](https://github.com/humainary-io/substrates-api-java) |
 | **Spec** | [Substrates API Specification](https://github.com/humainary-io/substrates-api-spec) |
 | **Serventis** | [Humainary Serventis 1.0.0](https://github.com/humainary-io/serventis-api-java) (semiotic observability) |
-| **Implementation** | `io.fullerstack:fullerstack-substrates:1.0.0-RC4` |
+| **Implementation** | `io.fullerstack:fullerstack-substrates:1.0.0-RC5` |
 | **Java** | 26 (Virtual Threads + Preview Features) |
 | **Tests** | 722 passing (274 contract + 448 TCK) |
 | **License** | Apache 2.0 |
 
 ## Quick Start
 
+The artifact is published to [GitHub Packages](https://github.com/fullerstack-io/fullerstack-humainary/packages). GitHub Packages requires authentication for all downloads — see [Consuming the artifact](#consuming-the-artifact) below for repository setup and credentials.
+
 ```xml
 <dependency>
     <groupId>io.fullerstack</groupId>
     <artifactId>fullerstack-substrates</artifactId>
-    <version>1.0.0-RC4</version>
+    <version>1.0.0-RC5</version>
 </dependency>
 ```
 
@@ -43,6 +45,49 @@ conduit.percept(cortex.name("source")).emit("hello");
 circuit.await();
 circuit.close();
 ```
+
+## Consuming the artifact
+
+The artifact lives in [GitHub Packages](https://github.com/fullerstack-io/fullerstack-humainary/packages). GitHub Packages requires authentication even for public packages, so you need both a repository declaration **and** credentials.
+
+**1. Add the repository and dependency to your `pom.xml`:**
+
+```xml
+<repositories>
+  <repository>
+    <id>github-fullerstack</id>
+    <url>https://maven.pkg.github.com/fullerstack-io/fullerstack-humainary</url>
+    <releases><enabled>true</enabled></releases>
+    <snapshots><enabled>false</enabled></snapshots>
+  </repository>
+</repositories>
+
+<dependencies>
+  <dependency>
+    <groupId>io.fullerstack</groupId>
+    <artifactId>fullerstack-substrates</artifactId>
+    <version>1.0.0-RC5</version>
+  </dependency>
+</dependencies>
+```
+
+**2. Configure credentials in `~/.m2/settings.xml`:**
+
+```xml
+<settings>
+  <servers>
+    <server>
+      <id>github-fullerstack</id>
+      <username>YOUR_GITHUB_USERNAME</username>
+      <password>${env.GITHUB_TOKEN}</password>
+    </server>
+  </servers>
+</settings>
+```
+
+Generate a [personal access token](https://github.com/settings/tokens) with the `read:packages` scope, export it as `GITHUB_TOKEN` in your shell, and Maven will authenticate automatically. You can also paste the token directly into `settings.xml`, but the environment-variable form is safer.
+
+The `FsCortexProvider` is then discovered automatically via Java `ServiceLoader` — no configuration code needed in your app.
 
 ## Building from Source
 

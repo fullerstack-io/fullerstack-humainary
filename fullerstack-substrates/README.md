@@ -4,7 +4,7 @@ SPI provider implementation of the [Humainary Substrates API](https://github.com
 
 | | |
 |---|---|
-| **Version** | 1.0.0-RC4 |
+| **Version** | 1.0.0-RC5 |
 | **API** | Substrates 1.0.0 + Serventis 1.0.0 |
 | **Java** | 26 (Virtual Threads + Preview) |
 | **Tests** | 722 (274 contract + 448 TCK) |
@@ -36,15 +36,46 @@ mvn test                 # Tests only
 
 ## Usage
 
+The artifact is published to [GitHub Packages](https://github.com/fullerstack-io/fullerstack-humainary/packages). GitHub Packages requires authentication even for public packages, so consumers need both a repository declaration **and** credentials.
+
+**1. Add the repository and dependency to your `pom.xml`:**
+
 ```xml
-<dependency>
+<repositories>
+  <repository>
+    <id>github-fullerstack</id>
+    <url>https://maven.pkg.github.com/fullerstack-io/fullerstack-humainary</url>
+    <releases><enabled>true</enabled></releases>
+    <snapshots><enabled>false</enabled></snapshots>
+  </repository>
+</repositories>
+
+<dependencies>
+  <dependency>
     <groupId>io.fullerstack</groupId>
     <artifactId>fullerstack-substrates</artifactId>
-    <version>1.0.0-RC4</version>
-</dependency>
+    <version>1.0.0-RC5</version>
+  </dependency>
+</dependencies>
 ```
 
-The `FsCortexProvider` is discovered automatically via `ServiceLoader`. No configuration needed — just add the dependency and call `Substrates.cortex()`.
+**2. Configure credentials in `~/.m2/settings.xml`:**
+
+```xml
+<settings>
+  <servers>
+    <server>
+      <id>github-fullerstack</id>
+      <username>YOUR_GITHUB_USERNAME</username>
+      <password>${env.GITHUB_TOKEN}</password>
+    </server>
+  </servers>
+</settings>
+```
+
+The token must be a [personal access token](https://github.com/settings/tokens) with the `read:packages` scope. Export it as `GITHUB_TOKEN` in your shell (or paste it directly into `settings.xml`, but environment variable is safer).
+
+**3. The provider loads automatically.** `FsCortexProvider` is discovered via `ServiceLoader` — no configuration code needed. Just call `Substrates.cortex()`:
 
 ```java
 import static io.humainary.substrates.api.Substrates.*;
@@ -88,16 +119,16 @@ For the conceptual model, read [Kitchen Model](docs/KITCHEN-MODEL.md) — the du
 ./scripts/benchmark.sh -l           # List available
 ```
 
-Selected results (ns/op, JDK 26, GitHub Codespaces 2 vCPU):
+Selected results (ns/op, JDK 26, GitHub Codespaces 2 vCPU, 2026-04-11):
 
 | Benchmark | ns/op | What it measures |
 |-----------|------:|------------------|
-| `hot_pipe_async` | 13.7 | Emission through pre-warmed pipe |
-| `conduit.get_by_name` | 2.8 | Percept lookup by name |
-| `name_from_string` | 2.7 | Name creation + interning |
-| `scope_create_and_close` | 0.95 | Scope lifecycle |
-| `cyclic_emit` | 3.8 | Cyclic pipe network emission |
-| `flow_guard_await` | 35.2 | Emission through guard flow operator |
+| `hot_pipe_async` | 12.7 | Emission through pre-warmed pipe |
+| `conduit.get_by_name` | 2.3 | Percept lookup by name |
+| `name_from_string` | 2.3 | Name creation + interning |
+| `scope_create_and_close` | 0.75 | Scope lifecycle |
+| `cyclic_emit` | 3.2 | Cyclic pipe network emission |
+| `flow_guard_await` | 37.0 | Emission through guard flow operator |
 
 ## Documentation
 
