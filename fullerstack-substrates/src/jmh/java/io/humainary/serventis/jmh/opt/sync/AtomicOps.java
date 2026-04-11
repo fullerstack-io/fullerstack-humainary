@@ -30,11 +30,11 @@ public class AtomicOps implements Substrates {
   private static final String ATOMIC_NAME = "cas.counter";
   private static final int    BATCH_SIZE  = 1000;
 
-  private Cortex                    cortex;
-  private Circuit                   circuit;
-  private Conduit < Atomic, Sign >  conduit;
-  private Atomic                    atomic;
-  private Name                      name;
+  private Cortex                   cortex;
+  private Circuit                  circuit;
+  private Conduit < Atomic, Sign > conduit;
+  private Atomic                   atomic;
+  private Name                     name;
 
   @Benchmark
   public Atomic atomic_from_conduit () {

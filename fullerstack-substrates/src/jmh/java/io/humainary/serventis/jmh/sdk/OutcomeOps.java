@@ -30,11 +30,11 @@ public class OutcomeOps implements Substrates {
   private static final String OUTCOME_NAME = "api.call";
   private static final int    BATCH_SIZE   = 1000;
 
-  private Cortex                      cortex;
-  private Circuit                     circuit;
-  private Conduit < Outcome, Sign >   conduit;
-  private Outcome                     outcome;
-  private Name                        name;
+  private Cortex                    cortex;
+  private Circuit                   circuit;
+  private Conduit < Outcome, Sign > conduit;
+  private Outcome                   outcome;
+  private Name                      name;
 
   @Benchmark
   public Outcome outcome_from_conduit () {

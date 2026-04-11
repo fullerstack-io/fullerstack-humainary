@@ -277,8 +277,10 @@ final class SpecComplianceTest {
       var circuit = cortex.circuit ( cortex.name ( "singleuse-circuit" ) );
       var closure = scope.closure ( circuit );
 
-      closure.consume ( c -> {} );
-      closure.consume ( c -> {} ); // second call should be no-op (circuit already closed)
+      closure.consume ( c -> {
+      } );
+      closure.consume ( c -> {
+      } ); // second call should be no-op (circuit already closed)
 
       scope.close ();
     }
@@ -336,7 +338,8 @@ final class SpecComplianceTest {
         cortex.name ( "sub" ),
         ( subject, registrar ) -> {
           discovered.add ( subject.name ().toString () );
-          registrar.register ( v -> {} );
+          registrar.register ( v -> {
+          } );
         }
       ) );
 

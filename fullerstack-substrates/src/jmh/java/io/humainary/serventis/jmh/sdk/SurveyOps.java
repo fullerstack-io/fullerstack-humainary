@@ -35,11 +35,11 @@ public class SurveyOps implements Substrates {
   private static final String SURVEY_NAME = "cluster.consensus";
   private static final int    BATCH_SIZE  = 1000;
 
-  private Cortex                                                    cortex;
-  private Circuit                                                   circuit;
+  private Cortex                                                         cortex;
+  private Circuit                                                        circuit;
   private Conduit < Survey < Outcomes.Sign >, Signal < Outcomes.Sign > > conduit;
-  private Survey < Outcomes.Sign >                                  survey;
-  private Name                                                      name;
+  private Survey < Outcomes.Sign >                                       survey;
+  private Name                                                           name;
 
   @Benchmark
   public Survey < Outcomes.Sign > survey_from_conduit () {

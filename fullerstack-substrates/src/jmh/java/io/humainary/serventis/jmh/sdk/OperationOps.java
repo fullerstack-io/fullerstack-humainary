@@ -30,11 +30,11 @@ public class OperationOps implements Substrates {
   private static final String OP_NAME    = "db.query";
   private static final int    BATCH_SIZE = 1000;
 
-  private Cortex                        cortex;
-  private Circuit                       circuit;
-  private Conduit < Operation, Sign >   conduit;
-  private Operation                     operation;
-  private Name                          name;
+  private Cortex                      cortex;
+  private Circuit                     circuit;
+  private Conduit < Operation, Sign > conduit;
+  private Operation                   operation;
+  private Name                        name;
 
   @Benchmark
   public Operation operation_from_conduit () {

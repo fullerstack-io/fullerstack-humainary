@@ -29,11 +29,11 @@ public class FlowOps implements Substrates {
   private static final String FLOW_NAME  = "data.pipeline";
   private static final int    BATCH_SIZE = 1000;
 
-  private Cortex                                         cortex;
-  private Circuit                                        circuit;
-  private Conduit < Flows.Flow, Flows.Signal >           conduit;
-  private Flows.Flow                                     flow;
-  private Name                                           name;
+  private Cortex                               cortex;
+  private Circuit                              circuit;
+  private Conduit < Flows.Flow, Flows.Signal > conduit;
+  private Flows.Flow                           flow;
+  private Name                                 name;
 
   @Benchmark
   public Flows.Flow flow_from_conduit () {

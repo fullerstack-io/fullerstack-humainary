@@ -26,27 +26,27 @@ public final class FsName implements Name {
   /// Unified cache: interned path string → FsName. Single lookup for all paths.
   /// Uses ConcurrentHashMap with high initial capacity to minimize rehashing.
   /// The concurrencyLevel=1 optimizes for single-writer scenarios.
-  private static final ConcurrentHashMap < String, FsName > NAME_CACHE = new ConcurrentHashMap <> ( 256, 0.75f, 1 );
+  private static final ConcurrentHashMap < String, FsName >      NAME_CACHE       = new ConcurrentHashMap <> ( 256, 0.75f, 1 );
   /// Enum cache: Enum instance → FsName. Avoids redundant getDeclaringClass() +
   /// getCanonicalName() calls.
-  private static final ConcurrentHashMap < Enum < ? >, FsName >   ENUM_CACHE  = new ConcurrentHashMap <> ( 64, 0.75f, 1 );
+  private static final ConcurrentHashMap < Enum < ? >, FsName >  ENUM_CACHE       = new ConcurrentHashMap <> ( 64, 0.75f, 1 );
   /// Class cache: Class → FsName. Avoids redundant getCanonicalName() + intern() calls.
-  private static final ConcurrentHashMap < Class < ? >, FsName >  CLASS_CACHE      = new ConcurrentHashMap <> ( 64, 0.75f, 1 );
+  private static final ConcurrentHashMap < Class < ? >, FsName > CLASS_CACHE      = new ConcurrentHashMap <> ( 64, 0.75f, 1 );
   /// Class name cache: Class → canonical name string. Avoids redundant reflection.
-  private static final ConcurrentHashMap < Class < ? >, String >  CLASS_NAME_CACHE = new ConcurrentHashMap <> ( 64, 0.75f, 1 );
-  private static final char                                     FULLSTOP   = '.';
-  private final String segment;
+  private static final ConcurrentHashMap < Class < ? >, String > CLASS_NAME_CACHE = new ConcurrentHashMap <> ( 64, 0.75f, 1 );
+  private static final char                                      FULLSTOP         = '.';
+  private final        String                                    segment;
   /// Parent reference - null for root names.
-  private final FsName parent;
+  private final        FsName                                    parent;
   /// Cached depth - computed at construction, avoids traversal.
-  private final int    depth;
+  private final        int                                       depth;
   /// Cached Optional wrapper around parent. Allocated once at construction so
   /// enclosure() never allocates. This makes the default Extent methods that
   /// we don't override (compareTo, foldTo, path) efficient.
-  private final Optional < Name > enclosure;
+  private final        Optional < Name >                         enclosure;
   /// Eager final path. Built at construction. Eliminates the volatile read
   /// on every toString/path/compareTo call.
-  private final String path;
+  private final        String                                    path;
 
   /// Direct children of this name. Lazy: null until the first child is added.
   /// Copy-on-write under synchronized(this); reads are lock-free via volatile.
@@ -54,20 +54,20 @@ public final class FsName implements Name {
 
   /// Private constructor for root names (depth=1, no parent).
   private FsName ( String segment ) {
-    this.segment   = segment;
-    this.parent    = null;
-    this.depth     = 1;
+    this.segment = segment;
+    this.parent = null;
+    this.depth = 1;
     this.enclosure = Optional.empty ();
-    this.path      = segment;
+    this.path = segment;
   }
 
   /// Private constructor with known parent (depth=parent.depth+1).
   private FsName ( String segment, FsName parent ) {
-    this.segment   = segment;
-    this.parent    = parent;
-    this.depth     = parent.depth + 1;
+    this.segment = segment;
+    this.parent = parent;
+    this.depth = parent.depth + 1;
     this.enclosure = Optional.of ( parent );
-    this.path      = parent.path + FULLSTOP + segment;
+    this.path = parent.path + FULLSTOP + segment;
   }
 
   // =========================================================================
@@ -328,7 +328,7 @@ public final class FsName implements Name {
       }
       FsName child = new FsName ( childSegment, this );
       if ( nodes == null ) {
-        childNodes = new FsName[] { child };
+        childNodes = new FsName[]{child};
       } else {
         FsName[] newNodes = new FsName[nodes.length + 1];
         System.arraycopy ( nodes, 0, newNodes, 0, nodes.length );
@@ -444,8 +444,8 @@ public final class FsName implements Name {
   @Override
   public CharSequence path ( char separator ) {
     return ( separator == FULLSTOP )
-      ? path
-      : Name.super.path ( separator );
+           ? path
+           : Name.super.path ( separator );
   }
 
   /// Maps each segment via the mapper and joins with '.'.
@@ -493,6 +493,7 @@ public final class FsName implements Name {
   /// class which carries an implicit reference to the enclosing FsName.
   private static final class ParentIterator implements Iterator < Name > {
     private FsName cursor;
+
     ParentIterator ( FsName start ) { this.cursor = start; }
 
     @Override
