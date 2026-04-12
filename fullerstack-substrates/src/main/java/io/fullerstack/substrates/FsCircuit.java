@@ -14,10 +14,12 @@ import io.humainary.substrates.api.Substrates.Queued;
 import io.humainary.substrates.api.Substrates.Receptor;
 import io.humainary.substrates.api.Substrates.Registrar;
 import io.humainary.substrates.api.Substrates.Reservoir;
+import io.humainary.substrates.api.Substrates.Routing;
 import io.humainary.substrates.api.Substrates.State;
 import io.humainary.substrates.api.Substrates.Subject;
 import io.humainary.substrates.api.Substrates.Subscriber;
 import io.humainary.substrates.api.Substrates.Subscription;
+import io.humainary.substrates.api.Substrates.Tap;
 
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.VarHandle;
@@ -393,7 +395,7 @@ public final class FsCircuit implements Circuit {
   @NotNull
   @Override
   public < E > Conduit < E > conduit ( @NotNull Name name, @NotNull Class < E > type,
-                                       @NotNull io.humainary.substrates.api.Substrates.Routing routing ) {
+                                       @NotNull Routing routing ) {
     requireNonNull ( name );
     requireNonNull ( type );
     requireNonNull ( routing );
@@ -436,22 +438,18 @@ public final class FsCircuit implements Circuit {
   // Source<State, Circuit> — tap and subscribe (inherited from Source sealed hierarchy)
   // ===================================================================================
 
-  @io.humainary.substrates.api.Substrates.New
-  @io.humainary.substrates.api.Substrates.NotNull
+  @New
+  @NotNull
   @Override
-  public < T > io.humainary.substrates.api.Substrates.Tap < T > tap (
-    @io.humainary.substrates.api.Substrates.NotNull java.util.function.Function <
-      io.humainary.substrates.api.Substrates.Pipe < T >,
-      io.humainary.substrates.api.Substrates.Pipe < io.humainary.substrates.api.Substrates.State > > fn ) {
+  public < T > Tap < T > tap ( @NotNull java.util.function.Function < Pipe < T >, Pipe < State > > fn ) {
     throw new UnsupportedOperationException ( "Circuit.tap() not yet implemented" );
   }
 
-  @io.humainary.substrates.api.Substrates.New
-  @io.humainary.substrates.api.Substrates.NotNull
+  @New
+  @NotNull
   @Override
-  public io.humainary.substrates.api.Substrates.Subscription subscribe (
-    @io.humainary.substrates.api.Substrates.NotNull io.humainary.substrates.api.Substrates.Subscriber < io.humainary.substrates.api.Substrates.State > subscriber,
-    @io.humainary.substrates.api.Substrates.NotNull @io.humainary.substrates.api.Substrates.Queued java.util.function.Consumer < ? super io.humainary.substrates.api.Substrates.Subscription > onClose ) {
+  public Subscription subscribe ( @NotNull Subscriber < State > subscriber,
+                                  @NotNull @Queued java.util.function.Consumer < ? super Subscription > onClose ) {
     throw new UnsupportedOperationException ( "Circuit.subscribe(Subscriber<State>, onClose) not yet implemented" );
   }
 
