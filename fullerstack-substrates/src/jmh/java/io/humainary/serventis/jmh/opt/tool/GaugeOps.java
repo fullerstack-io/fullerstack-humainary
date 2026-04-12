@@ -263,11 +263,11 @@ public class GaugeOps implements Substrates {
 
     conduit =
       circuit.conduit (
-        Gauges::composer
+        Sign.class
       );
 
     gauge =
-      conduit.get (
+      Gauges.pool ( conduit ).get (
         name
       );
 

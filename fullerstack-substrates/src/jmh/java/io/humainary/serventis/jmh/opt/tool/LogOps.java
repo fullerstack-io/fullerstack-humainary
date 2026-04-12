@@ -234,11 +234,11 @@ public class LogOps implements Substrates {
 
     conduit =
       circuit.conduit (
-        Logs::composer
+        Sign.class
       );
 
     log =
-      conduit.get (
+      Logs.pool ( conduit ).get (
         name
       );
 

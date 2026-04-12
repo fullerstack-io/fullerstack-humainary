@@ -290,11 +290,11 @@ public class ExchangeOps implements Substrates {
 
     conduit =
       circuit.conduit (
-        Exchanges::composer
+        Signal.class
       );
 
     exchange =
-      conduit.get (
+      Exchanges.pool ( conduit ).get (
         name
       );
 

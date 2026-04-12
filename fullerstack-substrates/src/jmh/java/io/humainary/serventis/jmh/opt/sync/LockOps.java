@@ -271,11 +271,11 @@ public class LockOps implements Substrates {
 
     conduit =
       circuit.conduit (
-        Locks::composer
+        Sign.class
       );
 
     lock =
-      conduit.get (
+      Locks.pool ( conduit ).get (
         name
       );
 

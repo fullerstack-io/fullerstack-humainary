@@ -266,11 +266,11 @@ public class TaskOps implements Substrates {
 
     conduit =
       circuit.conduit (
-        Tasks::composer
+        Sign.class
       );
 
     task =
-      conduit.get (
+      Tasks.pool ( conduit ).get (
         name
       );
 

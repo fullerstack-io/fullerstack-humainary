@@ -139,11 +139,11 @@ public class SituationOps implements Substrates {
 
     conduit =
       circuit.conduit (
-        Situations::composer
+        Signal.class
       );
 
     situation =
-      conduit.get (
+      Situations.pool ( conduit ).get (
         name
       );
 

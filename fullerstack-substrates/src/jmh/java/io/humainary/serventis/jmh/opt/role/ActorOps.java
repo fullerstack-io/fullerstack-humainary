@@ -438,11 +438,11 @@ public class ActorOps
 
     conduit =
       circuit.conduit (
-        Actors::composer
+        Sign.class
       );
 
     actor =
-      conduit.get (
+      Actors.pool ( conduit ).get (
         name
       );
 

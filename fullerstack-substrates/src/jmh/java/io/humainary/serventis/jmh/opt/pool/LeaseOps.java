@@ -413,11 +413,11 @@ public class LeaseOps implements Substrates {
 
     conduit =
       circuit.conduit (
-        Leases::composer
+        Signal.class
       );
 
     lease =
-      conduit.get (
+      Leases.pool ( conduit ).get (
         name
       );
 

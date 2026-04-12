@@ -204,11 +204,11 @@ public class CounterOps implements Substrates {
 
     conduit =
       circuit.conduit (
-        Counters::composer
+        Sign.class
       );
 
     counter =
-      conduit.get (
+      Counters.pool ( conduit ).get (
         name
       );
 

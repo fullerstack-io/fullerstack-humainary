@@ -247,11 +247,11 @@ public class StatusOps implements Substrates {
 
     conduit =
       circuit.conduit (
-        Statuses::composer
+        Signal.class
       );
 
     status =
-      conduit.get (
+      Statuses.pool ( conduit ).get (
         name
       );
 

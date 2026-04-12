@@ -194,11 +194,11 @@ public class StackOps implements Substrates {
 
     conduit =
       circuit.conduit (
-        Stacks::composer
+        Sign.class
       );
 
     stack =
-      conduit.get (
+      Stacks.pool ( conduit ).get (
         name
       );
 

@@ -389,11 +389,11 @@ public class TransactionOps
 
     conduit =
       circuit.conduit (
-        Transactions::composer
+        Signal.class
       );
 
     transaction =
-      conduit.get (
+      Transactions.pool ( conduit ).get (
         name
       );
 

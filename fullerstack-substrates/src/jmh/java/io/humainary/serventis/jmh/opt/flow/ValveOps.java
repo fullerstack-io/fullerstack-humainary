@@ -252,11 +252,11 @@ public class ValveOps implements Substrates {
 
     conduit =
       circuit.conduit (
-        Valves::composer
+        Sign.class
       );
 
     valve =
-      conduit.get (
+      Valves.pool ( conduit ).get (
         name
       );
 

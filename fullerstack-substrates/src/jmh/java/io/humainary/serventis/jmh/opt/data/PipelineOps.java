@@ -352,11 +352,11 @@ public class PipelineOps implements Substrates {
 
     conduit =
       circuit.conduit (
-        Pipelines::composer
+        Sign.class
       );
 
     pipeline =
-      conduit.get (
+      Pipelines.pool ( conduit ).get (
         name
       );
 

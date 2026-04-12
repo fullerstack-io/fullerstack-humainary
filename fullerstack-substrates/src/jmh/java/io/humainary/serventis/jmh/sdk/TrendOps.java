@@ -164,11 +164,11 @@ public class TrendOps implements Substrates {
 
     conduit =
       circuit.conduit (
-        Trends::composer
+        Sign.class
       );
 
     trend =
-      conduit.get (
+      Trends.pool ( conduit ).get (
         name
       );
 

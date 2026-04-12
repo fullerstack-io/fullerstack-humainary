@@ -202,11 +202,11 @@ public class LatchOps implements Substrates {
 
     conduit =
       circuit.conduit (
-        Latches::composer
+        Sign.class
       );
 
     latch =
-      conduit.get (
+      Latches.pool ( conduit ).get (
         name
       );
 

@@ -345,11 +345,11 @@ public class ProbeOps implements Substrates {
 
     conduit =
       circuit.conduit (
-        Probes::composer
+        Signal.class
       );
 
     probe =
-      conduit.get (
+      Probes.pool ( conduit ).get (
         name
       );
 

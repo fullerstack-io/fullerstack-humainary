@@ -291,11 +291,11 @@ public class BreakerOps implements Substrates {
 
     conduit =
       circuit.conduit (
-        Breakers::composer
+        Sign.class
       );
 
     breaker =
-      conduit.get (
+      Breakers.pool ( conduit ).get (
         name
       );
 

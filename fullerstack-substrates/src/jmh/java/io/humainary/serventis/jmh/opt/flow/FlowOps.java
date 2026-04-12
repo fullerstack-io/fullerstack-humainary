@@ -158,11 +158,11 @@ public class FlowOps implements Substrates {
 
     conduit =
       circuit.conduit (
-        Flows::composer
+        Signal.class
       );
 
     flow =
-      conduit.get (
+      io.humainary.serventis.opt.flow.Flows.pool ( conduit ).get (
         name
       );
 

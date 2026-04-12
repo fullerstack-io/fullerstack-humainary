@@ -143,11 +143,11 @@ public class OutcomeOps implements Substrates {
 
     conduit =
       circuit.conduit (
-        Outcomes::composer
+        Sign.class
       );
 
     outcome =
-      conduit.get (
+      Outcomes.pool ( conduit ).get (
         name
       );
 

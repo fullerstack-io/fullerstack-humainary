@@ -235,11 +235,11 @@ public class QueueOps implements Substrates {
 
     conduit =
       circuit.conduit (
-        Queues::composer
+        Sign.class
       );
 
     queue =
-      conduit.get (
+      Queues.pool ( conduit ).get (
         name
       );
 

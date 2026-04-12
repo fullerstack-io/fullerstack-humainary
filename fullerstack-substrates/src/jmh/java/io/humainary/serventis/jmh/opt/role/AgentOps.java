@@ -449,11 +449,11 @@ public class AgentOps
 
     conduit =
       circuit.conduit (
-        Agents::composer
+        Signal.class
       );
 
     agent =
-      conduit.get (
+      Agents.pool ( conduit ).get (
         name
       );
 

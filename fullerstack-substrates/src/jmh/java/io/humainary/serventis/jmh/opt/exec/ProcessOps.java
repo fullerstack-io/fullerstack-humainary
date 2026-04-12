@@ -254,11 +254,11 @@ public class ProcessOps implements Substrates {
 
     conduit =
       circuit.conduit (
-        Processes::composer
+        Sign.class
       );
 
     process =
-      conduit.get (
+      Processes.pool ( conduit ).get (
         name
       );
 

@@ -650,11 +650,11 @@ public class ServiceOps implements Substrates {
 
     conduit =
       circuit.conduit (
-        Services::composer
+        Signal.class
       );
 
     service =
-      conduit.get (
+      Services.pool ( conduit ).get (
         name
       );
 

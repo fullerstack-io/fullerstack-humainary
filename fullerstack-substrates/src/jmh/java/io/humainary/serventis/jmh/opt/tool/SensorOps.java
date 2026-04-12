@@ -418,11 +418,11 @@ public class SensorOps implements Substrates {
 
     conduit =
       circuit.conduit (
-        Sensors::composer
+        Signal.class
       );
 
     sensor =
-      conduit.get (
+      Sensors.pool ( conduit ).get (
         name
       );
 

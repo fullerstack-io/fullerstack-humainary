@@ -320,11 +320,11 @@ public class CacheOps implements Substrates {
 
     conduit =
       circuit.conduit (
-        Caches::composer
+        Sign.class
       );
 
     cache =
-      conduit.get (
+      Caches.pool ( conduit ).get (
         name
       );
 

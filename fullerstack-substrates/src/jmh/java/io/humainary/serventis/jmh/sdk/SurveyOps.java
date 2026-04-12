@@ -155,13 +155,11 @@ public class SurveyOps implements Substrates {
 
     conduit =
       circuit.conduit (
-        Surveys.composer (
-          Outcomes.Sign.class
-        )
+        Signal.class
       );
 
     survey =
-      conduit.get (
+      Surveys.pool ( conduit ).get (
         name
       );
 

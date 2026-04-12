@@ -253,11 +253,11 @@ public class RouterOps implements Substrates {
 
     conduit =
       circuit.conduit (
-        Routers::composer
+        Sign.class
       );
 
     router =
-      conduit.get (
+      Routers.pool ( conduit ).get (
         name
       );
 

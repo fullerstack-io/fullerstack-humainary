@@ -291,11 +291,11 @@ public class ResourceOps implements Substrates {
 
     conduit =
       circuit.conduit (
-        Resources::composer
+        Sign.class
       );
 
     resource =
-      conduit.get (
+      Resources.pool ( conduit ).get (
         name
       );
 

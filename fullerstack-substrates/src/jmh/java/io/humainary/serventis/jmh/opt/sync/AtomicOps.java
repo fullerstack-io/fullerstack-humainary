@@ -206,11 +206,11 @@ public class AtomicOps implements Substrates {
 
     conduit =
       circuit.conduit (
-        Atomics::composer
+        Sign.class
       );
 
     atomic =
-      conduit.get (
+      Atomics.pool ( conduit ).get (
         name
       );
 

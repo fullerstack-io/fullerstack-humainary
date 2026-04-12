@@ -214,11 +214,11 @@ public class SystemOps implements Substrates {
 
     conduit =
       circuit.conduit (
-        Systems::composer
+        Signal.class
       );
 
     system =
-      conduit.get (
+      Systems.pool ( conduit ).get (
         name
       );
 

@@ -227,13 +227,11 @@ public class CycleOps implements Substrates {
 
     conduit =
       circuit.conduit (
-        Cycles.composer (
-          Resources.Sign.class
-        )
+        Signal.class
       );
 
     cycle =
-      conduit.get (
+      Cycles.pool ( conduit ).get (
         name
       );
 

@@ -146,11 +146,11 @@ public class TimerOps implements Substrates {
 
     conduit =
       circuit.conduit (
-        Timers::composer
+        Signal.class
       );
 
     timer =
-      conduit.get (
+      Timers.pool ( conduit ).get (
         name
       );
 

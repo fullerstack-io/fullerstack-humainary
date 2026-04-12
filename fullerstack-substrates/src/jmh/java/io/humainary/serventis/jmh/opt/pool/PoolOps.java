@@ -234,11 +234,11 @@ public class PoolOps implements Substrates {
 
     conduit =
       circuit.conduit (
-        Pools::composer
+        Sign.class
       );
 
     pool =
-      conduit.get (
+      io.humainary.serventis.opt.pool.Pools.pool ( conduit ).get (
         name
       );
 
