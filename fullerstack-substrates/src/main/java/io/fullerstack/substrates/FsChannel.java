@@ -129,10 +129,10 @@ final class FsChannel < E > implements Channel < E >, Receptor < E > {
       FsFlow < E > flow = new FsFlow <> ( ps, circuit, basePipe );
       configurer.configure ( flow );
       return flow.pipe ();
-    } catch ( FsException e ) {
+    } catch ( FsFault e ) {
       throw e;
     } catch ( RuntimeException e ) {
-      throw new FsException ( "Flow configuration failed", e );
+      throw new FsFault ( "Flow configuration failed", e );
     }
   }
 

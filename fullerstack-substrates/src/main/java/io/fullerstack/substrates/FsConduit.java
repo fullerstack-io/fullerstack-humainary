@@ -182,10 +182,10 @@ public final class FsConduit < P extends Percept, E > extends FsSubstrate < Cond
           FsFlow < E > flow = new FsFlow <> ( pipeSubject, circuit, basePipe );
           flowConfigurer.configure ( flow );
           channel.router = flow.consumer ();
-        } catch ( FsException e ) {
+        } catch ( FsFault e ) {
           throw e;
         } catch ( RuntimeException e ) {
-          throw new FsException ( "Flow configuration failed", e );
+          throw new FsFault ( "Flow configuration failed", e );
         }
       } else {
         channel.router = receiver;
@@ -298,7 +298,7 @@ public final class FsConduit < P extends Percept, E > extends FsSubstrate < Cond
     FsSubject < ? > subSubject = (FsSubject < ? >) subscriber.subject ();
     FsSubject < ? > subscriberCircuit = subSubject.findCircuitAncestor ();
     if ( subscriberCircuit != null && subscriberCircuit != circuit.subject () ) {
-      throw new FsException ( "Subscriber belongs to a different circuit" );
+      throw new FsFault ( "Subscriber belongs to a different circuit" );
     }
 
     FsSubscriber < E > fs = (FsSubscriber < E >) subscriber;
@@ -357,10 +357,10 @@ public final class FsConduit < P extends Percept, E > extends FsSubstrate < Cond
     try {
       FsFlow < T > validationFlow = new FsFlow <> ( cortex ().name ( "tap" ), circuit, null );
       configurer.configure ( validationFlow );
-    } catch ( FsException e ) {
+    } catch ( FsFault e ) {
       throw e;
     } catch ( RuntimeException e ) {
-      throw new FsException ( "Flow configuration failed", e );
+      throw new FsFault ( "Flow configuration failed", e );
     }
     return new FsTap <> ( (FsSubject < ? >) lazySubject (), cortex ().name ( "tap" ), this, circuit, mapper, configurer );
   }

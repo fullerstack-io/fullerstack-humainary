@@ -409,10 +409,10 @@ public final class FsCircuit implements Circuit {
     try {
       FsFlow < E > validationFlow = new FsFlow <> ( name, this, null );
       configurer.configure ( validationFlow );
-    } catch ( FsException e ) {
+    } catch ( FsFault e ) {
       throw e;
     } catch ( RuntimeException e ) {
-      throw new FsException ( "Flow configuration failed", e );
+      throw new FsFault ( "Flow configuration failed", e );
     }
     return new FsConduit <> (
       (FsSubject < ? >) subject, name, channel -> composer.compose ( channel ), this, configurer );
@@ -560,7 +560,7 @@ public final class FsCircuit implements Circuit {
     if ( subscriber.subject () instanceof FsSubject < ? > subSubject ) {
       FsSubject < ? > subscriberCircuit = subSubject.findCircuitAncestor ();
       if ( subscriberCircuit != null && subscriberCircuit != subject ) {
-        throw new FsException ( "Subscriber belongs to a different circuit" );
+        throw new FsFault ( "Subscriber belongs to a different circuit" );
       }
     }
     subscribers.add ( subscriber );

@@ -179,10 +179,10 @@ final class FsTap < E, T > implements Tap < T > {
       FsFlow < T > flow = new FsFlow <> ( channel.subject ().name (), circuit, targetPipe );
       try {
         flowConfigurer.configure ( flow );
-      } catch ( FsException e ) {
+      } catch ( FsFault e ) {
         throw e;
       } catch ( RuntimeException e ) {
-        throw new FsException ( "Flow configuration failed", e );
+        throw new FsFault ( "Flow configuration failed", e );
       }
       channel.router = flow.consumer ();
     } else if ( channel.receptors != null ) {
