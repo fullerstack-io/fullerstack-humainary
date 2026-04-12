@@ -299,8 +299,9 @@ public class PipeOps
 
     return
       circuit.pipe (
-        Receptor.of ( Integer.class ),
-        flow -> flow.guard ( v -> v > 0 ).diff ()
+        Receptor.of ( Integer.class )
+      ).pipe (
+        cortex.flow ( Integer.class ).guard ( v -> v > 0 ).diff ()
       );
 
   }
@@ -331,8 +332,9 @@ public class PipeOps
     // Async pipe with flow operations
     asyncPipeWithFlow =
       circuit.pipe (
-        Receptor.of ( Integer.class ),
-        flow -> flow.guard ( v -> v > 0 ).diff ()
+        Receptor.of ( Integer.class )
+      ).pipe (
+        cortex.flow ( Integer.class ).guard ( v -> v > 0 ).diff ()
       );
 
     // Chained pipe - pipe to pipe forwarding
@@ -349,7 +351,7 @@ public class PipeOps
     // Fan-out pipe via conduit with multiple subscribers
     final var conduit =
       circuit.conduit (
-        pipe ( Integer.class )
+        Integer.class
       );
 
     // Subscribe 3 receptors to create fan-out

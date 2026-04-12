@@ -57,12 +57,7 @@ public class CyclicOps
     final var
       conduit =
       circuit.conduit (
-        pipe (
-          flow ->
-            flow.limit (
-              CYCLE_LIMIT
-            )
-        )
+        Integer.class
       );
 
     conduit.subscribe (
@@ -82,7 +77,7 @@ public class CyclicOps
         cyclicName
       )
       .emit (
-        new Object ()
+        0
       );
 
   }
@@ -103,12 +98,7 @@ public class CyclicOps
     final var
       conduit =
       circuit.conduit (
-        pipe (
-          flow ->
-            flow.limit (
-              CYCLE_LIMIT
-            )
-        )
+        Integer.class
       );
 
     conduit.subscribe (
@@ -128,7 +118,7 @@ public class CyclicOps
         cyclicName
       )
       .emit (
-        new Object ()
+        0
       );
 
     circuit.await ();
@@ -149,12 +139,7 @@ public class CyclicOps
     final var
       conduit =
       circuit.conduit (
-        pipe (
-          flow ->
-            flow.limit (
-              CYCLE_LIMIT * 10
-            )
-        )
+        Integer.class
       );
 
     conduit.subscribe (
@@ -174,7 +159,7 @@ public class CyclicOps
         cyclicName
       )
       .emit (
-        new Object ()
+        0
       );
 
     circuit.await ();
@@ -201,12 +186,7 @@ public class CyclicOps
       final var
         conduit =
         circuit.conduit (
-          pipe (
-            flow ->
-              flow.limit (
-                CYCLE_LIMIT
-              )
-          )
+          Integer.class
         );
 
       conduit.subscribe (
@@ -226,7 +206,7 @@ public class CyclicOps
           cyclicName
         )
         .emit (
-          new Object ()
+          0
         );
 
     }
@@ -253,12 +233,7 @@ public class CyclicOps
       final var
         conduit =
         circuit.conduit (
-          pipe (
-            flow ->
-              flow.limit (
-                CYCLE_LIMIT
-              )
-          )
+          Integer.class
         );
 
       conduit.subscribe (
@@ -278,7 +253,7 @@ public class CyclicOps
           cyclicName
         )
         .emit (
-          new Object ()
+          0
         );
 
       circuit.await ();
@@ -307,12 +282,7 @@ public class CyclicOps
       final var
         conduit =
         circuit.conduit (
-          pipe (
-            flow ->
-              flow.limit (
-                CYCLE_LIMIT * 10
-              )
-          )
+          Integer.class
         );
 
       conduit.subscribe (
@@ -332,7 +302,7 @@ public class CyclicOps
           cyclicName
         )
         .emit (
-          new Object ()
+          0
         );
 
       circuit.await ();

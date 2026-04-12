@@ -263,8 +263,7 @@ public class CircuitOps
     return
       hotCircuit.conduit (
         name,
-        Integer.class,
-        Flow::diff
+        Integer.class
       );
 
   }

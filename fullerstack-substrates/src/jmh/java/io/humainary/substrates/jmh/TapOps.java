@@ -274,7 +274,7 @@ public class TapOps
     // Conduit for tap creation benchmarks (no subscribers)
     conduit =
       circuit.conduit (
-        pipe ( Integer.class )
+        Integer.class
       );
 
     // ─────────────────────────────────────────────────────────────────
@@ -283,7 +283,7 @@ public class TapOps
     // ─────────────────────────────────────────────────────────────────
     baselineConduit =
       circuit.conduit (
-        pipe ( Integer.class )
+        Integer.class
       );
 
     baselineConduit.subscribe (
@@ -303,7 +303,7 @@ public class TapOps
     // ─────────────────────────────────────────────────────────────────
     identityConduit =
       circuit.conduit (
-        pipe ( Integer.class )
+        Integer.class
       );
 
     identityTap =
@@ -326,7 +326,7 @@ public class TapOps
     // ─────────────────────────────────────────────────────────────────
     stringConduit =
       circuit.conduit (
-        pipe ( Integer.class )
+        Integer.class
       );
 
     stringTap =
@@ -349,7 +349,7 @@ public class TapOps
     // ─────────────────────────────────────────────────────────────────
     multiConduit =
       circuit.conduit (
-        pipe ( Integer.class )
+        Integer.class
       );
 
     multiTap1 =

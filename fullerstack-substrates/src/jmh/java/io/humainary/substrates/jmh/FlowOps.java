@@ -77,9 +77,8 @@ public class FlowOps
 
     final var
       pipe =
-      circuit.pipe (
-        sink,
-        flow -> flow.diff ().guard ( v -> v > 0 )
+      sink.pipe (
+        cortex.flow ( Integer.class ).diff ().guard ( v -> v > 0 )
       );
 
     for (
@@ -107,9 +106,8 @@ public class FlowOps
 
     final var
       pipe =
-      circuit.pipe (
-        sink,
-        flow -> flow.diff ().sample ( 10 )
+      sink.pipe (
+        cortex.flow ( Integer.class ).diff ().sample ( 10 )
       );
 
     for (
@@ -137,9 +135,8 @@ public class FlowOps
 
     final var
       pipe =
-      circuit.pipe (
-        sink,
-        flow -> flow.guard ( v -> v > 0 ).limit ( 1000 )
+      sink.pipe (
+        cortex.flow ( Integer.class ).guard ( v -> v > 0 ).limit ( 1000 )
       );
 
     for (

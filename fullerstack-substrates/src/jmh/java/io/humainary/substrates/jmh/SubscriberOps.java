@@ -369,7 +369,7 @@ public class SubscriberOps {
 
       conduit =
         circuit.conduit (
-          pipe ( Long.class )
+          Long.class
         );
 
       subscriber =
@@ -411,7 +411,7 @@ public class SubscriberOps {
 
       conduit =
         circuit.conduit (
-          pipe ( Long.class )
+          Long.class
         );
 
       subscribers =
@@ -469,7 +469,7 @@ public class SubscriberOps {
       for ( int i = 0; i < 5; i++ ) {
         conduits[i] =
           circuit.conduit (
-            pipe ( Long.class )
+            Long.class
           );
         conduits[i].subscribe ( subscriber );
       }
@@ -515,7 +515,7 @@ public class SubscriberOps {
       for ( int i = 0; i < 10; i++ ) {
         conduits[i] =
           circuit.conduit (
-            pipe ( Long.class )
+            Long.class
           );
         conduits[i].subscribe ( subscriber );
       }
@@ -561,7 +561,7 @@ public class SubscriberOps {
       for ( int i = 0; i < 5; i++ ) {
         conduits[i] =
           circuit.conduit (
-            pipe ( Long.class )
+            Long.class
           );
         conduits[i].subscribe ( subscriber );
       }
@@ -607,7 +607,7 @@ public class SubscriberOps {
       for ( int i = 0; i < 10; i++ ) {
         conduits[i] =
           circuit.conduit (
-            pipe ( Long.class )
+            Long.class
           );
         conduits[i].subscribe ( subscriber );
       }
@@ -640,7 +640,7 @@ public class SubscriberOps {
 
       conduit =
         circuit.conduit (
-          pipe ( Long.class )
+          Long.class
         );
 
       subscriber =
@@ -687,7 +687,7 @@ public class SubscriberOps {
 
       conduit =
         circuit.conduit (
-          pipe ( Integer.class )
+          Integer.class
         );
 
       subscriber =

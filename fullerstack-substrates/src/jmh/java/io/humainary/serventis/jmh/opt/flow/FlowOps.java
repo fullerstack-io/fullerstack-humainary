@@ -158,7 +158,7 @@ public class FlowOps implements Substrates {
 
     conduit =
       circuit.conduit (
-        Signal.class
+        Flows.Signal.class
       );
 
     flow =
