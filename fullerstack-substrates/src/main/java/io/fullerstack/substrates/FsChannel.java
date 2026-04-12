@@ -1,7 +1,9 @@
 package io.fullerstack.substrates;
 
+import io.humainary.substrates.api.Substrates.Name;
 import io.humainary.substrates.api.Substrates.Pipe;
 import io.humainary.substrates.api.Substrates.Receptor;
+import io.humainary.substrates.api.Substrates.Routing;
 import io.humainary.substrates.api.Substrates.Subject;
 
 import java.util.ArrayList;
@@ -79,9 +81,38 @@ final class FsChannel < E > implements Receptor < E > {
       dirty = false;
     }
     Receptor < ? super E >[] r = receptors;
-    if ( r == null ) return;
-    for ( int i = 0, len = r.length; i < len; i++ ) {
-      r[i].receive ( emission );
+    if ( r != null ) {
+      for ( int i = 0, len = r.length; i < len; i++ ) {
+        r[i].receive ( emission );
+      }
+    }
+    // STEM routing: propagate emission upward through name hierarchy
+    if ( conduit != null && conduit.routing () == Routing.STEM ) {
+      Name name = subject.name ();
+      while ( name.enclosure ().isPresent () ) {
+        name = name.enclosure ().get ();
+        FsChannel < E > ancestor = conduit.channel ( name );
+        if ( ancestor != null ) {
+          ancestor.receiveLocal ( emission );
+        }
+      }
+    }
+  }
+
+  /// Dispatch to this channel's receptors only (no STEM propagation).
+  /// Used by STEM routing to avoid infinite recursion on ancestor channels.
+  void receiveLocal ( E emission ) {
+    if ( dirty || ( conduit != null && conduit.subscribersDirty ) ) {
+      if ( conduit != null ) {
+        conduit.rebuildChannelPipes ( this );
+      }
+      dirty = false;
+    }
+    Receptor < ? super E >[] r = receptors;
+    if ( r != null ) {
+      for ( int i = 0, len = r.length; i < len; i++ ) {
+        r[i].receive ( emission );
+      }
     }
   }
 

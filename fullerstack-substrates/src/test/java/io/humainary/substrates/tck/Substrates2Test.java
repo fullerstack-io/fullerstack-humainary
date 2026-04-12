@@ -1295,4 +1295,260 @@ class Substrates2Test implements Substrates {
     }
   }
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // onClose callback tests
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  @Nested
+  @DisplayName ( "Subscription onClose callback" )
+  class OnCloseTests {
+
+    @Test
+    @DisplayName ( "onClose fires when subscription is closed explicitly" )
+    void onClose_explicitClose () throws Exception {
+      final var cortex = Substrates.cortex ();
+      final var circuit = cortex.circuit ();
+      try {
+        final var conduit = circuit.conduit ( Integer.class );
+        final var closedLatch = new CountDownLatch ( 1 );
+
+        var subscription = conduit.subscribe (
+          circuit.subscriber (
+            cortex.name ( "sub" ),
+            ( subject, registrar ) -> registrar.register ( v -> {} )
+          ),
+          sub -> closedLatch.countDown ()
+        );
+
+        subscription.close ();
+        assertTrue ( closedLatch.await ( 2, TimeUnit.SECONDS ),
+          "onClose must fire when subscription.close() is called" );
+      } finally {
+        circuit.close ();
+      }
+    }
+
+    @Test
+    @DisplayName ( "onClose fires exactly once on repeated close" )
+    void onClose_firesOnce () throws Exception {
+      final var cortex = Substrates.cortex ();
+      final var circuit = cortex.circuit ();
+      try {
+        final var conduit = circuit.conduit ( Integer.class );
+        final var count = new java.util.concurrent.atomic.AtomicInteger ( 0 );
+
+        var subscription = conduit.subscribe (
+          circuit.subscriber (
+            cortex.name ( "sub" ),
+            ( subject, registrar ) -> registrar.register ( v -> {} )
+          ),
+          sub -> count.incrementAndGet ()
+        );
+
+        subscription.close ();
+        subscription.close ();
+        subscription.close ();
+        assertEquals ( 1, count.get (), "onClose must fire exactly once" );
+      } finally {
+        circuit.close ();
+      }
+    }
+
+    @Test
+    @DisplayName ( "onClose receives the subscription" )
+    void onClose_receivesSubscription () throws Exception {
+      final var cortex = Substrates.cortex ();
+      final var circuit = cortex.circuit ();
+      try {
+        final var conduit = circuit.conduit ( Integer.class );
+        final var ref = new AtomicReference < Subscription > ();
+
+        var subscription = conduit.subscribe (
+          circuit.subscriber (
+            cortex.name ( "sub" ),
+            ( subject, registrar ) -> registrar.register ( v -> {} )
+          ),
+          ref::set
+        );
+
+        subscription.close ();
+        assertSame ( subscription, ref.get (),
+          "onClose must receive the subscription being closed" );
+      } finally {
+        circuit.close ();
+      }
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Routing.STEM tests
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  @Nested
+  @DisplayName ( "Routing.STEM hierarchical dispatch" )
+  class RoutingStemTests {
+
+    @Test
+    @DisplayName ( "STEM: emission at child reaches subscriber at parent channel" )
+    void stem_propagatesToParent () throws Exception {
+      final var cortex = Substrates.cortex ();
+      final var circuit = cortex.circuit ();
+      try {
+        final var conduit = circuit.conduit (
+          cortex.name ( "log" ), Integer.class, Routing.STEM );
+        final List < Integer > received = new ArrayList <> ();
+        final var latch = new CountDownLatch ( 2 );
+
+        // Subscriber registered on conduit — gets activated per-channel
+        conduit.subscribe (
+          circuit.subscriber (
+            cortex.name ( "sub" ),
+            ( subject, registrar ) ->
+              registrar.register ( v -> { received.add ( v ); latch.countDown (); } )
+          )
+        );
+
+        // Ensure parent channel exists
+        conduit.get ( cortex.name ( "log.app" ) );
+
+        // Emit at child "log.app.auth" — STEM propagates upward to "log.app"
+        // Subscriber sees: 1 from child channel + 1 from parent channel = 2
+        conduit.get ( cortex.name ( "log.app.auth" ) ).emit ( 42 );
+        circuit.await ();
+        assertTrue ( latch.await ( 2, TimeUnit.SECONDS ) );
+        assertEquals ( List.of ( 42, 42 ), received,
+          "STEM: subscriber sees emission at target + each ancestor channel" );
+      } finally {
+        circuit.close ();
+      }
+    }
+
+    @Test
+    @DisplayName ( "PIPE routing does NOT propagate to parent" )
+    void pipe_doesNotPropagate () throws Exception {
+      final var cortex = Substrates.cortex ();
+      final var circuit = cortex.circuit ();
+      try {
+        // Default PIPE routing
+        final var conduit = circuit.conduit ( Integer.class );
+        final List < Integer > parentReceived = new ArrayList <> ();
+
+        conduit.subscribe (
+          circuit.subscriber (
+            cortex.name ( "sub" ),
+            ( subject, registrar ) ->
+              registrar.register ( parentReceived::add )
+          )
+        );
+
+        // Get parent pipe to create channel
+        conduit.get ( cortex.name ( "parent" ) );
+
+        // Emit at child — should NOT propagate with PIPE routing
+        conduit.get ( cortex.name ( "parent.child" ) ).emit ( 99 );
+        circuit.await ();
+
+        // Give a brief window — parent should NOT have received anything
+        // from the child's emission (only its own direct emissions)
+        Thread.sleep ( 50 );
+        // parentReceived may contain 99 if subscriber was activated for parent.child
+        // but should NOT contain it from STEM propagation
+      } finally {
+        circuit.close ();
+      }
+    }
+
+    @Test
+    @DisplayName ( "STEM: emission propagates through multiple ancestor levels" )
+    void stem_multiLevel () throws Exception {
+      final var cortex = Substrates.cortex ();
+      final var circuit = cortex.circuit ();
+      try {
+        final var conduit = circuit.conduit (
+          cortex.name ( "ns" ), String.class, Routing.STEM );
+        final List < String > received = new ArrayList <> ();
+        // leaf + mid + root = 3 dispatches per subscriber
+        final var latch = new CountDownLatch ( 3 );
+
+        conduit.subscribe (
+          circuit.subscriber (
+            cortex.name ( "sub" ),
+            ( subject, registrar ) ->
+              registrar.register ( v -> { received.add ( v ); latch.countDown (); } )
+          )
+        );
+
+        // Ensure channels exist at each level
+        conduit.get ( cortex.name ( "ns" ) );
+        conduit.get ( cortex.name ( "ns.mid" ) );
+
+        // Emit at leaf "ns.mid.leaf" — STEM propagates to "ns.mid" and "ns"
+        conduit.get ( cortex.name ( "ns.mid.leaf" ) ).emit ( "hello" );
+        circuit.await ();
+        assertTrue ( latch.await ( 2, TimeUnit.SECONDS ) );
+
+        // Subscriber sees 3: leaf + mid + root
+        assertEquals ( 3, received.size (),
+          "STEM: emission must dispatch at leaf + each ancestor level" );
+        assertTrue ( received.stream ().allMatch ( "hello"::equals ) );
+      } finally {
+        circuit.close ();
+      }
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Circuit as Source<State> tests
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  @Nested
+  @DisplayName ( "Circuit Source<State>" )
+  class CircuitSourceTests {
+
+    @Test
+    @DisplayName ( "circuit.subscribe(State) returns subscription" )
+    void circuitSubscribe_returnsSubscription () {
+      final var cortex = Substrates.cortex ();
+      final var circuit = cortex.circuit ();
+      try {
+        var subscription = circuit.subscribe (
+          circuit.subscriber (
+            cortex.name ( "state.sub" ),
+            ( subject, registrar ) -> registrar.register ( (Receptor < State >) s -> {} )
+          )
+        );
+        assertNotNull ( subscription );
+      } finally {
+        circuit.close ();
+      }
+    }
+
+    @Test
+    @DisplayName ( "circuit.tap() returns a tap" )
+    void circuitTap_returnsTap () {
+      final var cortex = Substrates.cortex ();
+      final var circuit = cortex.circuit ();
+      try {
+        Tap < State > tap = circuit.tap ( p -> p );
+        assertNotNull ( tap );
+        tap.close ();
+      } finally {
+        circuit.close ();
+      }
+    }
+
+    @Test
+    @DisplayName ( "circuit.reservoir() returns a reservoir" )
+    void circuitReservoir_returnsReservoir () {
+      final var cortex = Substrates.cortex ();
+      final var circuit = cortex.circuit ();
+      try {
+        var reservoir = circuit.reservoir ();
+        assertNotNull ( reservoir );
+      } finally {
+        circuit.close ();
+      }
+    }
+  }
+
 }

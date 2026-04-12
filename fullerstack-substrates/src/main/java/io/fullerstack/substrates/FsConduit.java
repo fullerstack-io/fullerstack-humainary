@@ -18,6 +18,7 @@ import io.humainary.substrates.api.Substrates.Provided;
 import io.humainary.substrates.api.Substrates.Queued;
 import io.humainary.substrates.api.Substrates.Receptor;
 import io.humainary.substrates.api.Substrates.Reservoir;
+import io.humainary.substrates.api.Substrates.Routing;
 import io.humainary.substrates.api.Substrates.Subject;
 import io.humainary.substrates.api.Substrates.Subscriber;
 import io.humainary.substrates.api.Substrates.Subscription;
@@ -38,6 +39,7 @@ import io.humainary.substrates.api.Substrates.Tap;
 public final class FsConduit < E > extends FsSubstrate < Conduit < E > > implements Conduit < E > {
 
   private final FsCircuit circuit;
+  private final Routing   routing;
 
   /// Cache of pipes by name - copy-on-write for fast reads.
   /// Using IdentityHashMap since FsName is interned (same path = same object).
@@ -72,13 +74,28 @@ public final class FsConduit < E > extends FsSubstrate < Conduit < E > > impleme
   }
 
   public FsConduit ( FsSubject < ? > parent, Name name, FsCircuit circuit ) {
+    this ( parent, name, circuit, Routing.PIPE );
+  }
+
+  public FsConduit ( FsSubject < ? > parent, Name name, FsCircuit circuit, Routing routing ) {
     super ( parent, name );
     this.circuit = circuit;
+    this.routing = routing;
   }
 
   @Override
   protected Class < ? > type () {
     return Conduit.class;
+  }
+
+  Routing routing () {
+    return routing;
+  }
+
+  /// Returns the channel for the given name, or null if not yet created.
+  FsChannel < E > channel ( Name name ) {
+    Map < Name, FsChannel < E > > map = channels;
+    return map != null ? map.get ( name ) : null;
   }
 
   @Override
@@ -240,13 +257,11 @@ public final class FsConduit < E > extends FsSubstrate < Conduit < E > > impleme
     FsSubscriber < E > fs = (FsSubscriber < E >) subscriber;
 
     Subscription subscription = new FsSubscription ( subscriber.subject ().name (),
-      (FsSubject < ? >) lazySubject (), () -> enqueueUnsubscribe ( fs ) );
+      (FsSubject < ? >) lazySubject (), () -> enqueueUnsubscribe ( fs ), onClose );
 
     fs.trackSubscription ( subscription );
 
     circuit.submitIngress ( new FsCircuit.ReceptorReceiver < Object > ( _ -> addSubscriber ( fs ) ), null );
-
-    // TODO: wire up onClose callback — fire once when subscription terminates
 
     return subscription;
   }

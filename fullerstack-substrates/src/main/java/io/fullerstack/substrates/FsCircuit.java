@@ -79,6 +79,10 @@ public final class FsCircuit implements Circuit {
   private final List < Subscriber < State > > subscribers;
   private final Thread                        worker;
 
+  /// Internal conduit for State emissions — lazy, created on first Source<State> operation.
+  /// Backs circuit.subscribe(State), circuit.tap(), and circuit.reservoir().
+  private volatile FsConduit < State > stateConduit;
+
   // ─────────────────────────────────────────────────────────────────────────────
   // Queue infrastructure
   // ─────────────────────────────────────────────────────────────────────────────
@@ -399,8 +403,7 @@ public final class FsCircuit implements Circuit {
     requireNonNull ( name );
     requireNonNull ( type );
     requireNonNull ( routing );
-    // TODO: implement Routing.STEM hierarchical dispatch
-    return new FsConduit <> ( (FsSubject < ? >) subject, name, this );
+    return new FsConduit <> ( (FsSubject < ? >) subject, name, this, routing );
   }
 
   // ===================================================================================
@@ -435,14 +438,30 @@ public final class FsCircuit implements Circuit {
   }
 
   // ===================================================================================
-  // Source<State, Circuit> — tap and subscribe (inherited from Source sealed hierarchy)
+  // Source<State, Circuit> — delegates to internal State conduit
   // ===================================================================================
+
+  private FsConduit < State > stateConduit () {
+    FsConduit < State > c = stateConduit;
+    if ( c == null ) {
+      synchronized ( this ) {
+        c = stateConduit;
+        if ( c == null ) {
+          c = new FsConduit <> ( (FsSubject < ? >) subject,
+            io.humainary.substrates.api.Substrates.cortex ().name ( "circuit.state" ), this );
+          stateConduit = c;
+        }
+      }
+    }
+    return c;
+  }
 
   @New
   @NotNull
   @Override
   public < T > Tap < T > tap ( @NotNull java.util.function.Function < Pipe < T >, Pipe < State > > fn ) {
-    throw new UnsupportedOperationException ( "Circuit.tap() not yet implemented" );
+    requireNonNull ( fn );
+    return stateConduit ().tap ( fn );
   }
 
   @New
@@ -450,7 +469,16 @@ public final class FsCircuit implements Circuit {
   @Override
   public Subscription subscribe ( @NotNull Subscriber < State > subscriber,
                                   @NotNull @Queued java.util.function.Consumer < ? super Subscription > onClose ) {
-    throw new UnsupportedOperationException ( "Circuit.subscribe(Subscriber<State>, onClose) not yet implemented" );
+    requireNonNull ( subscriber );
+    requireNonNull ( onClose );
+    return stateConduit ().subscribe ( subscriber, onClose );
+  }
+
+  @New
+  @NotNull
+  @Override
+  public Reservoir < State > reservoir () {
+    return stateConduit ().reservoir ();
   }
 
   // ===================================================================================
@@ -490,11 +518,4 @@ public final class FsCircuit implements Circuit {
       subject.name (), (FsSubject < ? >) subject, () -> subscribers.remove ( subscriber ) );
   }
 
-  @New
-  @NotNull
-  @Override
-  @SuppressWarnings ( "unchecked" )
-  public Reservoir < State > reservoir () {
-    return new FsReservoir <> ( (Subject < Reservoir < State > >) (Subject < ? >) subject );
-  }
 }

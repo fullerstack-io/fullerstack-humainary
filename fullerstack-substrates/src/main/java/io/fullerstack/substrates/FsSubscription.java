@@ -29,8 +29,11 @@ public final class FsSubscription implements Subscription {
   private final    FsSubject < ? >          parent;
   private volatile Subject < Subscription > subject;
 
-  /// Action to run on close.
+  /// Action to run on close (unsubscribe from source).
   private final Runnable onClose;
+
+  /// User-supplied close callback — fires exactly once when subscription terminates.
+  private final java.util.function.Consumer < ? super Subscription > onCloseCallback;
 
   /// Whether this subscription has been closed.
   private volatile boolean closed;
@@ -39,11 +42,23 @@ public final class FsSubscription implements Subscription {
   ///
   /// @param name   the name for the subscription subject
   /// @param parent the parent subject for hierarchy
-  /// @param onClose action to run when subscription is closed
+  /// @param onClose action to run when subscription is closed (internal cleanup)
   FsSubscription ( Name name, FsSubject < ? > parent, Runnable onClose ) {
+    this ( name, parent, onClose, null );
+  }
+
+  /// Creates a new subscription with lazy subject creation and an onClose callback.
+  ///
+  /// @param name            the name for the subscription subject
+  /// @param parent          the parent subject for hierarchy
+  /// @param onClose         action to run when subscription is closed (internal cleanup)
+  /// @param onCloseCallback user-supplied callback fired exactly once on termination, or null
+  FsSubscription ( Name name, FsSubject < ? > parent, Runnable onClose,
+                   java.util.function.Consumer < ? super Subscription > onCloseCallback ) {
     this.name = name;
     this.parent = parent;
     this.onClose = onClose;
+    this.onCloseCallback = onCloseCallback;
   }
 
   /// Returns the subject identity of this subscription (lazy creation).
@@ -65,6 +80,13 @@ public final class FsSubscription implements Subscription {
     if ( !closed ) {
       closed = true;
       onClose.run ();
+      if ( onCloseCallback != null ) {
+        try {
+          onCloseCallback.accept ( this );
+        } catch ( Exception e ) {
+          // SPEC §15.4: onClose exceptions do not propagate to circuit dispatch loop
+        }
+      }
     }
   }
 

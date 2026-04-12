@@ -203,7 +203,7 @@ final class FsTap < T > implements Tap < T > {
     version++;
 
     return new FsSubscription ( subscriber.subject ().name (),
-      (FsSubject < ? >) subject, () -> unsubscribe ( fs ) );
+      (FsSubject < ? >) subject, () -> unsubscribe ( fs ), onClose );
   }
 
   private void unsubscribe ( FsSubscriber < T > subscriber ) {
