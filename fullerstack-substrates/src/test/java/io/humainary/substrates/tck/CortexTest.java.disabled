@@ -51,7 +51,7 @@ final class CortexTest
       final var conduit =
         circuit.conduit ( Composer.pipe ( Integer.class ) );
 
-      conduit.percept ( cortex.name ( "test.channel" ) )
+      conduit.get ( cortex.name ( "test.channel" ) )
         .emit ( 42 );
 
       // Await should complete when queue is drained
@@ -97,7 +97,7 @@ final class CortexTest
       final Reservoir < String > reservoir = conduit.reservoir ();
 
       final Pipe < String > pipe =
-        conduit.percept ( cortex.name ( "integration.channel" ) );
+        conduit.get ( cortex.name ( "integration.channel" ) );
 
       pipe.emit ( "integration-test" );
 
@@ -270,7 +270,7 @@ final class CortexTest
       final Reservoir < Integer > reservoir = conduit.reservoir ();
 
       final Pipe < Integer > pipe =
-        conduit.percept ( cortex.name ( "test.channel" ) );
+        conduit.get ( cortex.name ( "test.channel" ) );
 
       pipe.emit ( 10 );
       pipe.emit ( 20 );
@@ -428,7 +428,7 @@ final class CortexTest
       final Reservoir < String > reservoir = conduit.reservoir ();
 
       final Pipe < String > pipe =
-        conduit.percept ( cortex.name ( "test.channel" ) );
+        conduit.get ( cortex.name ( "test.channel" ) );
 
       pipe.emit ( "first" );
 
@@ -756,7 +756,7 @@ final class CortexTest
         NullPointerException.class,
         () -> circuit.subscriber (
           cortex.name ( "test" ),
-          (BiConsumer < Subject < Channel < String > >, Registrar < String > >) null
+          (BiConsumer < Subject < Pipe < String > >, Registrar < String > >) null
         )
       );
 
@@ -903,8 +903,8 @@ final class CortexTest
 
     try {
 
-      final Conduit < Pipe < String >, String > conduit =
-        circuit.conduit ( Composer.pipe () );
+      final Conduit < String > conduit =
+        circuit.conduit ( Integer.class );
 
       final List < Subject < ? > > receivedSubjects = new ArrayList <> ();
 
@@ -921,9 +921,9 @@ final class CortexTest
       conduit.subscribe ( subscriber );
 
       // Create channels which should trigger subscriber
-      final Pipe < String > pipe1 = conduit.percept ( cortex.name ( "channel.one" ) );
-      final Pipe < String > pipe2 = conduit.percept ( cortex.name ( "channel.two" ) );
-      final Pipe < String > pipe3 = conduit.percept ( cortex.name ( "channel.three" ) );
+      final Pipe < String > pipe1 = conduit.get ( cortex.name ( "channel.one" ) );
+      final Pipe < String > pipe2 = conduit.get ( cortex.name ( "channel.two" ) );
+      final Pipe < String > pipe3 = conduit.get ( cortex.name ( "channel.three" ) );
 
       // Emit values to ensure channels are actually created and subscribed
       pipe1.emit ( "test1" );

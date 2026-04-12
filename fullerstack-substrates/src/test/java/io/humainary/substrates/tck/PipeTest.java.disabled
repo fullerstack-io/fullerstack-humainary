@@ -410,7 +410,7 @@ final class PipeTest
       conduit.subscribe ( subscriber );
 
       final Pipe < Integer > pipe =
-        conduit.percept ( cortex.name ( "pipe.test.channel" ) );
+        conduit.get ( cortex.name ( "pipe.test.channel" ) );
 
       pipe.emit ( 10 );
       pipe.emit ( 20 );
@@ -1130,7 +1130,7 @@ final class PipeTest
         circuit.conduit ( Composer.pipe ( Integer.class ) );
 
       final Pipe < Integer > pipe =
-        conduit.percept ( channelName );
+        conduit.get ( channelName );
 
       final var subject = pipe.subject ();
 
@@ -1169,7 +1169,7 @@ final class PipeTest
         circuit.conduit ( Composer.pipe ( Integer.class ) );
 
       final Pipe < Integer > pipe =
-        conduit.percept ( channelName );
+        conduit.get ( channelName );
 
       assertEquals (
         channelName.toString (),
@@ -1263,7 +1263,7 @@ final class PipeTest
         );
 
       final Pipe < Integer > pipe =
-        conduit.percept ( channelName );
+        conduit.get ( channelName );
 
       final var pipeSubject = pipe.subject ();
 

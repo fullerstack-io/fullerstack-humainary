@@ -3,9 +3,7 @@ package io.fullerstack.substrates;
 import static io.humainary.substrates.api.Substrates.*;
 import static org.junit.jupiter.api.Assertions.*;
 
-import io.humainary.substrates.api.Substrates.Channel;
 import io.humainary.substrates.api.Substrates.Circuit;
-import io.humainary.substrates.api.Substrates.Composer;
 import io.humainary.substrates.api.Substrates.Conduit;
 import io.humainary.substrates.api.Substrates.Name;
 import io.humainary.substrates.api.Substrates.Pipe;
@@ -408,8 +406,8 @@ class NewAnnotationContractTest {
     @Test
     @DisplayName ( "circuit.conduit(composer) returns new instance each call" )
     void conduit_withoutName_returnsNewInstance () {
-      Conduit < Pipe < Integer >, Integer > conduit1 = circuit.conduit ( Composer.pipe () );
-      Conduit < Pipe < Integer >, Integer > conduit2 = circuit.conduit ( Composer.pipe () );
+      Conduit < Integer > conduit1 = circuit.conduit ( Composer.pipe () );
+      Conduit < Integer > conduit2 = circuit.conduit ( Composer.pipe () );
 
       assertNotSame ( conduit1, conduit2, "conduit(composer) must return new instance each call" );
     }
@@ -417,9 +415,9 @@ class NewAnnotationContractTest {
     @Test
     @DisplayName ( "circuit.conduit(composer, configurer) returns new instance each call" )
     void conduit_withoutNameWithConfigurer_returnsNewInstance () {
-      Conduit < Pipe < String >, String > conduit1 = circuit.conduit ( Composer.pipe (), flow -> {
+      Conduit < String > conduit1 = circuit.conduit ( Composer.pipe (), flow -> {
       } );
-      Conduit < Pipe < String >, String > conduit2 = circuit.conduit ( Composer.pipe (), flow -> {
+      Conduit < String > conduit2 = circuit.conduit ( Composer.pipe (), flow -> {
       } );
 
       assertNotSame ( conduit1, conduit2, "conduit(composer, configurer) must return new instance each call" );
@@ -430,8 +428,8 @@ class NewAnnotationContractTest {
     void conduit_returnsNewInstance () {
       Name conduitName = cortex ().name ( "metrics" );
 
-      Conduit < Pipe < Integer >, Integer > conduit1 = circuit.conduit ( conduitName, Composer.pipe () );
-      Conduit < Pipe < Integer >, Integer > conduit2 = circuit.conduit ( conduitName, Composer.pipe () );
+      Conduit < Integer > conduit1 = circuit.conduit ( conduitName, Composer.pipe () );
+      Conduit < Integer > conduit2 = circuit.conduit ( conduitName, Composer.pipe () );
 
       assertNotSame ( conduit1, conduit2, "conduit(name, composer) must return new instance each call" );
     }
@@ -441,9 +439,9 @@ class NewAnnotationContractTest {
     void conduit_withConfigurer_returnsNewInstance () {
       Name conduitName = cortex ().name ( "events" );
 
-      Conduit < Pipe < String >, String > conduit1 = circuit.conduit ( conduitName, Composer.pipe (), flow -> {
+      Conduit < String > conduit1 = circuit.conduit ( conduitName, Composer.pipe (), flow -> {
       } );
-      Conduit < Pipe < String >, String > conduit2 = circuit.conduit ( conduitName, Composer.pipe (), flow -> {
+      Conduit < String > conduit2 = circuit.conduit ( conduitName, Composer.pipe (), flow -> {
       } );
 
       assertNotSame ( conduit1, conduit2, "conduit(name, composer, configurer) must return new instance each call" );
@@ -462,7 +460,7 @@ class NewAnnotationContractTest {
     @DisplayName ( "circuit.subscriber(name, callback) returns new instance each call" )
     void subscriber_returnsNewInstance () {
       Name subscriberName = cortex ().name ( "logger" );
-      BiConsumer < Subject < Channel < Integer > >, Registrar < Integer > > callback = ( subject, registrar ) -> registrar
+      BiConsumer < Subject < Pipe < Integer > >, Registrar < Integer > > callback = ( subject, registrar ) -> registrar
         .register ( value -> {
         } );
 
@@ -525,13 +523,13 @@ class NewAnnotationContractTest {
     @DisplayName ( "conduit.percept(name) returns cached channel (not @New)" )
     void conduitPercept_returnsCachedChannel () {
       Name conduitName = cortex ().name ( "events" );
-      Conduit < Pipe < String >, String > conduit = circuit.conduit ( conduitName, Composer.pipe () );
+      Conduit < String > conduit = circuit.conduit ( conduitName, Composer.pipe () );
 
       Name channelName = cortex ().name ( "producer-1" );
 
       // percept() is NOT @New - it should cache by name
-      Pipe < String > pipe1 = conduit.percept ( channelName );
-      Pipe < String > pipe2 = conduit.percept ( channelName );
+      Pipe < String > pipe1 = conduit.get ( channelName );
+      Pipe < String > pipe2 = conduit.get ( channelName );
 
       // conduit.percept() should cache by name - same channel
       assertSame ( pipe1, pipe2, "conduit.percept(name) should cache and return same channel" );
@@ -756,10 +754,10 @@ class NewAnnotationContractTest {
     @Test
     @DisplayName ( "channel.pipe() returns new instance each call" )
     void channelPipe_returnsNewInstance () {
-      Conduit < Pipe < String >, String > conduit = circuit.conduit ( cortex ().name ( "conduit" ), Composer.pipe () );
+      Conduit < String > conduit = circuit.conduit ( cortex ().name ( "conduit" ), Composer.pipe () );
 
       // Get the channel via percept
-      Pipe < String > channelPipe = conduit.percept ( cortex ().name ( "channel" ) );
+      Pipe < String > channelPipe = conduit.get ( cortex ().name ( "channel" ) );
 
       // Note: Channel.pipe() creates new pipe each call, but we access via
       // conduit.percept()
@@ -774,11 +772,11 @@ class NewAnnotationContractTest {
       // but different pipes when using configurer.
 
       // For now, we test via the configurer variant
-      Conduit < Pipe < Integer >, Integer > conduit2 = circuit.conduit ( cortex ().name ( "conduit2" ), Composer.pipe () );
+      Conduit < Integer > conduit2 = circuit.conduit ( cortex ().name ( "conduit2" ), Composer.pipe () );
 
       // Create pipes from same channel with different configurers - each should be
       // new
-      Pipe < Integer > pipe1 = conduit2.percept ( cortex ().name ( "ch" ) );
+      Pipe < Integer > pipe1 = conduit2.get ( cortex ().name ( "ch" ) );
       // percept() is cached, but Composer.pipe(configurer) returns new pipe
       assertNotNull ( pipe1 );
     }
@@ -790,12 +788,12 @@ class NewAnnotationContractTest {
       var composer1 = Composer. < Integer > pipe ( flow -> flow.limit ( 100 ) );
       var composer2 = Composer. < Integer > pipe ( flow -> flow.limit ( 200 ) );
 
-      Conduit < Pipe < Integer >, Integer > conduit1 = circuit.conduit ( cortex ().name ( "c1" ), composer1 );
-      Conduit < Pipe < Integer >, Integer > conduit2 = circuit.conduit ( cortex ().name ( "c2" ), composer2 );
+      Conduit < Integer > conduit1 = circuit.conduit ( cortex ().name ( "c1" ), composer1 );
+      Conduit < Integer > conduit2 = circuit.conduit ( cortex ().name ( "c2" ), composer2 );
 
       Name channelName = cortex ().name ( "channel" );
-      Pipe < Integer > pipe1 = conduit1.percept ( channelName );
-      Pipe < Integer > pipe2 = conduit2.percept ( channelName );
+      Pipe < Integer > pipe1 = conduit1.get ( channelName );
+      Pipe < Integer > pipe2 = conduit2.get ( channelName );
 
       // Different conduits, different pipes
       assertNotSame ( pipe1, pipe2, "Pipes from different conduits must be different" );

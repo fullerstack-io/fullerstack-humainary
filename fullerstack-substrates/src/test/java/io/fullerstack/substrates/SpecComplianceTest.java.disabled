@@ -40,7 +40,7 @@ final class SpecComplianceTest {
 
       var conduit = circuit.conduit ( cortex.name ( "c" ), Composer.pipe ( String.class ) );
       var reservoir = conduit.reservoir ();
-      var pipe = conduit.percept ( cortex.name ( "ch" ) );
+      var pipe = conduit.get ( cortex.name ( "ch" ) );
 
       pipe.emit ( "first" );
       pipe.emit ( "second" );
@@ -65,7 +65,7 @@ final class SpecComplianceTest {
 
       var conduit = circuit.conduit ( cortex.name ( "c" ), Composer.pipe ( String.class ) );
       var reservoir = conduit.reservoir ();
-      var pipe = conduit.percept ( cortex.name ( "ch" ) );
+      var pipe = conduit.get ( cortex.name ( "ch" ) );
 
       pipe.emit ( "batch1-a" );
       pipe.emit ( "batch1-b" );
@@ -109,7 +109,7 @@ final class SpecComplianceTest {
 
       var conduit = circuit.conduit ( cortex.name ( "c" ), Composer.pipe ( String.class ) );
       var reservoir = conduit.reservoir ();
-      var pipe = conduit.percept ( cortex.name ( "ch" ) );
+      var pipe = conduit.get ( cortex.name ( "ch" ) );
 
       pipe.emit ( "before" );
       circuit.await ();
@@ -137,8 +137,8 @@ final class SpecComplianceTest {
 
       var name1 = cortex.name ( "channel-a" );
       var name2 = cortex.name ( "channel-b" );
-      conduit.percept ( name1 ).emit ( "from-a" );
-      conduit.percept ( name2 ).emit ( "from-b" );
+      conduit.get ( name1 ).emit ( "from-a" );
+      conduit.get ( name2 ).emit ( "from-b" );
       circuit.await ();
 
       var captures = reservoir.drain ().toList ();
@@ -161,7 +161,7 @@ final class SpecComplianceTest {
 
       var conduit = circuit.conduit ( cortex.name ( "c" ), Composer.pipe ( String.class ) );
       var reservoir = conduit.reservoir ();
-      var pipe = conduit.percept ( cortex.name ( "ch" ) );
+      var pipe = conduit.get ( cortex.name ( "ch" ) );
 
       pipe.emit ( "captured" );
       circuit.await ();
@@ -302,8 +302,8 @@ final class SpecComplianceTest {
       var conduit = circuit.conduit ( cortex.name ( "c" ), Composer.pipe ( String.class ) );
 
       var name = cortex.name ( "channel" );
-      var pipe1 = conduit.percept ( name );
-      var pipe2 = conduit.percept ( name );
+      var pipe1 = conduit.get ( name );
+      var pipe2 = conduit.get ( name );
 
       assertThat ( pipe1 ).isSameAs ( pipe2 );
 
@@ -317,8 +317,8 @@ final class SpecComplianceTest {
       var circuit = cortex.circuit ( cortex.name ( "conduit.diff" ) );
       var conduit = circuit.conduit ( cortex.name ( "c" ), Composer.pipe ( String.class ) );
 
-      var pipe1 = conduit.percept ( cortex.name ( "a" ) );
-      var pipe2 = conduit.percept ( cortex.name ( "b" ) );
+      var pipe1 = conduit.get ( cortex.name ( "a" ) );
+      var pipe2 = conduit.get ( cortex.name ( "b" ) );
 
       assertThat ( pipe1 ).isNotSameAs ( pipe2 );
 
@@ -348,17 +348,17 @@ final class SpecComplianceTest {
       assertThat ( discovered ).isEmpty ();
 
       // First emission to channel "x" — triggers discovery
-      conduit.percept ( cortex.name ( "x" ) ).emit ( "hello" );
+      conduit.get ( cortex.name ( "x" ) ).emit ( "hello" );
       circuit.await ();
       assertThat ( discovered ).containsExactly ( "x" );
 
       // Second emission to same channel — no re-discovery
-      conduit.percept ( cortex.name ( "x" ) ).emit ( "world" );
+      conduit.get ( cortex.name ( "x" ) ).emit ( "world" );
       circuit.await ();
       assertThat ( discovered ).containsExactly ( "x" );
 
       // Emission to new channel "y" — triggers discovery again
-      conduit.percept ( cortex.name ( "y" ) ).emit ( "new" );
+      conduit.get ( cortex.name ( "y" ) ).emit ( "new" );
       circuit.await ();
       assertThat ( discovered ).containsExactlyInAnyOrder ( "x", "y" );
 
@@ -385,8 +385,8 @@ final class SpecComplianceTest {
         ( subject, registrar ) -> registrar.register ( received::add )
       ) );
 
-      var pipeA = conduit.percept ( cortex.name ( "a" ) );
-      var pipeB = conduit.percept ( cortex.name ( "b" ) );
+      var pipeA = conduit.get ( cortex.name ( "a" ) );
+      var pipeB = conduit.get ( cortex.name ( "b" ) );
 
       pipeA.emit ( "x" );
       pipeA.emit ( "x" ); // diff suppresses
@@ -416,12 +416,12 @@ final class SpecComplianceTest {
         ( subject, registrar ) -> registrar.register ( received::add )
       ) );
 
-      conduit.percept ( cortex.name ( "ch" ) ).emit ( "before" );
+      conduit.get ( cortex.name ( "ch" ) ).emit ( "before" );
       circuit.await ();
 
       subscription.close ();
 
-      conduit.percept ( cortex.name ( "ch" ) ).emit ( "after" );
+      conduit.get ( cortex.name ( "ch" ) ).emit ( "after" );
       circuit.await ();
 
       assertThat ( received ).containsExactly ( "before" );
@@ -460,7 +460,7 @@ final class SpecComplianceTest {
         } )
       ) );
 
-      var pipe = conduit.percept ( cortex.name ( "ch" ) );
+      var pipe = conduit.get ( cortex.name ( "ch" ) );
       cascadePipe.set ( pipe );
 
       // Emit two ingress items
@@ -511,7 +511,7 @@ final class SpecComplianceTest {
         ( subject, registrar ) -> registrar.register ( received::add )
       ) );
 
-      var pipe = conduit.percept ( cortex.name ( "ch" ) );
+      var pipe = conduit.get ( cortex.name ( "ch" ) );
       int perThread = 100;
       int threads = 4;
       var latch = new CountDownLatch ( 1 );

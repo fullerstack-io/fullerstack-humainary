@@ -4,7 +4,6 @@ import static io.humainary.substrates.api.Substrates.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 import io.humainary.substrates.api.Substrates.Circuit;
-import io.humainary.substrates.api.Substrates.Composer;
 import io.humainary.substrates.api.Substrates.Conduit;
 import io.humainary.substrates.api.Substrates.Name;
 import io.humainary.substrates.api.Substrates.Pipe;
@@ -146,7 +145,7 @@ class NotNullAnnotationContractTest {
     @Test
     @DisplayName ( "circuit.conduit() returns non-null" )
     void circuitConduit_returnsNonNull () {
-      Conduit < Pipe < String >, String > conduit = circuit.conduit ( cortex ().name ( "conduit" ), Composer.pipe () );
+      Conduit < String > conduit = circuit.conduit ( cortex ().name ( "conduit" ), Composer.pipe () );
       assertNotNull ( conduit, "circuit.conduit() must return non-null" );
     }
 
@@ -308,15 +307,15 @@ class NotNullAnnotationContractTest {
     @Test
     @DisplayName ( "conduit.percept(null) throws NullPointerException" )
     void conduitPercept_nullThrowsNPE () {
-      Conduit < Pipe < String >, String > conduit = circuit.conduit ( cortex ().name ( "conduit" ), Composer.pipe () );
-      assertThrows ( NullPointerException.class, () -> conduit.percept ( (Name) null ),
+      Conduit < String > conduit = circuit.conduit ( cortex ().name ( "conduit" ), Composer.pipe () );
+      assertThrows ( NullPointerException.class, () -> conduit.get ( (Name) null ),
         "conduit.percept(null) must throw NullPointerException" );
     }
 
     @Test
     @DisplayName ( "conduit.subscribe(null) throws NullPointerException" )
     void conduitSubscribe_nullThrowsNPE () {
-      Conduit < Pipe < String >, String > conduit = circuit.conduit ( cortex ().name ( "conduit" ), Composer.pipe () );
+      Conduit < String > conduit = circuit.conduit ( cortex ().name ( "conduit" ), Composer.pipe () );
       assertThrows ( NullPointerException.class, () -> conduit.subscribe ( null ),
         "conduit.subscribe(null) must throw NullPointerException" );
     }
@@ -324,15 +323,15 @@ class NotNullAnnotationContractTest {
     @Test
     @DisplayName ( "conduit.subject() returns non-null" )
     void conduitSubject_returnsNonNull () {
-      Conduit < Pipe < String >, String > conduit = circuit.conduit ( cortex ().name ( "conduit" ), Composer.pipe () );
+      Conduit < String > conduit = circuit.conduit ( cortex ().name ( "conduit" ), Composer.pipe () );
       assertNotNull ( conduit.subject (), "conduit.subject() must return non-null" );
     }
 
     @Test
     @DisplayName ( "conduit.percept(name) returns non-null" )
     void conduitPercept_returnsNonNull () {
-      Conduit < Pipe < String >, String > conduit = circuit.conduit ( cortex ().name ( "conduit" ), Composer.pipe () );
-      assertNotNull ( conduit.percept ( cortex ().name ( "pipe" ) ), "conduit.percept(name) must return non-null" );
+      Conduit < String > conduit = circuit.conduit ( cortex ().name ( "conduit" ), Composer.pipe () );
+      assertNotNull ( conduit.get ( cortex ().name ( "pipe" ) ), "conduit.percept(name) must return non-null" );
     }
   }
 

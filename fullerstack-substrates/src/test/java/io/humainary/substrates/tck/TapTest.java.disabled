@@ -9,7 +9,6 @@ import org.junit.jupiter.api.Test;
 import java.util.ArrayList;
 import java.util.List;
 
-import static io.humainary.substrates.api.Substrates.Composer.pipe;
 import static org.junit.jupiter.api.Assertions.*;
 
 /// Tests for the Tap interface.
@@ -78,7 +77,7 @@ final class TapTest
     );
 
     final var name = cortex.name ( "test.channel" );
-    final var pipe = conduit.percept ( name );
+    final var pipe = conduit.get ( name );
 
     pipe.emit ( 1 );
     pipe.emit ( 2 );
@@ -136,8 +135,8 @@ final class TapTest
       )
     );
 
-    final var pipeA = conduit.percept ( channelA );
-    final var pipeB = conduit.percept ( channelB );
+    final var pipeA = conduit.get ( channelA );
+    final var pipeB = conduit.get ( channelB );
 
     pipeA.emit ( 1 );
     pipeB.emit ( 2 );
@@ -190,7 +189,7 @@ final class TapTest
     );
 
     final var name = cortex.name ( "test" );
-    final var pipe = conduit.percept ( name );
+    final var pipe = conduit.get ( name );
 
     pipe.emit ( 1 );
     pipe.emit ( 2 );
@@ -230,7 +229,7 @@ final class TapTest
     assertNotNull ( reservoir );
 
     final var name = cortex.name ( "test" );
-    final var pipe = conduit.percept ( name );
+    final var pipe = conduit.get ( name );
 
     pipe.emit ( 10 );
     pipe.emit ( 20 );
@@ -281,7 +280,7 @@ final class TapTest
     );
 
     final var name = cortex.name ( "test.channel" );
-    final var pipe = conduit.percept ( name );
+    final var pipe = conduit.get ( name );
 
     pipe.emit ( 1 );
     pipe.emit ( 1 );  // duplicate - should be filtered
@@ -333,7 +332,7 @@ final class TapTest
     );
 
     final var name = cortex.name ( "test.channel" );
-    final var pipe = conduit.percept ( name );
+    final var pipe = conduit.get ( name );
 
     pipe.emit ( 1 );  // 2 - filtered out
     pipe.emit ( 2 );  // 4 - filtered out
@@ -385,7 +384,7 @@ final class TapTest
     );
 
     final var name = cortex.name ( "test.channel" );
-    final var pipe = conduit.percept ( name );
+    final var pipe = conduit.get ( name );
 
     pipe.emit ( 1 );
     pipe.emit ( 2 );
@@ -438,7 +437,7 @@ final class TapTest
     );
 
     final var name = cortex.name ( "test.channel" );
-    final var pipe = conduit.percept ( name );
+    final var pipe = conduit.get ( name );
 
     pipe.emit ( 1 );  // odd  → "odd:1"
     pipe.emit ( 2 );  // even → null (filtered)

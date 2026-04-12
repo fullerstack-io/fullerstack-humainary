@@ -120,7 +120,7 @@ final class SubjectTest
 
       final var conduitName = cortex.name ( "subject.test.nested.conduit" );
       final var conduit =
-        circuit.conduit ( conduitName, Composer.pipe ( Integer.class ) );
+        circuit.conduit ( conduitName, Integer.class );
 
       final var circuitSubject = circuit.subject ();
       final var conduitSubject = conduit.subject ();
@@ -428,7 +428,7 @@ final class SubjectTest
       final var conduit =
         circuit.conduit (
           cortex.name ( "subject.test.hierarchy.conduit" ),
-          Composer.pipe ( Integer.class )
+          Integer.class
         );
 
       final Subscriber < Integer > subscriber =
@@ -519,19 +519,19 @@ final class SubjectTest
       final var conduitA =
         circuitA.conduit (
           cortex.name ( "subject.test.compare.conduitA" ),
-          Composer.pipe ( Integer.class )
+          Integer.class
         );
 
       final var conduitB =
         circuitA.conduit (
           cortex.name ( "subject.test.compare.conduitB" ),
-          Composer.pipe ( Integer.class )
+          Integer.class
         );
 
       final var conduitC =
         circuitB.conduit (
           cortex.name ( "subject.test.compare.conduitC" ),
-          Composer.pipe ( Integer.class )
+          Integer.class
         );
 
       // Identity: same subject should return 0 (identity check fast path)
@@ -597,13 +597,13 @@ final class SubjectTest
       final var conduitA =
         circuitA.conduit (
           sameName,
-          Composer.pipe ( Integer.class )
+          Integer.class
         );
 
       final var conduitB =
         circuitB.conduit (
           sameName,
-          Composer.pipe ( Integer.class )
+          Integer.class
         );
 
       // Subjects with identical hierarchical paths but different IDs compare as NOT EQUAL
@@ -647,13 +647,13 @@ final class SubjectTest
       final var conduitA =
         circuit.conduit (
           cortex.name ( "subject.test.different.aaa" ),
-          Composer.pipe ( Integer.class )
+          Integer.class
         );
 
       final var conduitB =
         circuit.conduit (
           cortex.name ( "subject.test.different.zzz" ),
-          Composer.pipe ( Integer.class )
+          Integer.class
         );
 
       // Subjects with different names: compared lexicographically
@@ -692,7 +692,7 @@ final class SubjectTest
       final var conduit =
         circuit.conduit (
           cortex.name ( "subject.test.edge.conduit" ),
-          Composer.pipe ( Integer.class )
+          Integer.class
         );
 
       final Subscriber < Integer > subscriber =

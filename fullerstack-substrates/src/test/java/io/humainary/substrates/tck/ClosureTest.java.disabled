@@ -31,7 +31,7 @@ final class ClosureTest
 
   private Cortex cortex;
 
-  private static BiConsumer < Subject < Channel < String > >, Registrar < String > > watcher (
+  private static BiConsumer < Subject < Pipe < String > >, Registrar < String > > watcher (
     final AtomicInteger deliveries
   ) {
 
@@ -116,10 +116,10 @@ final class ClosureTest
     final Scope scope = cortex.scope ();
     final Circuit circuit = cortex.circuit ();
 
-    final Conduit < Pipe < String >, String > conduit =
-      circuit.conduit ( Composer.pipe () );
+    final Conduit < String > conduit =
+      circuit.conduit ( Integer.class );
     final Name channelName = cortex.name ( "closure.success.channel" );
-    final Pipe < String > pipe = conduit.percept ( channelName );
+    final Pipe < String > pipe = conduit.get ( channelName );
 
     final AtomicInteger deliveries = new AtomicInteger ();
     final Subscriber < String > subscriber =
@@ -242,10 +242,10 @@ final class ClosureTest
     final Scope scope = cortex.scope ();
     final Circuit circuit = cortex.circuit ();
 
-    final Conduit < Pipe < String >, String > conduit =
-      circuit.conduit ( Composer.pipe () );
+    final Conduit < String > conduit =
+      circuit.conduit ( Integer.class );
     final Name channelName = cortex.name ( "closure.failure.channel" );
-    final Pipe < String > pipe = conduit.percept ( channelName );
+    final Pipe < String > pipe = conduit.get ( channelName );
 
 
     final AtomicInteger deliveries = new AtomicInteger ();
@@ -385,10 +385,10 @@ final class ClosureTest
     final Scope scope = cortex.scope ();
     final Circuit circuit = cortex.circuit ();
 
-    final Conduit < Pipe < String >, String > conduit =
-      circuit.conduit ( Composer.pipe () );
+    final Conduit < String > conduit =
+      circuit.conduit ( Integer.class );
     final Name channelName = cortex.name ( "closure.scope.closed.channel" );
-    final Pipe < String > pipe = conduit.percept ( channelName );
+    final Pipe < String > pipe = conduit.get ( channelName );
 
     final AtomicInteger deliveries = new AtomicInteger ();
     final Subscriber < String > subscriber =

@@ -85,7 +85,7 @@ final class CircuitTest
             executor.submit ( () -> {
               try {
                 latch.await (); // Wait for signal
-                final var ch = conduit.percept ( name );
+                final var ch = conduit.get ( name );
                 channelReferences.put ( threadId, ch );
               } catch ( final InterruptedException e ) {
                 currentThread ().interrupt ();
@@ -138,7 +138,7 @@ final class CircuitTest
       circuit.conduit ( Composer.pipe ( Integer.class ) );
 
     final var pipe =
-      conduit.percept ( cortex.name ( "fast.await.channel" ) );
+      conduit.get ( cortex.name ( "fast.await.channel" ) );
 
     // Emit and process
     pipe.emit ( 1 );
@@ -174,7 +174,7 @@ final class CircuitTest
         circuit.conduit ( Composer.pipe ( String.class ) );
 
       final Pipe < String > pipe =
-        conduit.percept ( cortex.name ( "valve.fastpath.channel" ) );
+        conduit.get ( cortex.name ( "valve.fastpath.channel" ) );
 
       pipe.emit ( "first" );
       pipe.emit ( "second" );
@@ -217,7 +217,7 @@ final class CircuitTest
       final var conduit =
         circuit.conduit ( Composer.pipe ( Integer.class ) );
 
-      conduit.percept ( cortex.name ( "test.channel" ) )
+      conduit.get ( cortex.name ( "test.channel" ) )
         .emit ( 42 );
 
       // Should complete when queue is drained
@@ -245,7 +245,7 @@ final class CircuitTest
       circuit.conduit ( Composer.pipe ( Integer.class ) );
 
     final var pipe =
-      conduit.percept ( cortex.name ( "shutdown.await.channel" ) );
+      conduit.get ( cortex.name ( "shutdown.await.channel" ) );
 
     conduit.subscribe (
       circuit.subscriber (
@@ -302,7 +302,7 @@ final class CircuitTest
         try {
 
           final Pipe < Integer > pipe =
-            conduit.percept ( cortex.name ( "async.channel" ) );
+            conduit.get ( cortex.name ( "async.channel" ) );
 
           pipe.emit ( 100 );
 
@@ -389,7 +389,7 @@ final class CircuitTest
         conduit.subscribe ( subscriber );
 
       final Pipe < Integer > pipe =
-        conduit.percept ( cortex.name ( "valve.await.channel" ) );
+        conduit.get ( cortex.name ( "valve.await.channel" ) );
 
       pipe.emit ( 1 );
 
@@ -426,7 +426,7 @@ final class CircuitTest
         circuit.conduit ( Composer.pipe ( String.class ) );
 
       final Pipe < String > pipe =
-        conduit.percept ( cortex.name ( "multi.emit.channel" ) );
+        conduit.get ( cortex.name ( "multi.emit.channel" ) );
 
       pipe.emit ( "first" );
       pipe.emit ( "second" );
@@ -548,7 +548,7 @@ final class CircuitTest
       conduit.subscribe ( subscriber );
 
       final Pipe < Integer > pipe =
-        conduit.percept ( cortex.name ( "ordering.channel" ) );
+        conduit.get ( cortex.name ( "ordering.channel" ) );
 
       pipe.emit ( 1 );
       pipe.emit ( 2 );
@@ -674,7 +674,7 @@ final class CircuitTest
       final Reservoir < Integer > reservoir = conduit.reservoir ();
 
       final Pipe < Integer > pipe =
-        conduit.percept ( cortex.name ( "integration.channel" ) );
+        conduit.get ( cortex.name ( "integration.channel" ) );
 
       pipe.emit ( 10 );
       pipe.emit ( 20 );
@@ -717,7 +717,7 @@ final class CircuitTest
       final Reservoir < Integer > reservoir = conduit.reservoir ();
 
       final Pipe < Integer > pipe =
-        conduit.percept ( cortex.name ( "flow.channel" ) );
+        conduit.get ( cortex.name ( "flow.channel" ) );
 
       pipe.emit ( 1 );
       pipe.emit ( 2 );
@@ -758,10 +758,10 @@ final class CircuitTest
       final Reservoir < Integer > reservoir2 = conduit2.reservoir ();
 
       final Pipe < String > pipe1 =
-        conduit1.percept ( cortex.name ( "channel.alpha" ) );
+        conduit1.get ( cortex.name ( "channel.alpha" ) );
 
       final Pipe < Integer > pipe2 =
-        conduit2.percept ( cortex.name ( "channel.beta" ) );
+        conduit2.get ( cortex.name ( "channel.beta" ) );
 
       pipe1.emit ( "hello" );
       pipe2.emit ( 42 );
@@ -793,7 +793,7 @@ final class CircuitTest
       circuit.conduit ( Composer.pipe ( Integer.class ) );
 
     final var pipe =
-      conduit.percept ( cortex.name ( "non.blocking.close" ) );
+      conduit.get ( cortex.name ( "non.blocking.close" ) );
 
     conduit.subscribe (
       circuit.subscriber (
@@ -884,7 +884,7 @@ final class CircuitTest
           futures.add (
             executor.submit ( () -> {
               final var name = cortex.name ( channelName );
-              final var ch = conduit.percept ( name );
+              final var ch = conduit.get ( name );
               channels.put ( channelName, ch );
             } )
           );
@@ -951,7 +951,7 @@ final class CircuitTest
           final int threadId = t;
           futures.add (
             executor.submit ( () -> {
-              final var ch = conduit.percept ( name );
+              final var ch = conduit.get ( name );
               channelReferences.put ( threadId, ch );
             } )
           );
@@ -1133,7 +1133,7 @@ final class CircuitTest
 
       assertThrows (
         NullPointerException.class,
-        () -> circuit.conduit ( null, Composer.pipe () )
+        () -> circuit.conduit ( null, Integer.class )
       );
 
       assertThrows (
@@ -1143,7 +1143,7 @@ final class CircuitTest
 
       assertThrows (
         NullPointerException.class,
-        () -> circuit.conduit ( name, Composer.pipe (), null )
+        () -> circuit.conduit ( name, Integer.class, null )
       );
 
     } finally {
@@ -1243,7 +1243,7 @@ final class CircuitTest
       circuit.conduit ( Composer.pipe ( Integer.class ) );
 
     final var pipe =
-      conduit.percept ( cortex.name ( "post.close.channel" ) );
+      conduit.get ( cortex.name ( "post.close.channel" ) );
 
     conduit.subscribe (
       circuit.subscriber (
@@ -1367,7 +1367,7 @@ final class CircuitTest
       circuit.conduit ( Composer.pipe ( Integer.class ) );
 
     final var pipe =
-      conduit.percept ( cortex.name ( "multi.post.close" ) );
+      conduit.get ( cortex.name ( "multi.post.close" ) );
 
     conduit.subscribe (
       circuit.subscriber (
@@ -1453,7 +1453,7 @@ final class CircuitTest
         circuit.conduit ( Composer.pipe ( Integer.class ) );
 
       final var pipe =
-        conduit.percept ( cortex.name ( "sequential.test" ) );
+        conduit.get ( cortex.name ( "sequential.test" ) );
 
       conduit.subscribe (
         circuit.subscriber (
@@ -1554,7 +1554,7 @@ final class CircuitTest
         circuit.conduit ( Composer.pipe ( Integer.class ) );
 
       final var recursivePipe =
-        conduit.percept ( cortex.name ( "recursive.channel" ) );
+        conduit.get ( cortex.name ( "recursive.channel" ) );
 
       conduit.subscribe (
         circuit.subscriber (
@@ -1631,7 +1631,7 @@ final class CircuitTest
         circuit.conduit ( Composer.pipe ( Integer.class ) );
 
       final var pipe =
-        conduit.percept ( cortex.name ( "stress.channel" ) );
+        conduit.get ( cortex.name ( "stress.channel" ) );
 
       conduit.subscribe (
         circuit.subscriber (
@@ -1750,7 +1750,7 @@ final class CircuitTest
               try {
                 // Each thread gets its own channel
                 final var channelName = cortex.name ( "channel." + threadId );
-                final var threadPipe = conduit.percept ( channelName );
+                final var threadPipe = conduit.get ( channelName );
 
                 latch.await ();
 
@@ -1829,7 +1829,7 @@ final class CircuitTest
         circuit.conduit ( Composer.pipe ( Integer.class ) );
 
       final var pipe =
-        conduit.percept ( cortex.name ( "dynamic.channel" ) );
+        conduit.get ( cortex.name ( "dynamic.channel" ) );
 
       // Primary subscriber - always subscribed
       conduit.subscribe (
@@ -1945,7 +1945,7 @@ final class CircuitTest
         circuit.conduit ( Composer.pipe ( Long.class ) );
 
       final var pipe =
-        conduit.percept ( cortex.name ( "integrity.channel" ) );
+        conduit.get ( cortex.name ( "integrity.channel" ) );
 
       conduit.subscribe (
         circuit.subscriber (

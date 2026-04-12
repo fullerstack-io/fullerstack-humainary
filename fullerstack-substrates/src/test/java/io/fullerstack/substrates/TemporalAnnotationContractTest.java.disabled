@@ -16,11 +16,9 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
 import io.humainary.substrates.api.Substrates.Circuit;
-import io.humainary.substrates.api.Substrates.Composer;
 import io.humainary.substrates.api.Substrates.Conduit;
 import io.humainary.substrates.api.Substrates.Flow;
 import io.humainary.substrates.api.Substrates.Pipe;
-import io.humainary.substrates.api.Substrates.Sift;
 
 /**
  * Tests to verify the @Temporal annotation contract from Substrates API.
@@ -197,7 +195,7 @@ class TemporalAnnotationContractTest {
     void channel_subjectAvailableDuringCallback () {
       AtomicBoolean channelUsed = new AtomicBoolean ( false );
 
-      Conduit < Pipe < String >, String > conduit = circuit.conduit ( cortex ().name ( "conduit" ), Composer.pipe () );
+      Conduit < String > conduit = circuit.conduit ( cortex ().name ( "conduit" ), Composer.pipe () );
 
       var subscriber = circuit. < String > subscriber ( cortex ().name ( "sub" ), ( channelSubject, registrar ) -> {
         assertNotNull ( channelSubject, "Channel subject must be provided in callback" );
@@ -210,7 +208,7 @@ class TemporalAnnotationContractTest {
       conduit.subscribe ( subscriber );
 
       // Get a pipe and emit to trigger the callback
-      Pipe < String > pipe = conduit.percept ( cortex ().name ( "channel" ) );
+      Pipe < String > pipe = conduit.get ( cortex ().name ( "channel" ) );
       pipe.emit ( "test" );
 
       // Wait for async processing (await flushes batch and waits for processing)

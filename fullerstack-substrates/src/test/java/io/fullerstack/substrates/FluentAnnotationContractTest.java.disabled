@@ -12,12 +12,10 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
 import io.humainary.substrates.api.Substrates.Circuit;
-import io.humainary.substrates.api.Substrates.Composer;
 import io.humainary.substrates.api.Substrates.Conduit;
 import io.humainary.substrates.api.Substrates.Flow;
 import io.humainary.substrates.api.Substrates.Name;
 import io.humainary.substrates.api.Substrates.Pipe;
-import io.humainary.substrates.api.Substrates.Sift;
 
 /**
  * Tests to verify the @Fluent annotation contract from Substrates API.

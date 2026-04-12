@@ -4,7 +4,6 @@ import static io.humainary.substrates.api.Substrates.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 import io.humainary.substrates.api.Substrates.Circuit;
-import io.humainary.substrates.api.Substrates.Composer;
 import io.humainary.substrates.api.Substrates.Conduit;
 import io.humainary.substrates.api.Substrates.Cortex;
 import io.humainary.substrates.api.Substrates.Name;
@@ -158,17 +157,17 @@ class ProvidedAnnotationContractTest {
     @Test
     @DisplayName ( "circuit.conduit() returns Conduit implementation" )
     void conduit_isConduitImplementation () {
-      Conduit < Pipe < String >, String > conduit = circuit.conduit ( cortex ().name ( "conduit" ), Composer.pipe () );
+      Conduit < String > conduit = circuit.conduit ( cortex ().name ( "conduit" ), Composer.pipe () );
       assertTrue ( conduit instanceof Conduit, "Must be a Conduit implementation" );
     }
 
     @Test
     @DisplayName ( "Conduit provides all required methods" )
     void conduit_providesRequiredMethods () {
-      Conduit < Pipe < String >, String > conduit = circuit.conduit ( cortex ().name ( "conduit" ), Composer.pipe () );
+      Conduit < String > conduit = circuit.conduit ( cortex ().name ( "conduit" ), Composer.pipe () );
 
       assertNotNull ( conduit.subject (), "Conduit must provide subject()" );
-      assertNotNull ( conduit.percept ( cortex ().name ( "pipe" ) ), "Conduit must provide percept()" );
+      assertNotNull ( conduit.get ( cortex ().name ( "pipe" ) ), "Conduit must provide percept()" );
     }
   }
 

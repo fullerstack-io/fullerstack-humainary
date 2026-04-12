@@ -8,7 +8,6 @@ import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.List;
 
-import static io.humainary.substrates.api.Substrates.Composer.pipe;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /// Tests for the Reservoir interface.
@@ -50,7 +49,7 @@ final class ReservoirTest
       final var reservoir = conduit.reservoir ();
 
       final var name = cortex.name ( "test.channel" );
-      final var pipe = conduit.percept ( name );
+      final var pipe = conduit.get ( name );
 
       final int count = 100;
       final List < WeakReference < Object > > refs = new ArrayList <> ();

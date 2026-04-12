@@ -13,7 +13,6 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
 import io.humainary.substrates.api.Substrates.Circuit;
-import io.humainary.substrates.api.Substrates.Composer;
 import io.humainary.substrates.api.Substrates.Conduit;
 import io.humainary.substrates.api.Substrates.Name;
 import io.humainary.substrates.api.Substrates.Pipe;
@@ -83,7 +82,7 @@ class UtilityAnnotationContractTest {
     @Test
     @DisplayName ( "Composer.pipe() can be used to create Conduit" )
     void composerPipe_canCreateConduit () {
-      Conduit < Pipe < String >, String > conduit = circuit.conduit ( cortex ().name ( "conduit" ), Composer.pipe () );
+      Conduit < String > conduit = circuit.conduit ( cortex ().name ( "conduit" ), Composer.pipe () );
 
       assertNotNull ( conduit, "Conduit created with Composer.pipe() must not be null" );
       assertNotNull ( conduit.subject (), "Conduit must have a subject" );
@@ -95,7 +94,7 @@ class UtilityAnnotationContractTest {
       var composer = Composer. < Integer > pipe ( flow -> flow.diff ().limit ( 100 ) );
       assertNotNull ( composer, "Composer.pipe(configurer) must return a valid Composer" );
 
-      Conduit < Pipe < Integer >, Integer > conduit = circuit.conduit ( cortex ().name ( "conduit" ), composer );
+      Conduit < Integer > conduit = circuit.conduit ( cortex ().name ( "conduit" ), composer );
       assertNotNull ( conduit, "Conduit created with configured Composer must not be null" );
     }
 
@@ -105,7 +104,7 @@ class UtilityAnnotationContractTest {
       var composer = Composer.pipe ( Integer.class );
       assertNotNull ( composer, "Composer.pipe(type) must return a valid Composer" );
 
-      Conduit < Pipe < Integer >, Integer > conduit = circuit.conduit ( cortex ().name ( "conduit" ), composer );
+      Conduit < Integer > conduit = circuit.conduit ( cortex ().name ( "conduit" ), composer );
       assertNotNull ( conduit, "Conduit created with typed Composer must not be null" );
     }
 
@@ -113,11 +112,11 @@ class UtilityAnnotationContractTest {
     @DisplayName ( "Composer.pipe() works with different element types" )
     void composerPipe_worksWithDifferentTypes () {
       // String
-      Conduit < Pipe < String >, String > stringConduit = circuit.conduit ( cortex ().name ( "strings" ), Composer.pipe () );
+      Conduit < String > stringConduit = circuit.conduit ( cortex ().name ( "strings" ), Composer.pipe () );
       assertNotNull ( stringConduit );
 
       // Integer
-      Conduit < Pipe < Integer >, Integer > intConduit = circuit.conduit ( cortex ().name ( "integers" ), Composer.pipe () );
+      Conduit < Integer > intConduit = circuit.conduit ( cortex ().name ( "integers" ), Composer.pipe () );
       assertNotNull ( intConduit );
 
       // Custom record type

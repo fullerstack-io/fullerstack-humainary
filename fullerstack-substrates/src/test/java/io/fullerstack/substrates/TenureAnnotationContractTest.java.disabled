@@ -4,7 +4,6 @@ import static io.humainary.substrates.api.Substrates.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 import io.humainary.substrates.api.Substrates.Circuit;
-import io.humainary.substrates.api.Substrates.Composer;
 import io.humainary.substrates.api.Substrates.Conduit;
 import io.humainary.substrates.api.Substrates.Id;
 import io.humainary.substrates.api.Substrates.Name;
@@ -99,14 +98,14 @@ class TenureAnnotationContractTest {
     @Test
     @DisplayName ( "Channel: same name in conduit returns same percept (interned)" )
     void channel_sameName_returnsSameInstance () {
-      Conduit < Pipe < Integer >, Integer > conduit = circuit.conduit (
+      Conduit < Integer > conduit = circuit.conduit (
         cortex ().name ( "conduit" ),
         Composer.pipe ()
       );
 
       Name channelName = cortex ().name ( "channel" );
-      Pipe < Integer > pipe1 = conduit.percept ( channelName );
-      Pipe < Integer > pipe2 = conduit.percept ( channelName );
+      Pipe < Integer > pipe1 = conduit.get ( channelName );
+      Pipe < Integer > pipe2 = conduit.get ( channelName );
 
       assertSame ( pipe1, pipe2,
         "Channel must be interned: same name returns same percept" );
@@ -115,13 +114,13 @@ class TenureAnnotationContractTest {
     @Test
     @DisplayName ( "Channel: different names in conduit return different percepts" )
     void channel_differentName_returnsDifferentInstance () {
-      Conduit < Pipe < Integer >, Integer > conduit = circuit.conduit (
+      Conduit < Integer > conduit = circuit.conduit (
         cortex ().name ( "conduit" ),
         Composer.pipe ()
       );
 
-      Pipe < Integer > pipe1 = conduit.percept ( cortex ().name ( "channel-a" ) );
-      Pipe < Integer > pipe2 = conduit.percept ( cortex ().name ( "channel-b" ) );
+      Pipe < Integer > pipe1 = conduit.get ( cortex ().name ( "channel-a" ) );
+      Pipe < Integer > pipe2 = conduit.get ( cortex ().name ( "channel-b" ) );
 
       assertNotSame ( pipe1, pipe2,
         "Channels with different names must be different instances" );
@@ -175,10 +174,10 @@ class TenureAnnotationContractTest {
     @Test
     @DisplayName ( "Conduit: each creation returns new instance" )
     void conduit_eachCreation_returnsNewInstance () {
-      Conduit < Pipe < Integer >, Integer > conduit1 = circuit.conduit (
+      Conduit < Integer > conduit1 = circuit.conduit (
         cortex ().name ( "conduit" ), Composer.pipe ()
       );
-      Conduit < Pipe < Integer >, Integer > conduit2 = circuit.conduit (
+      Conduit < Integer > conduit2 = circuit.conduit (
         cortex ().name ( "conduit" ), Composer.pipe ()
       );
 
@@ -189,7 +188,7 @@ class TenureAnnotationContractTest {
     @Test
     @DisplayName ( "Reservoir: each creation returns new instance" )
     void reservoir_eachCreation_returnsNewInstance () {
-      Conduit < Pipe < Integer >, Integer > conduit = circuit.conduit (
+      Conduit < Integer > conduit = circuit.conduit (
         cortex ().name ( "conduit" ), Composer.pipe ()
       );
 
@@ -206,7 +205,7 @@ class TenureAnnotationContractTest {
     @Test
     @DisplayName ( "Tap: each creation returns new instance" )
     void tap_eachCreation_returnsNewInstance () {
-      Conduit < Pipe < Integer >, Integer > conduit = circuit.conduit (
+      Conduit < Integer > conduit = circuit.conduit (
         cortex ().name ( "conduit" ), Composer.pipe ()
       );
 
@@ -223,13 +222,13 @@ class TenureAnnotationContractTest {
     @Test
     @DisplayName ( "Capture: drain produces independent capture instances" )
     void capture_eachDrain_returnsIndependentCaptures () {
-      Conduit < Pipe < Integer >, Integer > conduit = circuit.conduit (
+      Conduit < Integer > conduit = circuit.conduit (
         cortex ().name ( "conduit" ), Composer.pipe ()
       );
 
       Reservoir < Integer > reservoir = conduit.reservoir ();
 
-      conduit.percept ( cortex ().name ( "ch" ) ).emit ( 1 );
+      conduit.get ( cortex ().name ( "ch" ) ).emit ( 1 );
       circuit.await ();
 
       var drain1 = reservoir.drain ().toList ();
@@ -264,13 +263,13 @@ class TenureAnnotationContractTest {
     @Test
     @DisplayName ( "Pipe: via channel is retained (interned by conduit)" )
     void pipe_viaChannel_isRetainedByConduit () {
-      Conduit < Pipe < Integer >, Integer > conduit = circuit.conduit (
+      Conduit < Integer > conduit = circuit.conduit (
         cortex ().name ( "conduit" ), Composer.pipe ()
       );
 
       Name channelName = cortex ().name ( "retained" );
-      Pipe < Integer > pipe1 = conduit.percept ( channelName );
-      Pipe < Integer > pipe2 = conduit.percept ( channelName );
+      Pipe < Integer > pipe1 = conduit.get ( channelName );
+      Pipe < Integer > pipe2 = conduit.get ( channelName );
 
       assertSame ( pipe1, pipe2,
         "Pipe via channel must be retained: same name returns same instance" );
@@ -298,7 +297,7 @@ class TenureAnnotationContractTest {
     @Test
     @DisplayName ( "Subscription: each subscribe() returns new instance" )
     void subscription_eachSubscribe_isIndependent () {
-      Conduit < Pipe < Integer >, Integer > conduit = circuit.conduit (
+      Conduit < Integer > conduit = circuit.conduit (
         cortex ().name ( "conduit" ), Composer.pipe ()
       );
 

@@ -5,7 +5,6 @@ package io.humainary.substrates.tck;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-import static io.humainary.substrates.api.Substrates.Composer.pipe;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertSame;
 
@@ -132,9 +131,9 @@ final class ConduitTest
       final var name = cortex.name ( "pooled.channel" );
 
       // Get channel multiple times with same name
-      final var channel1 = conduit.percept ( name );
-      final var channel2 = conduit.percept ( name );
-      final var channel3 = conduit.percept ( name );
+      final var channel1 = conduit.get ( name );
+      final var channel2 = conduit.get ( name );
+      final var channel3 = conduit.get ( name );
 
       // All should be the SAME instance
       assertSame (
@@ -270,8 +269,8 @@ final class ConduitTest
       final var name = cortex.name ( "shared.name" );
 
       // Get channels from different conduits with same name
-      final var channel1 = conduit1.percept ( name );
-      final var channel2 = conduit2.percept ( name );
+      final var channel1 = conduit1.get ( name );
+      final var channel2 = conduit2.get ( name );
 
       // Should be different instances (separate pools)
       assertNotSame (
@@ -305,8 +304,8 @@ final class ConduitTest
       final var name1 = cortex.name ( "channel.one" );
       final var name2 = cortex.name ( "channel.two" );
 
-      final var channel1 = conduit.percept ( name1 );
-      final var channel2 = conduit.percept ( name2 );
+      final var channel1 = conduit.get ( name1 );
+      final var channel2 = conduit.get ( name2 );
 
       // Different names should produce different channels
       assertNotSame (
@@ -340,8 +339,8 @@ final class ConduitTest
       final var name1 = cortex.name ( "probe.alpha" );
       final var name2 = cortex.name ( "probe.beta" );
 
-      final var probe1 = conduit.percept ( name1 );
-      final var probe2 = conduit.percept ( name2 );
+      final var probe1 = conduit.get ( name1 );
+      final var probe2 = conduit.get ( name2 );
 
       // Different names should produce different percepts
       assertNotSame (
@@ -382,10 +381,10 @@ final class ConduitTest
       final var name = cortex.name ( "system.monitor" );
 
       // Get percept 100 times
-      final var firstMonitor = conduit.percept ( name );
+      final var firstMonitor = conduit.get ( name );
 
       for ( int i = 0; i < 100; i++ ) {
-        final var monitor = conduit.percept ( name );
+        final var monitor = conduit.get ( name );
         assertSame (
           firstMonitor,
           monitor,
@@ -524,9 +523,9 @@ final class ConduitTest
       final var name = cortex.name ( "temperature.sensor" );
 
       // Get percept multiple times
-      final var sensor1 = conduit.percept ( name );
-      final var sensor2 = conduit.percept ( name );
-      final var sensor3 = conduit.percept ( name );
+      final var sensor1 = conduit.get ( name );
+      final var sensor2 = conduit.get ( name );
+      final var sensor3 = conduit.get ( name );
 
       // All should be same percept instance
       assertSame (

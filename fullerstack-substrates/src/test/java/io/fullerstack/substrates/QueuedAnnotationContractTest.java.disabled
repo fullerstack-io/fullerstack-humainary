@@ -4,7 +4,6 @@ import static io.humainary.substrates.api.Substrates.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 import io.humainary.substrates.api.Substrates.Circuit;
-import io.humainary.substrates.api.Substrates.Composer;
 import io.humainary.substrates.api.Substrates.Conduit;
 import io.humainary.substrates.api.Substrates.Name;
 import io.humainary.substrates.api.Substrates.Pipe;
@@ -184,7 +183,7 @@ class QueuedAnnotationContractTest {
     void subscribe_callbackInvokedAfterEmissionAndAwait () {
       AtomicBoolean callbackFired = new AtomicBoolean ( false );
 
-      Conduit < Pipe < Integer >, Integer > conduit = circuit.conduit (
+      Conduit < Integer > conduit = circuit.conduit (
         cortex ().name ( "conduit" ),
         Composer.pipe ()
       );
@@ -200,7 +199,7 @@ class QueuedAnnotationContractTest {
       );
 
       // Emit to trigger subscriber callback
-      conduit.percept ( cortex ().name ( "channel" ) ).emit ( 1 );
+      conduit.get ( cortex ().name ( "channel" ) ).emit ( 1 );
       circuit.await ();
 
       assertTrue ( callbackFired.get (),
@@ -212,7 +211,7 @@ class QueuedAnnotationContractTest {
     void subscribe_multipleSubscribers_allNotified () {
       AtomicInteger subscriberCount = new AtomicInteger ();
 
-      Conduit < Pipe < Integer >, Integer > conduit = circuit.conduit (
+      Conduit < Integer > conduit = circuit.conduit (
         cortex ().name ( "multi-sub" ),
         Composer.pipe ()
       );
@@ -229,7 +228,7 @@ class QueuedAnnotationContractTest {
         );
       }
 
-      conduit.percept ( cortex ().name ( "channel" ) ).emit ( 1 );
+      conduit.get ( cortex ().name ( "channel" ) ).emit ( 1 );
       circuit.await ();
 
       assertEquals ( 3, subscriberCount.get (),
