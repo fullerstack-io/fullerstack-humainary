@@ -20,6 +20,7 @@ import java.util.stream.Stream;
 /// @param <E> the class type of the emitted value
 /// @see Capture
 @Provided
+@io.humainary.substrates.api.Substrates.Tenure ( io.humainary.substrates.api.Substrates.Tenure.EPHEMERAL )
 public final class FsReservoir < E > implements Reservoir < E > {
 
   /// A capture of an emitted value from a channel with its associated subject.

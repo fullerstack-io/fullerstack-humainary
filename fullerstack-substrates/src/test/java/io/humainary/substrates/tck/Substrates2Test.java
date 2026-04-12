@@ -1182,29 +1182,31 @@ class Substrates2Test implements Substrates {
     }
 
     @Test
-    @DisplayName ( "flow.integrate accumulates with fire predicate" )
+    @DisplayName ( "flow.integrate accumulates with fire predicate and resets to initial" )
     void flowIntegrate () throws Exception {
       final var cortex = Substrates.cortex ();
       final var circuit = cortex.circuit ();
       try {
         final List < Integer > received = new ArrayList <> ();
-        final var latch = new CountDownLatch ( 1 );
+        final var latch = new CountDownLatch ( 2 );
         final var target = circuit.pipe ( (Receptor < Integer >) v -> {
           received.add ( v );
           latch.countDown ();
         } );
         // integrate: accumulates values, fires when predicate is true on accumulated
-        // After fire, acc resets to null (not initial value)
+        // After fire, acc resets to initial value (0)
         final var source = target.pipe (
           cortex.flow ( Integer.class ).integrate ( 0, Integer::sum, acc -> acc >= 10 )
         );
 
-        source.emit ( 3 );  // acc=3, <10, no fire
-        source.emit ( 4 );  // acc=7, <10, no fire
-        source.emit ( 5 );  // acc=12, >=10, fire 12, reset to null
+        source.emit ( 3 );  // acc=0+3=3, <10, no fire
+        source.emit ( 4 );  // acc=3+4=7, <10, no fire
+        source.emit ( 5 );  // acc=7+5=12, >=10, fire 12, reset to 0
+        source.emit ( 8 );  // acc=0+8=8, <10, no fire
+        source.emit ( 6 );  // acc=8+6=14, >=10, fire 14, reset to 0
         circuit.await ();
         assertTrue ( latch.await ( 2, TimeUnit.SECONDS ) );
-        assertEquals ( List.of ( 12 ), received );
+        assertEquals ( List.of ( 12, 14 ), received );
       } finally {
         circuit.close ();
       }

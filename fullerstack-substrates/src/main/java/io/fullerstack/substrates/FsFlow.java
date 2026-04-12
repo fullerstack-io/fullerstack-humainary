@@ -180,17 +180,18 @@ public final class FsFlow < I, O > implements Flow < I, O > {
     final BinaryOperator < E >    op;
     final Predicate < ? super E > fire;
     final Consumer < E >          d;
+    final Object                  initial;
     Object acc;
 
     Integrate ( E initial, BinaryOperator < E > op, Predicate < ? super E > fire, Consumer < E > d ) {
-      this.acc = initial; this.op = op; this.fire = fire; this.d = d;
+      this.initial = initial; this.acc = initial; this.op = op; this.fire = fire; this.d = d;
     }
 
     @Override
     @SuppressWarnings ( "unchecked" )
     public void accept ( E v ) {
       E r = op.apply ( (E) acc, v ); acc = r;
-      if ( fire.test ( r ) ) { acc = null; d.accept ( r ); }
+      if ( fire.test ( r ) ) { acc = initial; d.accept ( r ); }
     }
   }
 
@@ -206,7 +207,8 @@ public final class FsFlow < I, O > implements Flow < I, O > {
     @Override
     @SuppressWarnings ( "unchecked" )
     public void accept ( E v ) {
-      E r = op.apply ( (E) prev, v ); prev = v; d.accept ( r );
+      E r = op.apply ( (E) prev, v ); prev = v;
+      if ( r != null ) d.accept ( r );
     }
   }
 

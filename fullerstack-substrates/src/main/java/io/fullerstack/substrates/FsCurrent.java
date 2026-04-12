@@ -20,6 +20,7 @@ import io.humainary.substrates.api.Substrates.Temporal;
 /// @see Subject
 @Provided
 @Temporal
+@io.humainary.substrates.api.Substrates.Tenure ( io.humainary.substrates.api.Substrates.Tenure.INTERNED )
 final class FsCurrent implements Current {
 
   /// The subject identity for this current context.

@@ -126,7 +126,7 @@ final class FsState implements State {
     return new FsState ( arr, size + 1 );
   }
 
-  @New
+  @New ( conditional = true )
   @NotNull
   @Override
   @SuppressWarnings ( "unchecked" )
@@ -135,7 +135,7 @@ final class FsState implements State {
     return addSlot ( new FsSlot <> ( name, value, (Class < Integer >) (Class < ? >) int.class ) );
   }
 
-  @New
+  @New ( conditional = true )
   @NotNull
   @Override
   @SuppressWarnings ( "unchecked" )
@@ -144,7 +144,7 @@ final class FsState implements State {
     return addSlot ( new FsSlot <> ( name, value, (Class < Long >) (Class < ? >) long.class ) );
   }
 
-  @New
+  @New ( conditional = true )
   @NotNull
   @Override
   @SuppressWarnings ( "unchecked" )
@@ -153,7 +153,7 @@ final class FsState implements State {
     return addSlot ( new FsSlot <> ( name, value, (Class < Float >) (Class < ? >) float.class ) );
   }
 
-  @New
+  @New ( conditional = true )
   @NotNull
   @Override
   @SuppressWarnings ( "unchecked" )
@@ -162,7 +162,7 @@ final class FsState implements State {
     return addSlot ( new FsSlot <> ( name, value, (Class < Double >) (Class < ? >) double.class ) );
   }
 
-  @New
+  @New ( conditional = true )
   @NotNull
   @Override
   @SuppressWarnings ( "unchecked" )
@@ -171,7 +171,7 @@ final class FsState implements State {
     return addSlot ( new FsSlot <> ( name, value, (Class < Boolean >) (Class < ? >) boolean.class ) );
   }
 
-  @New
+  @New ( conditional = true )
   @NotNull
   @Override
   public State state ( @NotNull Name name, @NotNull String value ) {
@@ -180,7 +180,7 @@ final class FsState implements State {
     return addSlot ( new FsSlot <> ( name, value, String.class ) );
   }
 
-  @New
+  @New ( conditional = true )
   @NotNull
   @Override
   public State state ( @NotNull Name name, @NotNull Name value ) {
@@ -189,7 +189,7 @@ final class FsState implements State {
     return addSlot ( new FsSlot <> ( name, value, Name.class ) );
   }
 
-  @New
+  @New ( conditional = true )
   @NotNull
   @Override
   public State state ( @NotNull Name name, @NotNull State value ) {
@@ -198,7 +198,7 @@ final class FsState implements State {
     return addSlot ( new FsSlot <> ( name, value, State.class ) );
   }
 
-  @New
+  @New ( conditional = true )
   @NotNull
   @Override
   public State state ( @NotNull Slot < ? > slot ) {
@@ -206,7 +206,7 @@ final class FsState implements State {
     return addSlot ( slot );
   }
 
-  @New
+  @New ( conditional = true )
   @NotNull
   @Override
   public State state ( @NotNull Enum < ? > value ) {

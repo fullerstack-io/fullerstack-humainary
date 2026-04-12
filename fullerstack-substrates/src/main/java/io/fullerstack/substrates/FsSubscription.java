@@ -75,6 +75,7 @@ public final class FsSubscription implements Subscription {
   /// Closes this subscription, unregistering from the source.
   /// Idempotent - repeated calls have no effect.
   @Idempotent
+  @io.humainary.substrates.api.Substrates.Queued
   @Override
   public void close () {
     if ( !closed ) {

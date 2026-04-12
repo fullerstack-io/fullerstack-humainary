@@ -237,6 +237,8 @@ final class FsTap < T > implements Tap < T > {
   }
 
   @Override
+  @io.humainary.substrates.api.Substrates.Idempotent
+  @io.humainary.substrates.api.Substrates.Queued
   public void close () {
     if ( closed ) return;
     closed = true;

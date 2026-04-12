@@ -122,7 +122,6 @@ final class FsScope implements Scope {
     return false;
   }
 
-  @New
   @NotNull
   @Override
   @SuppressWarnings ( "unchecked" )
@@ -171,7 +170,6 @@ final class FsScope implements Scope {
     return resource;
   }
 
-  @New
   @NotNull
   @Override
   public Scope scope () {
@@ -187,7 +185,6 @@ final class FsScope implements Scope {
     return child;
   }
 
-  @New
   @NotNull
   @Override
   public Scope scope ( @NotNull Name childName ) {
