@@ -1,7 +1,7 @@
 package io.fullerstack.substrates;
 
 import io.humainary.substrates.api.Substrates.Capture;
-import io.humainary.substrates.api.Substrates.Channel;
+import io.humainary.substrates.api.Substrates.Pipe;
 import io.humainary.substrates.api.Substrates.Idempotent;
 import io.humainary.substrates.api.Substrates.Provided;
 import io.humainary.substrates.api.Substrates.Reservoir;
@@ -23,7 +23,7 @@ import java.util.stream.Stream;
 public final class FsReservoir < E > implements Reservoir < E > {
 
   /// A capture of an emitted value from a channel with its associated subject.
-  private record Cap < E >( E emission, Subject < Channel < E > > subject ) implements Capture < E > {
+  private record Cap < E >( E emission, Subject < Pipe < E > > subject ) implements Capture < E > {
   }
 
   /// The subject identity for this reservoir.
@@ -60,7 +60,7 @@ public final class FsReservoir < E > implements Reservoir < E > {
   }
 
   /// Captures an emission with its channel subject.
-  void capture ( E emission, Subject < Channel < E > > channelSubject ) {
+  void capture ( E emission, Subject < Pipe < E > > channelSubject ) {
     buffer.add ( new Cap <> ( emission, channelSubject ) );
   }
 

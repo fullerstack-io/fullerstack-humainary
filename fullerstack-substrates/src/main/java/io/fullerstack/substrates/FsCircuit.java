@@ -2,17 +2,12 @@ package io.fullerstack.substrates;
 
 import static java.util.Objects.requireNonNull;
 
-import io.humainary.substrates.api.Substrates.Channel;
 import io.humainary.substrates.api.Substrates.Circuit;
-import io.humainary.substrates.api.Substrates.Composer;
 import io.humainary.substrates.api.Substrates.Conduit;
-import io.humainary.substrates.api.Substrates.Configurer;
-import io.humainary.substrates.api.Substrates.Flow;
 import io.humainary.substrates.api.Substrates.Idempotent;
 import io.humainary.substrates.api.Substrates.Name;
 import io.humainary.substrates.api.Substrates.New;
 import io.humainary.substrates.api.Substrates.NotNull;
-import io.humainary.substrates.api.Substrates.Percept;
 import io.humainary.substrates.api.Substrates.Pipe;
 import io.humainary.substrates.api.Substrates.Provided;
 import io.humainary.substrates.api.Substrates.Queued;
@@ -382,50 +377,23 @@ public final class FsCircuit implements Circuit {
 
 
   // ===================================================================================
-  // Factory Methods - Conduit
+  // Factory Methods - Conduit (2.0: conduit(Name, Class<E>) — no Composer/Configurer)
   // ===================================================================================
 
   @New
   @NotNull
   @Override
-  public < P extends Percept, E > Conduit < P, E > conduit (
-    @NotNull Name name, @NotNull Composer < E, ? extends P > composer ) {
+  public < E > Conduit < E > conduit ( @NotNull Name name, @NotNull Class < E > type ) {
     requireNonNull ( name );
-    requireNonNull ( composer );
-    return new FsConduit <> ( (FsSubject < ? >) subject, name, channel -> composer.compose ( channel ), this );
-  }
-
-  @New
-  @NotNull
-  @Override
-  public < P extends Percept, E > Conduit < P, E > conduit (
-    @NotNull Name name,
-    @NotNull Composer < E, ? extends P > composer,
-    @NotNull Configurer < ? super Flow < E > > configurer ) {
-    requireNonNull ( name );
-    requireNonNull ( composer );
-    requireNonNull ( configurer );
-    // Eagerly validate configurer per API contract — exceptions wrapped in Substrates.Exception
-    try {
-      FsFlow < E > validationFlow = new FsFlow <> ( name, this, null );
-      configurer.configure ( validationFlow );
-    } catch ( FsFault e ) {
-      throw e;
-    } catch ( RuntimeException e ) {
-      throw new FsFault ( "Flow configuration failed", e );
-    }
-    return new FsConduit <> (
-      (FsSubject < ? >) subject, name, channel -> composer.compose ( channel ), this, configurer );
+    requireNonNull ( type );
+    return new FsConduit <> ( (FsSubject < ? >) subject, name, this );
   }
 
   // ===================================================================================
-  // Factory Methods - Pipe (without name)
+  // Factory Methods - Pipe
   // ===================================================================================
 
-  /**
-   * Extract receiver for same-circuit FsPipe targets to avoid double-queue.
-   * For cross-circuit targets, wrap with target.emit() as normal.
-   */
+  /// Extract receiver for same-circuit FsPipe targets to avoid double-queue.
   private < E > Consumer < Object > targetReceiver ( Pipe < ? super E > target ) {
     if ( target instanceof FsPipe < ? > fsPipe && fsPipe.circuit () == this ) {
       return fsPipe.receiver ();
@@ -433,7 +401,7 @@ public final class FsCircuit implements Circuit {
     return new ReceptorReceiver <> ( target::emit );
   }
 
-  @New ( conditional = true )
+  @New
   @NotNull
   @Override
   public < E > Pipe < E > pipe ( @NotNull Pipe < E > target ) {
@@ -452,94 +420,15 @@ public final class FsCircuit implements Circuit {
     return newPipe ( null, new ReceptorReceiver <> ( receptor ) );
   }
 
-  @New
-  @NotNull
-  @Override
-  public < E > Pipe < E > pipe ( @NotNull Pipe < ? super E > target, @NotNull Configurer < ? super Flow < E > > configurer ) {
-    requireNonNull ( target );
-    requireNonNull ( configurer );
-    Pipe < E > basePipe = newPipe ( null, targetReceiver ( target ) );
-    FsFlow < E > flow = new FsFlow <> ( (Name) null, this, basePipe );
-    configurer.configure ( flow );
-    return flow.pipe ();
-  }
-
-  @New
-  @NotNull
-  @Override
-  public < E > Pipe < E > pipe ( @NotNull Receptor < ? super E > receptor, @NotNull Configurer < ? super Flow < E > > configurer ) {
-    requireNonNull ( receptor );
-    requireNonNull ( configurer );
-    Pipe < E > basePipe = newPipe ( null, new ReceptorReceiver <> ( receptor ) );
-    FsFlow < E > flow = new FsFlow <> ( (Name) null, this, basePipe );
-    configurer.configure ( flow );
-    return flow.pipe ();
-  }
-
   // ===================================================================================
-  // Factory Methods - Pipe (with name)
-  // ===================================================================================
-
-  @New ( conditional = true )
-  @NotNull
-  @Override
-  public < E > Pipe < E > pipe ( @NotNull Name name, @NotNull Pipe < E > target ) {
-    requireNonNull ( name );
-    requireNonNull ( target );
-    if ( target instanceof FsPipe < E > fsPipe && fsPipe.circuit () == this ) {
-      return target;
-    }
-    return newPipe ( name, targetReceiver ( target ) );
-  }
-
-  @New
-  @NotNull
-  @Override
-  public < E > Pipe < E > pipe ( @NotNull Name name, @NotNull Receptor < ? super E > receptor ) {
-    requireNonNull ( name );
-    requireNonNull ( receptor );
-    return newPipe ( name, new ReceptorReceiver <> ( receptor ) );
-  }
-
-  @New
-  @NotNull
-  @Override
-  public < E > Pipe < E > pipe (
-    @NotNull Name name, @NotNull Pipe < ? super E > target, @NotNull Configurer < ? super Flow < E > > configurer ) {
-    requireNonNull ( name );
-    requireNonNull ( target );
-    requireNonNull ( configurer );
-    Pipe < E > basePipe = newPipe ( name, targetReceiver ( target ) );
-    FsFlow < E > flow = new FsFlow <> ( name, this, basePipe );
-    configurer.configure ( flow );
-    return flow.pipe ();
-  }
-
-  @New
-  @NotNull
-  @Override
-  public < E > Pipe < E > pipe (
-    @NotNull Name name,
-    @NotNull Receptor < ? super E > receptor,
-    @NotNull Configurer < ? super Flow < E > > configurer ) {
-    requireNonNull ( name );
-    requireNonNull ( receptor );
-    requireNonNull ( configurer );
-    Pipe < E > basePipe = newPipe ( name, new ReceptorReceiver <> ( receptor ) );
-    FsFlow < E > flow = new FsFlow <> ( name, this, basePipe );
-    configurer.configure ( flow );
-    return flow.pipe ();
-  }
-
-  // ===================================================================================
-  // Factory Methods - Subscriber
+  // Factory Methods - Subscriber (2.0: Subject<Pipe<E>> instead of Subject<Channel<E>>)
   // ===================================================================================
 
   @New
   @NotNull
   @Override
   public < E > Subscriber < E > subscriber (
-    @NotNull Name name, @NotNull BiConsumer < ? super Subject < Channel < E > >, ? super Registrar < E > > callback ) {
+    @NotNull Name name, @NotNull @Queued BiConsumer < ? super Subject < Pipe < E > >, ? super Registrar < E > > callback ) {
     requireNonNull ( name );
     requireNonNull ( callback );
     return new FsSubscriber <> (
