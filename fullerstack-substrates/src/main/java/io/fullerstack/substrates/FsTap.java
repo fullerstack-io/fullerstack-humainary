@@ -8,6 +8,8 @@ import java.util.Map;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
+import io.humainary.substrates.api.Substrates.Flow;
+import io.humainary.substrates.api.Substrates.Idempotent;
 import io.humainary.substrates.api.Substrates.Name;
 import io.humainary.substrates.api.Substrates.New;
 import io.humainary.substrates.api.Substrates.NotNull;
@@ -16,6 +18,7 @@ import io.humainary.substrates.api.Substrates.Provided;
 import io.humainary.substrates.api.Substrates.Queued;
 import io.humainary.substrates.api.Substrates.Receptor;
 import io.humainary.substrates.api.Substrates.Reservoir;
+import io.humainary.substrates.api.Substrates.Source;
 import io.humainary.substrates.api.Substrates.Subject;
 import io.humainary.substrates.api.Substrates.Subscriber;
 import io.humainary.substrates.api.Substrates.Subscription;
@@ -56,7 +59,7 @@ final class FsTap < T > implements Tap < T > {
   < E > FsTap (
     FsSubject < ? > parent,
     Name name,
-    io.humainary.substrates.api.Substrates.Source < E, ? > source,
+    Source < E, ? > source,
     FsCircuit circuit,
     Function < Pipe < T >, Pipe < E > > fn ) {
 
@@ -94,11 +97,11 @@ final class FsTap < T > implements Tap < T > {
 
           @Override
           @SuppressWarnings ( "unchecked" )
-          public < I > Pipe < I > pipe ( io.humainary.substrates.api.Substrates.Flow < I, T > flow ) {
+          public < I > Pipe < I > pipe ( Flow < I, T > flow ) {
             FsFlow < I, T > fsFlow = (FsFlow < I, T >) flow;
             java.util.function.Consumer < I > chain = fsFlow.materialise ( this::emit );
             return circuit.createPipe ( channelName, (FsSubject < ? >) tapChannel.subject (),
-              (java.util.function.Consumer < Object >) (java.util.function.Consumer < ? >) new FsCircuit.ReceptorReceiver <> ( chain::accept ) );
+              (java.util.function.Consumer < Object >) (java.util.function.Consumer < ? >) new FsCircuit.ReceptorAdapter <> ( chain::accept ) );
           }
         };
 
@@ -237,8 +240,8 @@ final class FsTap < T > implements Tap < T > {
   }
 
   @Override
-  @io.humainary.substrates.api.Substrates.Idempotent
-  @io.humainary.substrates.api.Substrates.Queued
+  @Idempotent
+  @Queued
   public void close () {
     if ( closed ) return;
     closed = true;

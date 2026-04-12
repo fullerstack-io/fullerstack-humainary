@@ -1,6 +1,7 @@
 package io.fullerstack.substrates;
 
 import io.humainary.substrates.api.Substrates.Idempotent;
+import io.humainary.substrates.api.Substrates.Queued;
 import io.humainary.substrates.api.Substrates.Name;
 import io.humainary.substrates.api.Substrates.Provided;
 import io.humainary.substrates.api.Substrates.Subject;
@@ -75,7 +76,7 @@ public final class FsSubscription implements Subscription {
   /// Closes this subscription, unregistering from the source.
   /// Idempotent - repeated calls have no effect.
   @Idempotent
-  @io.humainary.substrates.api.Substrates.Queued
+  @Queued
   @Override
   public void close () {
     if ( !closed ) {

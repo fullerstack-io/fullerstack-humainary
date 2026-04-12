@@ -4,6 +4,7 @@ import io.humainary.substrates.api.Substrates.Current;
 import io.humainary.substrates.api.Substrates.Provided;
 import io.humainary.substrates.api.Substrates.Subject;
 import io.humainary.substrates.api.Substrates.Temporal;
+import io.humainary.substrates.api.Substrates.Tenure;
 
 /// Represents the execution context from which substrate operations originate.
 ///
@@ -20,7 +21,7 @@ import io.humainary.substrates.api.Substrates.Temporal;
 /// @see Subject
 @Provided
 @Temporal
-@io.humainary.substrates.api.Substrates.Tenure ( io.humainary.substrates.api.Substrates.Tenure.INTERNED )
+@Tenure ( Tenure.INTERNED )
 final class FsCurrent implements Current {
 
   /// The subject identity for this current context.

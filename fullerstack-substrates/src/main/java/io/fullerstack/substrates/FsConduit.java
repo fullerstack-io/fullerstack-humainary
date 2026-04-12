@@ -159,7 +159,7 @@ public final class FsConduit < E > extends FsSubstrate < Conduit < E > > impleme
 
       // Create the circuit-dispatched pipe that routes through this channel
       @SuppressWarnings ( "unchecked" )
-      Consumer < E > receiver = (Consumer < E >) (Consumer < ? >) new FsCircuit.ReceptorReceiver <> ( channel );
+      Consumer < E > receiver = (Consumer < E >) (Consumer < ? >) new FsCircuit.ReceptorAdapter <> ( channel );
 
       @SuppressWarnings ( "unchecked" )
       Pipe < E > pipe = circuit.createPipe ( name, pipeSubject, (Consumer < Object >) (Consumer < ? >) receiver );
@@ -261,13 +261,13 @@ public final class FsConduit < E > extends FsSubstrate < Conduit < E > > impleme
 
     fs.trackSubscription ( subscription );
 
-    circuit.submitIngress ( new FsCircuit.ReceptorReceiver < Object > ( _ -> addSubscriber ( fs ) ), null );
+    circuit.submitIngress ( new FsCircuit.ReceptorAdapter < Object > ( _ -> addSubscriber ( fs ) ), null );
 
     return subscription;
   }
 
   private void enqueueUnsubscribe ( FsSubscriber < E > subscriber ) {
-    circuit.submitIngress ( new FsCircuit.ReceptorReceiver < Object > ( _ -> removeSubscriber ( subscriber ) ), null );
+    circuit.submitIngress ( new FsCircuit.ReceptorAdapter < Object > ( _ -> removeSubscriber ( subscriber ) ), null );
   }
 
   @New

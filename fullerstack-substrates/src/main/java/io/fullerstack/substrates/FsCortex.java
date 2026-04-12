@@ -5,6 +5,7 @@ import static java.util.Objects.requireNonNull;
 import io.humainary.substrates.api.Substrates.Circuit;
 import io.humainary.substrates.api.Substrates.Cortex;
 import io.humainary.substrates.api.Substrates.Current;
+import io.humainary.substrates.api.Substrates.Flow;
 import io.humainary.substrates.api.Substrates.Name;
 import io.humainary.substrates.api.Substrates.New;
 import io.humainary.substrates.api.Substrates.NotNull;
@@ -134,14 +135,14 @@ final class FsCortex implements Cortex {
   @New
   @NotNull
   @Override
-  public < E > io.humainary.substrates.api.Substrates.Flow < E, E > flow () {
+  public < E > Flow < E, E > flow () {
     return new FsFlow <> ();
   }
 
   @New
   @NotNull
   @Override
-  public < E > io.humainary.substrates.api.Substrates.Flow < E, E > flow ( @NotNull Class < E > type ) {
+  public < E > Flow < E, E > flow ( @NotNull Class < E > type ) {
     return new FsFlow <> ();
   }
 

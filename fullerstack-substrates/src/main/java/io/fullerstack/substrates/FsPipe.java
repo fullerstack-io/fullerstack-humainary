@@ -88,7 +88,7 @@ public final class FsPipe < E > implements Pipe < E > {
     java.util.Objects.requireNonNull ( flow, "flow must not be null" );
     FsFlow < I, E > fsFlow = (FsFlow < I, E >) flow;
     Consumer < I > chain = fsFlow.materialise ( v -> emit ( v ) );
-    return circuit.createPipe ( name, parentSubject, (Consumer < Object >) (Consumer < ? >) new FsCircuit.ReceptorReceiver <> ( chain::accept ) );
+    return circuit.createPipe ( name, parentSubject, (Consumer < Object >) (Consumer < ? >) new FsCircuit.ReceptorAdapter <> ( chain::accept ) );
   }
 
   @Override

@@ -1,5 +1,6 @@
 package io.fullerstack.substrates;
 
+import static io.humainary.substrates.api.Substrates.cortex;
 import static java.util.Objects.requireNonNull;
 
 import io.humainary.substrates.api.Substrates.Circuit;
@@ -105,7 +106,7 @@ public final class FsCircuit implements Circuit {
   // Set when close() is called to reject new emissions
   volatile boolean closed;
 
-  // Pre-allocated marker receivers — ReceptorReceiver wrapping marker lambdas.
+  // Pre-allocated marker receivers — ReceptorAdapter wrapping marker lambdas.
   // Drain loop splits the call site: isMarker() identity check routes markers
   // to fireMarker() (cold, separate type profile), keeping the hot-path
   // r.accept(v) and receptor.receive() fully monomorphic — zero class_check traps.
@@ -113,7 +114,7 @@ public final class FsCircuit implements Circuit {
   private final Consumer < Object > closeMarkerReceiver;
 
   // ─────────────────────────────────────────────────────────────────────────────
-  // ReceptorReceiver - Concrete class for JIT devirtualization/inlining
+  // ReceptorAdapter - Concrete class for JIT devirtualization/inlining
   // ─────────────────────────────────────────────────────────────────────────────
 
   /**
@@ -122,10 +123,10 @@ public final class FsCircuit implements Circuit {
    * 1. Devirtualize the accept() call (lambda has invokedynamic overhead)
    * 2. Inline the receptor.receive() call when the receptor type is known
    */
-  static final class ReceptorReceiver < E > implements Consumer < Object > {
+  static final class ReceptorAdapter < E > implements Consumer < Object > {
     final Receptor < ? super E > receptor;
 
-    ReceptorReceiver ( Receptor < ? super E > receptor ) {
+    ReceptorAdapter ( Receptor < ? super E > receptor ) {
       this.receptor = receptor;
     }
 
@@ -144,14 +145,14 @@ public final class FsCircuit implements Circuit {
     this.subject = subject;
     this.subscribers = new ArrayList <> ();
 
-    // Pre-allocate marker receivers as ReceptorReceiver instances.
+    // Pre-allocate marker receivers as ReceptorAdapter instances.
     // Drain loop uses isMarker() identity check to route markers to
     // fireMarker() (cold path, separate type profile). Hot-path
     // r.accept(v) → receptor.receive() stays fully monomorphic.
     Receptor < Object > awaitReceptor = this::onAwaitMarker;
-    this.awaitMarkerReceiver = new ReceptorReceiver <> ( awaitReceptor );
+    this.awaitMarkerReceiver = new ReceptorAdapter <> ( awaitReceptor );
     Receptor < Object > closeReceptor = this::onCloseMarker;
-    this.closeMarkerReceiver = new ReceptorReceiver <> ( closeReceptor );
+    this.closeMarkerReceiver = new ReceptorAdapter <> ( closeReceptor );
 
     // Create and start worker thread
     this.worker = Thread.ofVirtual ()
@@ -202,7 +203,7 @@ public final class FsCircuit implements Circuit {
   /**
    * Identity check: is this receiver a marker (await/close)?
    * Splits the call site so the hot path {@code r.accept(v)} only
-   * ever sees regular ReceptorReceivers — monomorphic, no class_check traps.
+   * ever sees regular ReceptorAdapters — monomorphic, no class_check traps.
    */
   @jdk.internal.vm.annotation.ForceInline
   boolean isMarker ( Consumer < Object > r ) {
@@ -322,7 +323,7 @@ public final class FsCircuit implements Circuit {
       return;
     }
 
-    // We're the first awaiter - inject marker job (uses pre-allocated ReceptorReceiver)
+    // We're the first awaiter - inject marker job (uses pre-allocated ReceptorAdapter)
     marker ( awaitMarkerReceiver );
 
     // Unpark worker to process marker promptly (cold path)
@@ -415,7 +416,7 @@ public final class FsCircuit implements Circuit {
     if ( target instanceof FsPipe < ? > fsPipe && fsPipe.circuit () == this ) {
       return fsPipe.receiver ();
     }
-    return new ReceptorReceiver <> ( target::emit );
+    return new ReceptorAdapter <> ( target::emit );
   }
 
   @New
@@ -434,7 +435,7 @@ public final class FsCircuit implements Circuit {
   @Override
   public < E > Pipe < E > pipe ( @NotNull Receptor < ? super E > receptor ) {
     requireNonNull ( receptor );
-    return newPipe ( null, new ReceptorReceiver <> ( receptor ) );
+    return newPipe ( null, new ReceptorAdapter <> ( receptor ) );
   }
 
   // ===================================================================================
@@ -448,7 +449,7 @@ public final class FsCircuit implements Circuit {
         c = stateConduit;
         if ( c == null ) {
           c = new FsConduit <> ( (FsSubject < ? >) subject,
-            io.humainary.substrates.api.Substrates.cortex ().name ( "circuit.state" ), this );
+            cortex ().name ( "circuit.state" ), this );
           stateConduit = c;
         }
       }
