@@ -38,7 +38,7 @@ public class AgentOps
 
   private Cortex                    cortex;
   private Circuit                   circuit;
-  private Conduit < Agent, Signal > conduit;
+  private Conduit < Signal > conduit;
   private Agent                     agent;
   private Name                      name;
 
@@ -50,7 +50,7 @@ public class AgentOps
   public Agent agent_from_conduit () {
 
     return
-      conduit.percept (
+      conduit.get (
         name
       );
 
@@ -60,7 +60,7 @@ public class AgentOps
   @OperationsPerInvocation ( BATCH_SIZE )
   public Agent agent_from_conduit_batch () {
     Agent result = null;
-    for ( var i = 0; i < BATCH_SIZE; i++ ) result = conduit.percept ( name );
+    for ( var i = 0; i < BATCH_SIZE; i++ ) result = conduit.get ( name );
     return result;
   }
 
@@ -453,7 +453,7 @@ public class AgentOps
       );
 
     agent =
-      conduit.percept (
+      conduit.get (
         name
       );
 

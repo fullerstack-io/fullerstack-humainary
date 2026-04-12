@@ -35,7 +35,7 @@ public class ExchangeOps implements Substrates {
 
   private Cortex                       cortex;
   private Circuit                      circuit;
-  private Conduit < Exchange, Signal > conduit;
+  private Conduit < Signal > conduit;
   private Exchange                     exchange;
   private Name                         name;
 
@@ -250,7 +250,7 @@ public class ExchangeOps implements Substrates {
   public Exchange exchange_from_conduit () {
 
     return
-      conduit.percept (
+      conduit.get (
         name
       );
 
@@ -272,7 +272,7 @@ public class ExchangeOps implements Substrates {
       i++
     ) {
       result =
-        conduit.percept (
+        conduit.get (
           name
         );
     }
@@ -294,7 +294,7 @@ public class ExchangeOps implements Substrates {
       );
 
     exchange =
-      conduit.percept (
+      conduit.get (
         name
       );
 

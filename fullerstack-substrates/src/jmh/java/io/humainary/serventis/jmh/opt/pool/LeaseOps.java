@@ -37,7 +37,7 @@ public class LeaseOps implements Substrates {
 
   private Cortex                    cortex;
   private Circuit                   circuit;
-  private Conduit < Lease, Signal > conduit;
+  private Conduit < Signal > conduit;
   private Lease                     lease;
   private Name                      name;
 
@@ -391,7 +391,7 @@ public class LeaseOps implements Substrates {
   public Lease lease_from_conduit () {
 
     return
-      conduit.percept (
+      conduit.get (
         name
       );
 
@@ -401,7 +401,7 @@ public class LeaseOps implements Substrates {
   @OperationsPerInvocation ( BATCH_SIZE )
   public Lease lease_from_conduit_batch () {
     Lease result = null;
-    for ( var i = 0; i < BATCH_SIZE; i++ ) result = conduit.percept ( name );
+    for ( var i = 0; i < BATCH_SIZE; i++ ) result = conduit.get ( name );
     return result;
   }
 
@@ -417,7 +417,7 @@ public class LeaseOps implements Substrates {
       );
 
     lease =
-      conduit.percept (
+      conduit.get (
         name
       );
 

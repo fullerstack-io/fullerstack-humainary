@@ -127,6 +127,17 @@ final class FsCortex implements Cortex {
     return FsName.fromMember ( member );
   }
 
+  // =========================================================================
+  // Flow factory methods — standalone immutable flows (2.0)
+  // =========================================================================
+
+  @New
+  @NotNull
+  @Override
+  public < E > io.humainary.substrates.api.Substrates.Flow < E, E > flow ( @NotNull Class < E > type ) {
+    return new FsFlow <> ();
+  }
+
   @New
   @NotNull
   @Override

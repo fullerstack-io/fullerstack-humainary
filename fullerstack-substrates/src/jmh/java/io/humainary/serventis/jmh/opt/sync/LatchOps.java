@@ -33,7 +33,7 @@ public class LatchOps implements Substrates {
 
   private Cortex                  cortex;
   private Circuit                 circuit;
-  private Conduit < Latch, Sign > conduit;
+  private Conduit < Sign > conduit;
   private Latch                   latch;
   private Name                    name;
 
@@ -180,7 +180,7 @@ public class LatchOps implements Substrates {
   public Latch latch_from_conduit () {
 
     return
-      conduit.percept (
+      conduit.get (
         name
       );
 
@@ -190,7 +190,7 @@ public class LatchOps implements Substrates {
   @OperationsPerInvocation ( BATCH_SIZE )
   public Latch latch_from_conduit_batch () {
     Latch result = null;
-    for ( var i = 0; i < BATCH_SIZE; i++ ) result = conduit.percept ( name );
+    for ( var i = 0; i < BATCH_SIZE; i++ ) result = conduit.get ( name );
     return result;
   }
 
@@ -206,7 +206,7 @@ public class LatchOps implements Substrates {
       );
 
     latch =
-      conduit.percept (
+      conduit.get (
         name
       );
 

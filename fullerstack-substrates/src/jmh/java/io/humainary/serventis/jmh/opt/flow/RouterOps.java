@@ -33,7 +33,7 @@ public class RouterOps implements Substrates {
 
   private Cortex                   cortex;
   private Circuit                  circuit;
-  private Conduit < Router, Sign > conduit;
+  private Conduit < Sign > conduit;
   private Router                   router;
   private Name                     name;
 
@@ -231,7 +231,7 @@ public class RouterOps implements Substrates {
   public Router router_from_conduit () {
 
     return
-      conduit.percept (
+      conduit.get (
         name
       );
 
@@ -241,7 +241,7 @@ public class RouterOps implements Substrates {
   @OperationsPerInvocation ( BATCH_SIZE )
   public Router router_from_conduit_batch () {
     Router result = null;
-    for ( var i = 0; i < BATCH_SIZE; i++ ) result = conduit.percept ( name );
+    for ( var i = 0; i < BATCH_SIZE; i++ ) result = conduit.get ( name );
     return result;
   }
 
@@ -257,7 +257,7 @@ public class RouterOps implements Substrates {
       );
 
     router =
-      conduit.percept (
+      conduit.get (
         name
       );
 

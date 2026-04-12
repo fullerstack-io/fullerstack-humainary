@@ -32,7 +32,7 @@ public class CacheOps implements Substrates {
 
   private Cortex                  cortex;
   private Circuit                 circuit;
-  private Conduit < Cache, Sign > conduit;
+  private Conduit < Sign > conduit;
   private Cache                   cache;
   private Name                    name;
 
@@ -44,7 +44,7 @@ public class CacheOps implements Substrates {
   public Cache cache_from_conduit () {
 
     return
-      conduit.percept (
+      conduit.get (
         name
       );
 
@@ -66,7 +66,7 @@ public class CacheOps implements Substrates {
       i++
     ) {
       result =
-        conduit.percept (
+        conduit.get (
           name
         );
     }
@@ -324,7 +324,7 @@ public class CacheOps implements Substrates {
       );
 
     cache =
-      conduit.percept (
+      conduit.get (
         name
       );
 

@@ -32,7 +32,7 @@ public class OperationOps implements Substrates {
 
   private Cortex                      cortex;
   private Circuit                     circuit;
-  private Conduit < Operation, Sign > conduit;
+  private Conduit < Sign > conduit;
   private Operation                   operation;
   private Name                        name;
 
@@ -40,7 +40,7 @@ public class OperationOps implements Substrates {
   public Operation operation_from_conduit () {
 
     return
-      conduit.percept (
+      conduit.get (
         name
       );
 
@@ -58,7 +58,7 @@ public class OperationOps implements Substrates {
       i++
     ) {
       result =
-        conduit.percept (
+        conduit.get (
           name
         );
     }
@@ -147,7 +147,7 @@ public class OperationOps implements Substrates {
       );
 
     operation =
-      conduit.percept (
+      conduit.get (
         name
       );
 

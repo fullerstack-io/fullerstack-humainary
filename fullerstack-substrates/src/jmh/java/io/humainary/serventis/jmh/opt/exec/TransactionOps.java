@@ -38,7 +38,7 @@ public class TransactionOps
 
   private Cortex                          cortex;
   private Circuit                         circuit;
-  private Conduit < Transaction, Signal > conduit;
+  private Conduit < Signal > conduit;
   private Transaction                     transaction;
   private Name                            name;
 
@@ -393,7 +393,7 @@ public class TransactionOps
       );
 
     transaction =
-      conduit.percept (
+      conduit.get (
         name
       );
 
@@ -429,7 +429,7 @@ public class TransactionOps
   public Transaction transaction_from_conduit () {
 
     return
-      conduit.percept (
+      conduit.get (
         name
       );
 
@@ -439,7 +439,7 @@ public class TransactionOps
   @OperationsPerInvocation ( BATCH_SIZE )
   public Transaction transaction_from_conduit_batch () {
     Transaction result = null;
-    for ( var i = 0; i < BATCH_SIZE; i++ ) result = conduit.percept ( name );
+    for ( var i = 0; i < BATCH_SIZE; i++ ) result = conduit.get ( name );
     return result;
   }
 

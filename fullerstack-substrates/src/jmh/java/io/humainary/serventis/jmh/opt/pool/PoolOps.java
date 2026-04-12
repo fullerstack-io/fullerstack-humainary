@@ -33,7 +33,7 @@ public class PoolOps implements Substrates {
 
   private Cortex                 cortex;
   private Circuit                circuit;
-  private Conduit < Pool, Sign > conduit;
+  private Conduit < Sign > conduit;
   private Pool                   pool;
   private Name                   name;
 
@@ -194,7 +194,7 @@ public class PoolOps implements Substrates {
   public Pool pool_from_conduit () {
 
     return
-      conduit.percept (
+      conduit.get (
         name
       );
 
@@ -216,7 +216,7 @@ public class PoolOps implements Substrates {
       i++
     ) {
       result =
-        conduit.percept (
+        conduit.get (
           name
         );
     }
@@ -238,7 +238,7 @@ public class PoolOps implements Substrates {
       );
 
     pool =
-      conduit.percept (
+      conduit.get (
         name
       );
 

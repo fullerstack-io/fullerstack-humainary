@@ -5,7 +5,6 @@ package io.humainary.substrates.jmh;
 import io.humainary.substrates.api.Substrates;
 import org.openjdk.jmh.annotations.*;
 
-import static io.humainary.substrates.api.Substrates.Composer.pipe;
 import static java.util.concurrent.TimeUnit.NANOSECONDS;
 import static org.openjdk.jmh.annotations.Level.Iteration;
 import static org.openjdk.jmh.annotations.Level.Trial;
@@ -71,7 +70,7 @@ public class CyclicOps
         pipesName,
         ( subject, registrar ) ->
           registrar.register (
-            conduit.percept (
+            conduit.get (
               subject
             )
           )
@@ -79,7 +78,7 @@ public class CyclicOps
     );
 
     conduit
-      .percept (
+      .get (
         cyclicName
       )
       .emit (
@@ -117,7 +116,7 @@ public class CyclicOps
         pipesName,
         ( subject, registrar ) ->
           registrar.register (
-            conduit.percept (
+            conduit.get (
               subject
             )
           )
@@ -125,7 +124,7 @@ public class CyclicOps
     );
 
     conduit
-      .percept (
+      .get (
         cyclicName
       )
       .emit (
@@ -163,7 +162,7 @@ public class CyclicOps
         pipesName,
         ( subject, registrar ) ->
           registrar.register (
-            conduit.percept (
+            conduit.get (
               subject
             )
           )
@@ -171,7 +170,7 @@ public class CyclicOps
     );
 
     conduit
-      .percept (
+      .get (
         cyclicName
       )
       .emit (
@@ -215,7 +214,7 @@ public class CyclicOps
           pipesName,
           ( subject, registrar ) ->
             registrar.register (
-              conduit.percept (
+              conduit.get (
                 subject
               )
             )
@@ -223,7 +222,7 @@ public class CyclicOps
       );
 
       conduit
-        .percept (
+        .get (
           cyclicName
         )
         .emit (
@@ -267,7 +266,7 @@ public class CyclicOps
           pipesName,
           ( subject, registrar ) ->
             registrar.register (
-              conduit.percept (
+              conduit.get (
                 subject
               )
             )
@@ -275,7 +274,7 @@ public class CyclicOps
       );
 
       conduit
-        .percept (
+        .get (
           cyclicName
         )
         .emit (
@@ -321,7 +320,7 @@ public class CyclicOps
           pipesName,
           ( subject, registrar ) ->
             registrar.register (
-              conduit.percept (
+              conduit.get (
                 subject
               )
             )
@@ -329,7 +328,7 @@ public class CyclicOps
       );
 
       conduit
-        .percept (
+        .get (
           cyclicName
         )
         .emit (

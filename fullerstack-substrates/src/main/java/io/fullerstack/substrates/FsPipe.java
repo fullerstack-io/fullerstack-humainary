@@ -4,7 +4,9 @@ import jdk.internal.vm.annotation.Stable;
 
 import java.util.function.Consumer;
 
+import io.humainary.substrates.api.Substrates.Flow;
 import io.humainary.substrates.api.Substrates.Name;
+import io.humainary.substrates.api.Substrates.New;
 import io.humainary.substrates.api.Substrates.NotNull;
 import io.humainary.substrates.api.Substrates.Pipe;
 import io.humainary.substrates.api.Substrates.Provided;
@@ -74,6 +76,19 @@ public final class FsPipe < E > implements Pipe < E > {
   @jdk.internal.vm.annotation.ForceInline
   final boolean isOnCircuitThread () {
     return Thread.currentThread () == worker;
+  }
+
+  /// Creates a new pipe that applies flow processing before emitting to this pipe.
+  /// Each call materialises an independent operator chain from the immutable flow.
+  @New
+  @NotNull
+  @Override
+  @SuppressWarnings ( "unchecked" )
+  public < I > Pipe < I > pipe ( @NotNull Flow < I, E > flow ) {
+    java.util.Objects.requireNonNull ( flow, "flow must not be null" );
+    FsFlow < I, E > fsFlow = (FsFlow < I, E >) flow;
+    Consumer < I > chain = fsFlow.materialise ( v -> emit ( v ) );
+    return circuit.createPipe ( name, parentSubject, (Consumer < Object >) (Consumer < ? >) new FsCircuit.ReceptorReceiver <> ( chain::accept ) );
   }
 
   @Override

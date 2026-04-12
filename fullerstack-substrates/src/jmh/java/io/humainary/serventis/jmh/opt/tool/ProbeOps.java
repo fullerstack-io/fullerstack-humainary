@@ -36,7 +36,7 @@ public class ProbeOps implements Substrates {
 
   private Cortex                    cortex;
   private Circuit                   circuit;
-  private Conduit < Probe, Signal > conduit;
+  private Conduit < Signal > conduit;
   private Probe                     probe;
   private Name                      name;
 
@@ -323,7 +323,7 @@ public class ProbeOps implements Substrates {
   public Probe probe_from_conduit () {
 
     return
-      conduit.percept (
+      conduit.get (
         name
       );
 
@@ -333,7 +333,7 @@ public class ProbeOps implements Substrates {
   @OperationsPerInvocation ( BATCH_SIZE )
   public Probe probe_from_conduit_batch () {
     Probe result = null;
-    for ( var i = 0; i < BATCH_SIZE; i++ ) result = conduit.percept ( name );
+    for ( var i = 0; i < BATCH_SIZE; i++ ) result = conduit.get ( name );
     return result;
   }
 
@@ -349,7 +349,7 @@ public class ProbeOps implements Substrates {
       );
 
     probe =
-      conduit.percept (
+      conduit.get (
         name
       );
 

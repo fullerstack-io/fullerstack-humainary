@@ -33,7 +33,7 @@ public class LogOps implements Substrates {
 
   private Cortex                cortex;
   private Circuit               circuit;
-  private Conduit < Log, Sign > conduit;
+  private Conduit < Sign > conduit;
   private Log                   log;
   private Name                  name;
 
@@ -194,7 +194,7 @@ public class LogOps implements Substrates {
   public Log log_from_conduit () {
 
     return
-      conduit.percept (
+      conduit.get (
         name
       );
 
@@ -216,7 +216,7 @@ public class LogOps implements Substrates {
       i++
     ) {
       result =
-        conduit.percept (
+        conduit.get (
           name
         );
     }
@@ -238,7 +238,7 @@ public class LogOps implements Substrates {
       );
 
     log =
-      conduit.percept (
+      conduit.get (
         name
       );
 

@@ -34,7 +34,7 @@ public class SituationOps implements Substrates {
 
   private Cortex                        cortex;
   private Circuit                       circuit;
-  private Conduit < Situation, Signal > conduit;
+  private Conduit < Signal > conduit;
   private Situation                     situation;
   private Name                          name;
 
@@ -143,7 +143,7 @@ public class SituationOps implements Substrates {
       );
 
     situation =
-      conduit.percept (
+      conduit.get (
         name
       );
 
@@ -172,7 +172,7 @@ public class SituationOps implements Substrates {
   public Situation situation_from_conduit () {
 
     return
-      conduit.percept (
+      conduit.get (
         name
       );
 
@@ -182,7 +182,7 @@ public class SituationOps implements Substrates {
   @OperationsPerInvocation ( BATCH_SIZE )
   public Situation situation_from_conduit_batch () {
     Situation result = null;
-    for ( var i = 0; i < BATCH_SIZE; i++ ) result = conduit.percept ( name );
+    for ( var i = 0; i < BATCH_SIZE; i++ ) result = conduit.get ( name );
     return result;
   }
 

@@ -37,7 +37,7 @@ public class ServiceOps implements Substrates {
 
   private Cortex                      cortex;
   private Circuit                     circuit;
-  private Conduit < Service, Signal > conduit;
+  private Conduit < Signal > conduit;
   private Service                     service;
   private Name                        name;
 
@@ -628,7 +628,7 @@ public class ServiceOps implements Substrates {
   public Service service_from_conduit () {
 
     return
-      conduit.percept (
+      conduit.get (
         name
       );
 
@@ -638,7 +638,7 @@ public class ServiceOps implements Substrates {
   @OperationsPerInvocation ( BATCH_SIZE )
   public Service service_from_conduit_batch () {
     Service result = null;
-    for ( var i = 0; i < BATCH_SIZE; i++ ) result = conduit.percept ( name );
+    for ( var i = 0; i < BATCH_SIZE; i++ ) result = conduit.get ( name );
     return result;
   }
 
@@ -654,7 +654,7 @@ public class ServiceOps implements Substrates {
       );
 
     service =
-      conduit.percept (
+      conduit.get (
         name
       );
 

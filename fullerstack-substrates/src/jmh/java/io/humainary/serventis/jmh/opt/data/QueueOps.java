@@ -33,7 +33,7 @@ public class QueueOps implements Substrates {
 
   private Cortex                  cortex;
   private Circuit                 circuit;
-  private Conduit < Queue, Sign > conduit;
+  private Conduit < Sign > conduit;
   private Queue                   queue;
   private Name                    name;
 
@@ -195,7 +195,7 @@ public class QueueOps implements Substrates {
   public Queue queue_from_conduit () {
 
     return
-      conduit.percept (
+      conduit.get (
         name
       );
 
@@ -217,7 +217,7 @@ public class QueueOps implements Substrates {
       i++
     ) {
       result =
-        conduit.percept (
+        conduit.get (
           name
         );
     }
@@ -239,7 +239,7 @@ public class QueueOps implements Substrates {
       );
 
     queue =
-      conduit.percept (
+      conduit.get (
         name
       );
 

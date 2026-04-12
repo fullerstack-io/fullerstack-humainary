@@ -8,7 +8,6 @@ import org.openjdk.jmh.infra.Blackhole;
 
 import java.util.concurrent.atomic.AtomicInteger;
 
-import static io.humainary.substrates.api.Substrates.Composer.pipe;
 import static io.humainary.substrates.api.Substrates.Receptor.NOOP;
 import static java.util.concurrent.TimeUnit.NANOSECONDS;
 import static org.openjdk.jmh.annotations.Level.Iteration;
@@ -367,7 +366,7 @@ public class PipeOps
 
     // Get the channel's pipe for emission via the conduit
     fanOutPipe =
-      conduit.percept ( name );
+      conduit.get ( name );
 
     // Warm up the circuit
     circuit.await ();

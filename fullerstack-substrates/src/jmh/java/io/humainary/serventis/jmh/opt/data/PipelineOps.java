@@ -33,7 +33,7 @@ public class PipelineOps implements Substrates {
 
   private Cortex                     cortex;
   private Circuit                    circuit;
-  private Conduit < Pipeline, Sign > conduit;
+  private Conduit < Sign > conduit;
   private Pipeline                   pipeline;
   private Name                       name;
 
@@ -330,7 +330,7 @@ public class PipelineOps implements Substrates {
   public Pipeline pipeline_from_conduit () {
 
     return
-      conduit.percept (
+      conduit.get (
         name
       );
 
@@ -340,7 +340,7 @@ public class PipelineOps implements Substrates {
   @OperationsPerInvocation ( BATCH_SIZE )
   public Pipeline pipeline_from_conduit_batch () {
     Pipeline result = null;
-    for ( var i = 0; i < BATCH_SIZE; i++ ) result = conduit.percept ( name );
+    for ( var i = 0; i < BATCH_SIZE; i++ ) result = conduit.get ( name );
     return result;
   }
 
@@ -356,7 +356,7 @@ public class PipelineOps implements Substrates {
       );
 
     pipeline =
-      conduit.percept (
+      conduit.get (
         name
       );
 

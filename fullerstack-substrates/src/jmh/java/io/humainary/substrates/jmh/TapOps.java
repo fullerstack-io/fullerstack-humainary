@@ -5,7 +5,6 @@ package io.humainary.substrates.jmh;
 import io.humainary.substrates.api.Substrates;
 import org.openjdk.jmh.annotations.*;
 
-import static io.humainary.substrates.api.Substrates.Composer.pipe;
 import static java.util.concurrent.TimeUnit.NANOSECONDS;
 import static org.openjdk.jmh.annotations.Level.Iteration;
 import static org.openjdk.jmh.annotations.Level.Trial;
@@ -42,24 +41,24 @@ public class TapOps
   private Circuit circuit;
 
   // Conduit for tap creation benchmarks (no subscribers attached)
-  private Conduit < Pipe < Integer >, Integer > conduit;
+  private Conduit < Integer > conduit;
 
   // Baseline: conduit with 1 direct subscriber (no tap)
-  private Conduit < Pipe < Integer >, Integer > baselineConduit;
+  private Conduit < Integer > baselineConduit;
   private Pipe < Integer >                      baselinePipe;
 
   // Identity tap: conduit → tap → 1 subscriber
-  private Conduit < Pipe < Integer >, Integer > identityConduit;
+  private Conduit < Integer > identityConduit;
   private Tap < Integer >                       identityTap;
   private Pipe < Integer >                      identityTapPipe;
 
   // String tap: conduit → tap (with transform) → 1 subscriber
-  private Conduit < Pipe < Integer >, Integer > stringConduit;
+  private Conduit < Integer > stringConduit;
   private Tap < String >                        stringTap;
   private Pipe < Integer >                      stringTapPipe;
 
   // Multi-tap: conduit → 2 taps → 2 subscribers (fan-out)
-  private Conduit < Pipe < Integer >, Integer > multiConduit;
+  private Conduit < Integer > multiConduit;
   private Tap < Integer >                       multiTap1;
   private Tap < Integer >                       multiTap2;
   private Pipe < Integer >                      multiTapPipe;
@@ -256,7 +255,7 @@ public class TapOps
     );
 
     // Emit through conduit (which tap is subscribed to)
-    conduit.percept ( name ).emit ( VALUE );
+    conduit.get ( name ).emit ( VALUE );
     circuit.await ();
 
     tap.close ();
@@ -296,7 +295,7 @@ public class TapOps
     );
 
     baselinePipe =
-      baselineConduit.percept ( name );
+      baselineConduit.get ( name );
 
     // ─────────────────────────────────────────────────────────────────
     // IDENTITY TAP: conduit → identity tap → 1 subscriber
@@ -319,7 +318,7 @@ public class TapOps
     );
 
     identityTapPipe =
-      identityConduit.percept ( name );
+      identityConduit.get ( name );
 
     // ─────────────────────────────────────────────────────────────────
     // STRING TAP: conduit → string tap → 1 subscriber
@@ -342,7 +341,7 @@ public class TapOps
     );
 
     stringTapPipe =
-      stringConduit.percept ( name );
+      stringConduit.get ( name );
 
     // ─────────────────────────────────────────────────────────────────
     // MULTI-TAP: conduit → 2 identity taps → 2 subscribers
@@ -376,7 +375,7 @@ public class TapOps
     );
 
     multiTapPipe =
-      multiConduit.percept ( name );
+      multiConduit.get ( name );
 
     // Warm up - ensure all subscriptions are registered
     circuit.await ();

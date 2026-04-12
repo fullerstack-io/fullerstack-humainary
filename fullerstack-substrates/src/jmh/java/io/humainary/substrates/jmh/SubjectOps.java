@@ -5,7 +5,6 @@ package io.humainary.substrates.jmh;
 import io.humainary.substrates.api.Substrates;
 import org.openjdk.jmh.annotations.*;
 
-import static io.humainary.substrates.api.Substrates.Composer.pipe;
 import static java.util.concurrent.TimeUnit.NANOSECONDS;
 import static org.openjdk.jmh.annotations.Level.Trial;
 import static org.openjdk.jmh.annotations.Mode.AverageTime;
@@ -31,9 +30,9 @@ public class SubjectOps
 
   private Cortex                                cortex;
   private Circuit                               circuit;
-  private Conduit < Pipe < Integer >, Integer > conduitA;
-  private Conduit < Pipe < Integer >, Integer > conduitB;
-  private Conduit < Pipe < Integer >, Integer > conduitC;
+  private Conduit < Integer > conduitA;
+  private Conduit < Integer > conduitB;
+  private Conduit < Integer > conduitC;
 
   private Subject < ? > subjectA;
   private Subject < ? > subjectB;
@@ -52,19 +51,19 @@ public class SubjectOps
     conduitA =
       circuit.conduit (
         cortex.name ( "conduitA" ),
-        pipe ()
+        Integer.class
       );
 
     conduitB =
       circuit.conduit (
         cortex.name ( "conduitB" ),
-        pipe ()
+        Integer.class
       );
 
     conduitC =
       circuit.conduit (
         cortex.name ( "conduitC" ),
-        pipe ()
+        Integer.class
       );
 
     // Get subjects from conduits

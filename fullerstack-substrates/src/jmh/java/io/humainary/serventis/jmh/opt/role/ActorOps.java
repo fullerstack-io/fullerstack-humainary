@@ -34,7 +34,7 @@ public class ActorOps
 
   private Cortex                  cortex;
   private Circuit                 circuit;
-  private Conduit < Actor, Sign > conduit;
+  private Conduit < Sign > conduit;
   private Actor                   actor;
   private Name                    name;
 
@@ -46,7 +46,7 @@ public class ActorOps
   public Actor actor_from_conduit () {
 
     return
-      conduit.percept (
+      conduit.get (
         name
       );
 
@@ -68,7 +68,7 @@ public class ActorOps
       i++
     ) {
       result =
-        conduit.percept (
+        conduit.get (
           name
         );
     }
@@ -442,7 +442,7 @@ public class ActorOps
       );
 
     actor =
-      conduit.percept (
+      conduit.get (
         name
       );
 

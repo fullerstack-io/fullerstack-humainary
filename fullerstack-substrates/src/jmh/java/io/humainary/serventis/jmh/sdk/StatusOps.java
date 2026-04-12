@@ -35,7 +35,7 @@ public class StatusOps implements Substrates {
 
   private Cortex                     cortex;
   private Circuit                    circuit;
-  private Conduit < Status, Signal > conduit;
+  private Conduit < Signal > conduit;
   private Status                     status;
   private Name                       name;
 
@@ -251,7 +251,7 @@ public class StatusOps implements Substrates {
       );
 
     status =
-      conduit.percept (
+      conduit.get (
         name
       );
 
@@ -280,7 +280,7 @@ public class StatusOps implements Substrates {
   public Status status_from_conduit () {
 
     return
-      conduit.percept (
+      conduit.get (
         name
       );
 
@@ -302,7 +302,7 @@ public class StatusOps implements Substrates {
       i++
     ) {
       result =
-        conduit.percept (
+        conduit.get (
           name
         );
     }

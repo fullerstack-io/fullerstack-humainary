@@ -31,7 +31,7 @@ public class FlowOps implements Substrates {
 
   private Cortex                               cortex;
   private Circuit                              circuit;
-  private Conduit < Flows.Flow, Flows.Signal > conduit;
+  private Conduit < Flows.Signal > conduit;
   private Flows.Flow                           flow;
   private Name                                 name;
 
@@ -39,7 +39,7 @@ public class FlowOps implements Substrates {
   public Flows.Flow flow_from_conduit () {
 
     return
-      conduit.percept (
+      conduit.get (
         name
       );
 
@@ -57,7 +57,7 @@ public class FlowOps implements Substrates {
       i++
     ) {
       result =
-        conduit.percept (
+        conduit.get (
           name
         );
     }
@@ -162,7 +162,7 @@ public class FlowOps implements Substrates {
       );
 
     flow =
-      conduit.percept (
+      conduit.get (
         name
       );
 

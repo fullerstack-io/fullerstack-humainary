@@ -32,7 +32,7 @@ public class CounterOps implements Substrates {
 
   private Cortex                    cortex;
   private Circuit                   circuit;
-  private Conduit < Counter, Sign > conduit;
+  private Conduit < Sign > conduit;
   private Counter                   counter;
   private Name                      name;
 
@@ -44,7 +44,7 @@ public class CounterOps implements Substrates {
   public Counter counter_from_conduit () {
 
     return
-      conduit.percept (
+      conduit.get (
         name
       );
 
@@ -66,7 +66,7 @@ public class CounterOps implements Substrates {
       i++
     ) {
       result =
-        conduit.percept (
+        conduit.get (
           name
         );
     }
@@ -208,7 +208,7 @@ public class CounterOps implements Substrates {
       );
 
     counter =
-      conduit.percept (
+      conduit.get (
         name
       );
 

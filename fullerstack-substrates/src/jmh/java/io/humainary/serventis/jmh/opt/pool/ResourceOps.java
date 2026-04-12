@@ -32,7 +32,7 @@ public class ResourceOps implements Substrates {
 
   private Cortex                               cortex;
   private Circuit                              circuit;
-  private Conduit < Resources.Resource, Sign > conduit;
+  private Conduit < Sign > conduit;
   private Resources.Resource                   resource;
   private Name                                 name;
 
@@ -251,7 +251,7 @@ public class ResourceOps implements Substrates {
   public Resources.Resource resource_from_conduit () {
 
     return
-      conduit.percept (
+      conduit.get (
         name
       );
 
@@ -273,7 +273,7 @@ public class ResourceOps implements Substrates {
       i++
     ) {
       result =
-        conduit.percept (
+        conduit.get (
           name
         );
     }
@@ -295,7 +295,7 @@ public class ResourceOps implements Substrates {
       );
 
     resource =
-      conduit.percept (
+      conduit.get (
         name
       );
 

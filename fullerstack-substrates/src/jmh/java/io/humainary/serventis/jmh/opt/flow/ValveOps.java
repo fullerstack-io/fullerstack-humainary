@@ -33,7 +33,7 @@ public class ValveOps implements Substrates {
 
   private Cortex                  cortex;
   private Circuit                 circuit;
-  private Conduit < Valve, Sign > conduit;
+  private Conduit < Sign > conduit;
   private Valve                   valve;
   private Name                    name;
 
@@ -256,7 +256,7 @@ public class ValveOps implements Substrates {
       );
 
     valve =
-      conduit.percept (
+      conduit.get (
         name
       );
 
@@ -292,7 +292,7 @@ public class ValveOps implements Substrates {
   public Valve valve_from_conduit () {
 
     return
-      conduit.percept (
+      conduit.get (
         name
       );
 
@@ -314,7 +314,7 @@ public class ValveOps implements Substrates {
       i++
     ) {
       result =
-        conduit.percept (
+        conduit.get (
           name
         );
     }

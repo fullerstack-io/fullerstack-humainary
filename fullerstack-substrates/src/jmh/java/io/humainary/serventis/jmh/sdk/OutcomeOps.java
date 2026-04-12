@@ -32,7 +32,7 @@ public class OutcomeOps implements Substrates {
 
   private Cortex                    cortex;
   private Circuit                   circuit;
-  private Conduit < Outcome, Sign > conduit;
+  private Conduit < Sign > conduit;
   private Outcome                   outcome;
   private Name                      name;
 
@@ -40,7 +40,7 @@ public class OutcomeOps implements Substrates {
   public Outcome outcome_from_conduit () {
 
     return
-      conduit.percept (
+      conduit.get (
         name
       );
 
@@ -58,7 +58,7 @@ public class OutcomeOps implements Substrates {
       i++
     ) {
       result =
-        conduit.percept (
+        conduit.get (
           name
         );
     }
@@ -147,7 +147,7 @@ public class OutcomeOps implements Substrates {
       );
 
     outcome =
-      conduit.percept (
+      conduit.get (
         name
       );
 

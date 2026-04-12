@@ -33,7 +33,7 @@ public class TimerOps implements Substrates {
 
   private Cortex                    cortex;
   private Circuit                   circuit;
-  private Conduit < Timer, Signal > conduit;
+  private Conduit < Signal > conduit;
   private Timer                     timer;
   private Name                      name;
 
@@ -41,7 +41,7 @@ public class TimerOps implements Substrates {
   public Timer timer_from_conduit () {
 
     return
-      conduit.percept (
+      conduit.get (
         name
       );
 
@@ -59,7 +59,7 @@ public class TimerOps implements Substrates {
       i++
     ) {
       result =
-        conduit.percept (
+        conduit.get (
           name
         );
     }
@@ -150,7 +150,7 @@ public class TimerOps implements Substrates {
       );
 
     timer =
-      conduit.percept (
+      conduit.get (
         name
       );
 

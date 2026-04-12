@@ -32,7 +32,7 @@ public class AtomicOps implements Substrates {
 
   private Cortex                   cortex;
   private Circuit                  circuit;
-  private Conduit < Atomic, Sign > conduit;
+  private Conduit < Sign > conduit;
   private Atomic                   atomic;
   private Name                     name;
 
@@ -40,7 +40,7 @@ public class AtomicOps implements Substrates {
   public Atomic atomic_from_conduit () {
 
     return
-      conduit.percept (
+      conduit.get (
         name
       );
 
@@ -58,7 +58,7 @@ public class AtomicOps implements Substrates {
       i++
     ) {
       result =
-        conduit.percept (
+        conduit.get (
           name
         );
     }
@@ -210,7 +210,7 @@ public class AtomicOps implements Substrates {
       );
 
     atomic =
-      conduit.percept (
+      conduit.get (
         name
       );
 

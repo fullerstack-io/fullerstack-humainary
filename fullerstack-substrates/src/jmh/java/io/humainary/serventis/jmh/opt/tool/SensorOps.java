@@ -34,7 +34,7 @@ public class SensorOps implements Substrates {
 
   private Cortex                     cortex;
   private Circuit                    circuit;
-  private Conduit < Sensor, Signal > conduit;
+  private Conduit < Signal > conduit;
   private Sensor                     sensor;
   private Name                       name;
 
@@ -378,7 +378,7 @@ public class SensorOps implements Substrates {
   public Sensor sensor_from_conduit () {
 
     return
-      conduit.percept (
+      conduit.get (
         name
       );
 
@@ -400,7 +400,7 @@ public class SensorOps implements Substrates {
       i++
     ) {
       result =
-        conduit.percept (
+        conduit.get (
           name
         );
     }
@@ -422,7 +422,7 @@ public class SensorOps implements Substrates {
       );
 
     sensor =
-      conduit.percept (
+      conduit.get (
         name
       );
 

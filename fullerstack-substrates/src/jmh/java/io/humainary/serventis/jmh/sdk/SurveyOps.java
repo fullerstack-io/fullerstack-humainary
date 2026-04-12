@@ -37,7 +37,7 @@ public class SurveyOps implements Substrates {
 
   private Cortex                                                         cortex;
   private Circuit                                                        circuit;
-  private Conduit < Survey < Outcomes.Sign >, Signal < Outcomes.Sign > > conduit;
+  private Conduit < Signal < Outcomes.Sign > > conduit;
   private Survey < Outcomes.Sign >                                       survey;
   private Name                                                           name;
 
@@ -45,7 +45,7 @@ public class SurveyOps implements Substrates {
   public Survey < Outcomes.Sign > survey_from_conduit () {
 
     return
-      conduit.percept (
+      conduit.get (
         name
       );
 
@@ -63,7 +63,7 @@ public class SurveyOps implements Substrates {
       i++
     ) {
       result =
-        conduit.percept (
+        conduit.get (
           name
         );
     }
@@ -161,7 +161,7 @@ public class SurveyOps implements Substrates {
       );
 
     survey =
-      conduit.percept (
+      conduit.get (
         name
       );
 
