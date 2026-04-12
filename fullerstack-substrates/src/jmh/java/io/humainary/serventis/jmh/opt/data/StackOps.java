@@ -227,7 +227,7 @@ public class StackOps implements Substrates {
   public Stack stack_from_conduit () {
 
     return
-      conduit.get (
+      Stacks.pool ( conduit ).get (
         name
       );
 
@@ -249,8 +249,8 @@ public class StackOps implements Substrates {
       i++
     ) {
       result =
-        conduit.get (
-          name
+        Stacks.pool ( conduit ).get (
+        name
         );
     }
 

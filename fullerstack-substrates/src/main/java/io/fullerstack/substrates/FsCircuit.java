@@ -389,6 +389,18 @@ public final class FsCircuit implements Circuit {
     return new FsConduit <> ( (FsSubject < ? >) subject, name, this );
   }
 
+  @New
+  @NotNull
+  @Override
+  public < E > Conduit < E > conduit ( @NotNull Name name, @NotNull Class < E > type,
+                                       @NotNull io.humainary.substrates.api.Substrates.Routing routing ) {
+    requireNonNull ( name );
+    requireNonNull ( type );
+    requireNonNull ( routing );
+    // TODO: implement Routing.STEM hierarchical dispatch
+    return new FsConduit <> ( (FsSubject < ? >) subject, name, this );
+  }
+
   // ===================================================================================
   // Factory Methods - Pipe
   // ===================================================================================

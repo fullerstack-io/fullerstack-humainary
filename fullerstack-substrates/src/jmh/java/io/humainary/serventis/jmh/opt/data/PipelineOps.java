@@ -330,7 +330,7 @@ public class PipelineOps implements Substrates {
   public Pipeline pipeline_from_conduit () {
 
     return
-      conduit.get (
+      Pipelines.pool ( conduit ).get (
         name
       );
 
@@ -340,7 +340,7 @@ public class PipelineOps implements Substrates {
   @OperationsPerInvocation ( BATCH_SIZE )
   public Pipeline pipeline_from_conduit_batch () {
     Pipeline result = null;
-    for ( var i = 0; i < BATCH_SIZE; i++ ) result = conduit.get ( name );
+    for ( var i = 0; i < BATCH_SIZE; i++ ) result = Pipelines.pool ( conduit ).get ( name );
     return result;
   }
 

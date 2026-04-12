@@ -40,7 +40,7 @@ public class AtomicOps implements Substrates {
   public Atomic atomic_from_conduit () {
 
     return
-      conduit.get (
+      Atomics.pool ( conduit ).get (
         name
       );
 
@@ -58,8 +58,8 @@ public class AtomicOps implements Substrates {
       i++
     ) {
       result =
-        conduit.get (
-          name
+        Atomics.pool ( conduit ).get (
+        name
         );
     }
 

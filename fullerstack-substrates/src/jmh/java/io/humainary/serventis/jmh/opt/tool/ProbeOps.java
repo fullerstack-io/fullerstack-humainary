@@ -323,7 +323,7 @@ public class ProbeOps implements Substrates {
   public Probe probe_from_conduit () {
 
     return
-      conduit.get (
+      Probes.pool ( conduit ).get (
         name
       );
 
@@ -333,7 +333,7 @@ public class ProbeOps implements Substrates {
   @OperationsPerInvocation ( BATCH_SIZE )
   public Probe probe_from_conduit_batch () {
     Probe result = null;
-    for ( var i = 0; i < BATCH_SIZE; i++ ) result = conduit.get ( name );
+    for ( var i = 0; i < BATCH_SIZE; i++ ) result = Probes.pool ( conduit ).get ( name );
     return result;
   }
 

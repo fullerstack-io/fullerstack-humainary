@@ -134,6 +134,13 @@ final class FsCortex implements Cortex {
   @New
   @NotNull
   @Override
+  public < E > io.humainary.substrates.api.Substrates.Flow < E, E > flow () {
+    return new FsFlow <> ();
+  }
+
+  @New
+  @NotNull
+  @Override
   public < E > io.humainary.substrates.api.Substrates.Flow < E, E > flow ( @NotNull Class < E > type ) {
     return new FsFlow <> ();
   }

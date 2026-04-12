@@ -40,7 +40,7 @@ public class OutcomeOps implements Substrates {
   public Outcome outcome_from_conduit () {
 
     return
-      conduit.get (
+      Outcomes.pool ( conduit ).get (
         name
       );
 
@@ -58,8 +58,8 @@ public class OutcomeOps implements Substrates {
       i++
     ) {
       result =
-        conduit.get (
-          name
+        Outcomes.pool ( conduit ).get (
+        name
         );
     }
 

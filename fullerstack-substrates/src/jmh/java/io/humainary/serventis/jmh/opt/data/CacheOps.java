@@ -44,7 +44,7 @@ public class CacheOps implements Substrates {
   public Cache cache_from_conduit () {
 
     return
-      conduit.get (
+      Caches.pool ( conduit ).get (
         name
       );
 
@@ -66,8 +66,8 @@ public class CacheOps implements Substrates {
       i++
     ) {
       result =
-        conduit.get (
-          name
+        Caches.pool ( conduit ).get (
+        name
         );
     }
 

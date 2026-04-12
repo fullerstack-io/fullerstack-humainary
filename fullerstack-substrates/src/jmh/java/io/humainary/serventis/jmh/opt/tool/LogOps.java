@@ -194,7 +194,7 @@ public class LogOps implements Substrates {
   public Log log_from_conduit () {
 
     return
-      conduit.get (
+      Logs.pool ( conduit ).get (
         name
       );
 
@@ -216,8 +216,8 @@ public class LogOps implements Substrates {
       i++
     ) {
       result =
-        conduit.get (
-          name
+        Logs.pool ( conduit ).get (
+        name
         );
     }
 

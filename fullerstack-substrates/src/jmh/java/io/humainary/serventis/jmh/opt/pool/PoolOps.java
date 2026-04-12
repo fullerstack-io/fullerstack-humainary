@@ -194,7 +194,7 @@ public class PoolOps implements Substrates {
   public Pool pool_from_conduit () {
 
     return
-      conduit.get (
+      io.humainary.serventis.opt.pool.Pools.pool ( conduit ).get (
         name
       );
 
@@ -216,8 +216,8 @@ public class PoolOps implements Substrates {
       i++
     ) {
       result =
-        conduit.get (
-          name
+        io.humainary.serventis.opt.pool.Pools.pool ( conduit ).get (
+        name
         );
     }
 

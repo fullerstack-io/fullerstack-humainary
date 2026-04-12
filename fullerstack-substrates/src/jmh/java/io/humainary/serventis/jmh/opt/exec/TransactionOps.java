@@ -429,7 +429,7 @@ public class TransactionOps
   public Transaction transaction_from_conduit () {
 
     return
-      conduit.get (
+      Transactions.pool ( conduit ).get (
         name
       );
 
@@ -439,7 +439,7 @@ public class TransactionOps
   @OperationsPerInvocation ( BATCH_SIZE )
   public Transaction transaction_from_conduit_batch () {
     Transaction result = null;
-    for ( var i = 0; i < BATCH_SIZE; i++ ) result = conduit.get ( name );
+    for ( var i = 0; i < BATCH_SIZE; i++ ) result = Transactions.pool ( conduit ).get ( name );
     return result;
   }
 

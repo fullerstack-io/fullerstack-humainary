@@ -195,7 +195,7 @@ public class QueueOps implements Substrates {
   public Queue queue_from_conduit () {
 
     return
-      conduit.get (
+      Queues.pool ( conduit ).get (
         name
       );
 
@@ -217,8 +217,8 @@ public class QueueOps implements Substrates {
       i++
     ) {
       result =
-        conduit.get (
-          name
+        Queues.pool ( conduit ).get (
+        name
         );
     }
 

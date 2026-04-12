@@ -46,7 +46,7 @@ public class ActorOps
   public Actor actor_from_conduit () {
 
     return
-      conduit.get (
+      Actors.pool ( conduit ).get (
         name
       );
 
@@ -68,8 +68,8 @@ public class ActorOps
       i++
     ) {
       result =
-        conduit.get (
-          name
+        Actors.pool ( conduit ).get (
+        name
         );
     }
 

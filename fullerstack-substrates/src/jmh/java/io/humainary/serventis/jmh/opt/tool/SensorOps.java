@@ -378,7 +378,7 @@ public class SensorOps implements Substrates {
   public Sensor sensor_from_conduit () {
 
     return
-      conduit.get (
+      Sensors.pool ( conduit ).get (
         name
       );
 
@@ -400,8 +400,8 @@ public class SensorOps implements Substrates {
       i++
     ) {
       result =
-        conduit.get (
-          name
+        Sensors.pool ( conduit ).get (
+        name
         );
     }
 

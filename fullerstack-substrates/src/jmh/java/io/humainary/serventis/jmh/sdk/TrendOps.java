@@ -40,7 +40,7 @@ public class TrendOps implements Substrates {
   public Trend trend_from_conduit () {
 
     return
-      conduit.get (
+      Trends.pool ( conduit ).get (
         name
       );
 
@@ -58,8 +58,8 @@ public class TrendOps implements Substrates {
       i++
     ) {
       result =
-        conduit.get (
-          name
+        Trends.pool ( conduit ).get (
+        name
         );
     }
 

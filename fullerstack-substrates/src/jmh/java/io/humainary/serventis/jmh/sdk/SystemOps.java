@@ -247,7 +247,7 @@ public class SystemOps implements Substrates {
   public System system_from_conduit () {
 
     return
-      conduit.get (
+      Systems.pool ( conduit ).get (
         name
       );
 
@@ -269,8 +269,8 @@ public class SystemOps implements Substrates {
       i++
     ) {
       result =
-        conduit.get (
-          name
+        Systems.pool ( conduit ).get (
+        name
         );
     }
 

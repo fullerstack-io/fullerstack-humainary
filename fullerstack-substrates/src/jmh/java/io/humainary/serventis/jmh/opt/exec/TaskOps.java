@@ -299,7 +299,7 @@ public class TaskOps implements Substrates {
   public Task task_from_conduit () {
 
     return
-      conduit.get (
+      Tasks.pool ( conduit ).get (
         name
       );
 
@@ -309,7 +309,7 @@ public class TaskOps implements Substrates {
   @OperationsPerInvocation ( BATCH_SIZE )
   public Task task_from_conduit_batch () {
     Task result = null;
-    for ( var i = 0; i < BATCH_SIZE; i++ ) result = conduit.get ( name );
+    for ( var i = 0; i < BATCH_SIZE; i++ ) result = Tasks.pool ( conduit ).get ( name );
     return result;
   }
 

@@ -232,7 +232,7 @@ public class ProcessOps implements Substrates {
   public Process process_from_conduit () {
 
     return
-      conduit.get (
+      Processes.pool ( conduit ).get (
         name
       );
 
@@ -242,7 +242,7 @@ public class ProcessOps implements Substrates {
   @OperationsPerInvocation ( BATCH_SIZE )
   public Process process_from_conduit_batch () {
     Process result = null;
-    for ( var i = 0; i < BATCH_SIZE; i++ ) result = conduit.get ( name );
+    for ( var i = 0; i < BATCH_SIZE; i++ ) result = Processes.pool ( conduit ).get ( name );
     return result;
   }
 

@@ -223,7 +223,7 @@ public class GaugeOps implements Substrates {
   public Gauge gauge_from_conduit () {
 
     return
-      conduit.get (
+      Gauges.pool ( conduit ).get (
         name
       );
 
@@ -245,8 +245,8 @@ public class GaugeOps implements Substrates {
       i++
     ) {
       result =
-        conduit.get (
-          name
+        Gauges.pool ( conduit ).get (
+        name
         );
     }
 

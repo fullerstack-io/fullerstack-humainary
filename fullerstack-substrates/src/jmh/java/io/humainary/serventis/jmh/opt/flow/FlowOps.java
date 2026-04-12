@@ -39,7 +39,7 @@ public class FlowOps implements Substrates {
   public Flows.Flow flow_from_conduit () {
 
     return
-      conduit.get (
+      io.humainary.serventis.opt.flow.Flows.pool ( conduit ).get (
         name
       );
 
@@ -57,8 +57,8 @@ public class FlowOps implements Substrates {
       i++
     ) {
       result =
-        conduit.get (
-          name
+        io.humainary.serventis.opt.flow.Flows.pool ( conduit ).get (
+        name
         );
     }
 

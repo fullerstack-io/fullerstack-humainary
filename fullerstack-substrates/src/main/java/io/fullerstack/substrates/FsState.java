@@ -69,9 +69,7 @@ final class FsState implements State {
     return Arrays.spliterator ( slots, 0, size );
   }
 
-  @New
-  @NotNull
-  @Override
+  /// Removed from State interface in 2.0 — kept as FsState-local utility.
   public State compact () {
     // Fast path: cached result from a previous call on this state.
     // The volatile read gives us safe publication; cachedCompactSize is
@@ -248,7 +246,7 @@ final class FsState implements State {
   private          Object[]   cachedValuesMatches;
   private          int        cachedValuesCount;
 
-  @Override
+  /// Removed from State interface in 2.0 — kept as FsState-local utility.
   @SuppressWarnings ( "unchecked" )
   public < T > Stream < T > values ( Slot < ? extends T > slot ) {
     Objects.requireNonNull ( slot, "slot must not be null" );

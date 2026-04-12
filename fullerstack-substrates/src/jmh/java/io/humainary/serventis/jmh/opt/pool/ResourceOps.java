@@ -251,7 +251,7 @@ public class ResourceOps implements Substrates {
   public Resources.Resource resource_from_conduit () {
 
     return
-      conduit.get (
+      Resources.pool ( conduit ).get (
         name
       );
 
@@ -273,8 +273,8 @@ public class ResourceOps implements Substrates {
       i++
     ) {
       result =
-        conduit.get (
-          name
+        Resources.pool ( conduit ).get (
+        name
         );
     }
 

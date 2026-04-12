@@ -56,7 +56,7 @@ final class FsTap < T > implements Tap < T > {
   < E > FsTap (
     FsSubject < ? > parent,
     Name name,
-    FsConduit < E > sourceConduit,
+    io.humainary.substrates.api.Substrates.Source < E, ? > source,
     FsCircuit circuit,
     Function < Pipe < T >, Pipe < E > > fn ) {
 
@@ -91,6 +91,15 @@ final class FsTap < T > implements Tap < T > {
           public Subject < Pipe < T > > subject () {
             return tapChannel.subject ();
           }
+
+          @Override
+          @SuppressWarnings ( "unchecked" )
+          public < I > Pipe < I > pipe ( io.humainary.substrates.api.Substrates.Flow < I, T > flow ) {
+            FsFlow < I, T > fsFlow = (FsFlow < I, T >) flow;
+            java.util.function.Consumer < I > chain = fsFlow.materialise ( this::emit );
+            return circuit.createPipe ( channelName, (FsSubject < ? >) tapChannel.subject (),
+              (java.util.function.Consumer < Object >) (java.util.function.Consumer < ? >) new FsCircuit.ReceptorReceiver <> ( chain::accept ) );
+          }
         };
 
         // Apply fn: gives us a Pipe<E> that the source will emit into
@@ -100,7 +109,7 @@ final class FsTap < T > implements Tap < T > {
         registrar.register ( sourcePipe );
       } );
 
-    this.sourceSubscription = sourceConduit.subscribe ( tapSubscriber );
+    this.sourceSubscription = source.subscribe ( tapSubscriber );
   }
 
   private FsChannel < T > getOrCreateChannel ( Name name ) {

@@ -249,7 +249,7 @@ public class LockOps implements Substrates {
   public Lock lock_from_conduit () {
 
     return
-      conduit.get (
+      Locks.pool ( conduit ).get (
         name
       );
 
@@ -259,7 +259,7 @@ public class LockOps implements Substrates {
   @OperationsPerInvocation ( BATCH_SIZE )
   public Lock lock_from_conduit_batch () {
     Lock result = null;
-    for ( var i = 0; i < BATCH_SIZE; i++ ) result = conduit.get ( name );
+    for ( var i = 0; i < BATCH_SIZE; i++ ) result = Locks.pool ( conduit ).get ( name );
     return result;
   }
 

@@ -44,7 +44,7 @@ public class CounterOps implements Substrates {
   public Counter counter_from_conduit () {
 
     return
-      conduit.get (
+      Counters.pool ( conduit ).get (
         name
       );
 
@@ -66,8 +66,8 @@ public class CounterOps implements Substrates {
       i++
     ) {
       result =
-        conduit.get (
-          name
+        Counters.pool ( conduit ).get (
+        name
         );
     }
 

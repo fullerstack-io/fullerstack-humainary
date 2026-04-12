@@ -250,7 +250,7 @@ public class ExchangeOps implements Substrates {
   public Exchange exchange_from_conduit () {
 
     return
-      conduit.get (
+      Exchanges.pool ( conduit ).get (
         name
       );
 
@@ -272,8 +272,8 @@ public class ExchangeOps implements Substrates {
       i++
     ) {
       result =
-        conduit.get (
-          name
+        Exchanges.pool ( conduit ).get (
+        name
         );
     }
 

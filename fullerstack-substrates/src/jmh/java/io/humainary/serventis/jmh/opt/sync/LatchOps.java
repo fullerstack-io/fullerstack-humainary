@@ -180,7 +180,7 @@ public class LatchOps implements Substrates {
   public Latch latch_from_conduit () {
 
     return
-      conduit.get (
+      Latches.pool ( conduit ).get (
         name
       );
 
@@ -190,7 +190,7 @@ public class LatchOps implements Substrates {
   @OperationsPerInvocation ( BATCH_SIZE )
   public Latch latch_from_conduit_batch () {
     Latch result = null;
-    for ( var i = 0; i < BATCH_SIZE; i++ ) result = conduit.get ( name );
+    for ( var i = 0; i < BATCH_SIZE; i++ ) result = Latches.pool ( conduit ).get ( name );
     return result;
   }
 

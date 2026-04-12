@@ -391,7 +391,7 @@ public class LeaseOps implements Substrates {
   public Lease lease_from_conduit () {
 
     return
-      conduit.get (
+      Leases.pool ( conduit ).get (
         name
       );
 
@@ -401,7 +401,7 @@ public class LeaseOps implements Substrates {
   @OperationsPerInvocation ( BATCH_SIZE )
   public Lease lease_from_conduit_batch () {
     Lease result = null;
-    for ( var i = 0; i < BATCH_SIZE; i++ ) result = conduit.get ( name );
+    for ( var i = 0; i < BATCH_SIZE; i++ ) result = Leases.pool ( conduit ).get ( name );
     return result;
   }
 

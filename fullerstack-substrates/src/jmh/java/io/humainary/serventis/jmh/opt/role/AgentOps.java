@@ -50,7 +50,7 @@ public class AgentOps
   public Agent agent_from_conduit () {
 
     return
-      conduit.get (
+      Agents.pool ( conduit ).get (
         name
       );
 
@@ -60,7 +60,7 @@ public class AgentOps
   @OperationsPerInvocation ( BATCH_SIZE )
   public Agent agent_from_conduit_batch () {
     Agent result = null;
-    for ( var i = 0; i < BATCH_SIZE; i++ ) result = conduit.get ( name );
+    for ( var i = 0; i < BATCH_SIZE; i++ ) result = Agents.pool ( conduit ).get ( name );
     return result;
   }
 

@@ -44,7 +44,7 @@ public class BreakerOps implements Substrates {
   public Breaker breaker_from_conduit () {
 
     return
-      conduit.get (
+      Breakers.pool ( conduit ).get (
         name
       );
 
@@ -66,8 +66,8 @@ public class BreakerOps implements Substrates {
       i++
     ) {
       result =
-        conduit.get (
-          name
+        Breakers.pool ( conduit ).get (
+        name
         );
     }
 

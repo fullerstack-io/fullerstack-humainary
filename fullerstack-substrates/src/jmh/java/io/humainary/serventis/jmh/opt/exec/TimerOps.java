@@ -41,7 +41,7 @@ public class TimerOps implements Substrates {
   public Timer timer_from_conduit () {
 
     return
-      conduit.get (
+      Timers.pool ( conduit ).get (
         name
       );
 
@@ -59,8 +59,8 @@ public class TimerOps implements Substrates {
       i++
     ) {
       result =
-        conduit.get (
-          name
+        Timers.pool ( conduit ).get (
+        name
         );
     }
 

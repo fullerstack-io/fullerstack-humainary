@@ -280,7 +280,7 @@ public class StatusOps implements Substrates {
   public Status status_from_conduit () {
 
     return
-      conduit.get (
+      Statuses.pool ( conduit ).get (
         name
       );
 
@@ -302,8 +302,8 @@ public class StatusOps implements Substrates {
       i++
     ) {
       result =
-        conduit.get (
-          name
+        Statuses.pool ( conduit ).get (
+        name
         );
     }
 

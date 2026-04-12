@@ -292,7 +292,7 @@ public class ValveOps implements Substrates {
   public Valve valve_from_conduit () {
 
     return
-      conduit.get (
+      Valves.pool ( conduit ).get (
         name
       );
 
@@ -314,8 +314,8 @@ public class ValveOps implements Substrates {
       i++
     ) {
       result =
-        conduit.get (
-          name
+        Valves.pool ( conduit ).get (
+        name
         );
     }
 

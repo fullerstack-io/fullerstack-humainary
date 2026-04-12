@@ -40,7 +40,7 @@ public class OperationOps implements Substrates {
   public Operation operation_from_conduit () {
 
     return
-      conduit.get (
+      Operations.pool ( conduit ).get (
         name
       );
 
@@ -58,8 +58,8 @@ public class OperationOps implements Substrates {
       i++
     ) {
       result =
-        conduit.get (
-          name
+        Operations.pool ( conduit ).get (
+        name
         );
     }
 

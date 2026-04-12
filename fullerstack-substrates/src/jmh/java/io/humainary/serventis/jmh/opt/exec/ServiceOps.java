@@ -628,7 +628,7 @@ public class ServiceOps implements Substrates {
   public Service service_from_conduit () {
 
     return
-      conduit.get (
+      Services.pool ( conduit ).get (
         name
       );
 
@@ -638,7 +638,7 @@ public class ServiceOps implements Substrates {
   @OperationsPerInvocation ( BATCH_SIZE )
   public Service service_from_conduit_batch () {
     Service result = null;
-    for ( var i = 0; i < BATCH_SIZE; i++ ) result = conduit.get ( name );
+    for ( var i = 0; i < BATCH_SIZE; i++ ) result = Services.pool ( conduit ).get ( name );
     return result;
   }
 
