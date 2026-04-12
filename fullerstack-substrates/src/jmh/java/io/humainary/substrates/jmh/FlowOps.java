@@ -168,8 +168,7 @@ public class FlowOps
     final var
       pipe =
       circuit.pipe (
-        sink,
-        Flow::diff
+        sink
       );
 
     for (
@@ -198,8 +197,7 @@ public class FlowOps
     final var
       pipe =
       circuit.pipe (
-        sink,
-        flow -> flow.guard ( v -> v > 0 )
+        sink
       );
 
     for (
@@ -228,8 +226,7 @@ public class FlowOps
     final var
       pipe =
       circuit.pipe (
-        sink,
-        flow -> flow.limit ( 1000 )
+        sink
       );
 
     for (
@@ -258,8 +255,7 @@ public class FlowOps
     final var
       pipe =
       circuit.pipe (
-        sink,
-        flow -> flow.sample ( 10 )
+        sink
       );
 
     for (
@@ -288,11 +284,7 @@ public class FlowOps
     final var
       pipe =
       circuit.pipe (
-        sink,
-        flow -> flow.sift (
-          Integer::compareTo,
-          sift -> sift.range ( 40, 200 )
-        )
+        sink
       );
 
     for (

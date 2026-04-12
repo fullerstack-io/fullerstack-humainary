@@ -433,6 +433,29 @@ public final class FsCircuit implements Circuit {
   }
 
   // ===================================================================================
+  // Source<State, Circuit> — tap and subscribe (inherited from Source sealed hierarchy)
+  // ===================================================================================
+
+  @io.humainary.substrates.api.Substrates.New
+  @io.humainary.substrates.api.Substrates.NotNull
+  @Override
+  public < T > io.humainary.substrates.api.Substrates.Tap < T > tap (
+    @io.humainary.substrates.api.Substrates.NotNull java.util.function.Function <
+      io.humainary.substrates.api.Substrates.Pipe < T >,
+      io.humainary.substrates.api.Substrates.Pipe < io.humainary.substrates.api.Substrates.State > > fn ) {
+    throw new UnsupportedOperationException ( "Circuit.tap() not yet implemented" );
+  }
+
+  @io.humainary.substrates.api.Substrates.New
+  @io.humainary.substrates.api.Substrates.NotNull
+  @Override
+  public io.humainary.substrates.api.Substrates.Subscription subscribe (
+    @io.humainary.substrates.api.Substrates.NotNull io.humainary.substrates.api.Substrates.Subscriber < io.humainary.substrates.api.Substrates.State > subscriber,
+    @io.humainary.substrates.api.Substrates.NotNull @io.humainary.substrates.api.Substrates.Queued java.util.function.Consumer < ? super io.humainary.substrates.api.Substrates.Subscription > onClose ) {
+    throw new UnsupportedOperationException ( "Circuit.subscribe(Subscriber<State>, onClose) not yet implemented" );
+  }
+
+  // ===================================================================================
   // Factory Methods - Subscriber (2.0: Subject<Pipe<E>> instead of Subject<Channel<E>>)
   // ===================================================================================
 

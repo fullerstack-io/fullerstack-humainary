@@ -63,9 +63,7 @@ public class CircuitOps
     final var
       result =
       circuit.conduit (
-        pipe (
-          Integer.class
-        )
+        Integer.class
       );
 
     circuit.close ();
@@ -90,9 +88,7 @@ public class CircuitOps
       result =
       circuit.conduit (
         name,
-        pipe (
-          Integer.class
-        )
+        Integer.class
       );
 
     circuit.close ();
@@ -117,10 +113,7 @@ public class CircuitOps
       result =
       circuit.conduit (
         name,
-        pipe (
-          Integer.class
-        ),
-        Flow::diff
+        Integer.class
       );
 
     circuit.close ();
@@ -234,9 +227,7 @@ public class CircuitOps
 
     return
       hotCircuit.conduit (
-        pipe (
-          Integer.class
-        )
+        Integer.class
       );
 
   }
@@ -257,9 +248,7 @@ public class CircuitOps
     return
       hotCircuit.conduit (
         name,
-        pipe (
-          Integer.class
-        )
+        Integer.class
       );
 
   }
@@ -274,9 +263,7 @@ public class CircuitOps
     return
       hotCircuit.conduit (
         name,
-        pipe (
-          Integer.class
-        ),
+        Integer.class,
         Flow::diff
       );
 
@@ -305,8 +292,7 @@ public class CircuitOps
 
     return
       hotCircuit.pipe (
-        Receptor.of ( Integer.class ),
-        flow -> flow.guard ( v -> v > 0 )
+        Receptor.of ( Integer.class )
       );
 
   }
@@ -351,8 +337,7 @@ public class CircuitOps
     final var
       result =
       circuit.pipe (
-        Receptor.of ( Integer.class ),
-        flow -> flow.guard ( v -> v > 0 )
+        Receptor.of ( Integer.class )
       );
 
     circuit.close ();
