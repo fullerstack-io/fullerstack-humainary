@@ -43,6 +43,10 @@ final class FsOutletPipe < E > implements Pipe < E > {
     this.parentSubject = parentSubject;
   }
 
+  Consumer < Object > receiver () {
+    return receiver;
+  }
+
   @Override
   public Subject < Pipe < E > > subject () {
     Subject < Pipe < E > > s = subject;

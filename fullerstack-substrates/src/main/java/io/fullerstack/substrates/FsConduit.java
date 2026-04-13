@@ -166,7 +166,7 @@ public final class FsConduit < E > extends FsSubstrate < Conduit < E > > impleme
       // Channel is the initial target (handles first-emission rebuild).
       // After rebuild, conduit swaps target to the dispatch receptor directly.
       @SuppressWarnings ( "unchecked" )
-      FsCircuit.ReceptorAdapter < E > dispatch = new FsCircuit.ReceptorAdapter <> ( channel );
+      FsCircuit.PipeDispatch < E > dispatch = new FsCircuit.PipeDispatch <> ( channel );
 
       Pipe < E > pipe = circuit.createPipe ( name, pipeSubject, dispatch );
 

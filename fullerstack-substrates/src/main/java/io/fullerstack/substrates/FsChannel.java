@@ -55,7 +55,7 @@ final class FsChannel < E > implements Receptor < E >, Consumer < Object > {
 
   /// The pipe's dispatch adapter — updated after rebuild to point at dispatch,
   /// removing the channel from the hot emission path.
-  FsCircuit.ReceptorAdapter < E > pipeDispatch;
+  FsCircuit.PipeDispatch < E > pipeDispatch;
 
   FsChannel ( Subject < Pipe < E > > subject, FsCircuit circuit, FsConduit < E > conduit, Consumer < E > router ) {
     this.subject = subject;

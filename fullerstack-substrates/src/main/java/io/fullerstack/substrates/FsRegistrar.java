@@ -44,10 +44,16 @@ public final class FsRegistrar < E > implements Registrar < E > {
   }
 
   @Override
+  @SuppressWarnings ( "unchecked" )
   public void register ( Pipe < ? super E > pipe ) {
     if ( closed ) throw new IllegalStateException ( "Registrar is closed — register() only valid during callback" );
-    // Register via pipe::emit. For outlet pipes this is synchronous.
-    // For inlet pipes (conduit pipes) this enqueues to the circuit queue.
-    receptors.add ( pipe::emit );
+    // Outlet pipes: unwrap to the inner receptor (flow chain).
+    // Inlet pipes: pipe::emit enqueues to circuit (cyclic boundary).
+    if ( pipe instanceof FsOutletPipe < ? > outlet
+      && outlet.receiver () instanceof FsCircuit.ReceptorAdapter < ? > adapter ) {
+      receptors.add ( (Receptor < ? super E >) adapter );
+    } else {
+      receptors.add ( pipe::emit );
+    }
   }
 }

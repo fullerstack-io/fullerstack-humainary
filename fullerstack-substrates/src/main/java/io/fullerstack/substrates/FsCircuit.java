@@ -117,27 +117,40 @@ public final class FsCircuit implements Circuit {
   // ReceptorAdapter - Concrete class for JIT devirtualization/inlining
   // ─────────────────────────────────────────────────────────────────────────────
 
-  /**
-   * Concrete Consumer wrapper for receptors.
-   * Using a named class instead of a lambda allows the JIT to:
-   * 1. Devirtualize the accept() call (lambda has invokedynamic overhead)
-   * 2. Inline the receptor.receive() call when the receptor type is known
-   */
-  static final class ReceptorAdapter < E > implements Consumer < Object >, Receptor < E > {
+  /// Pipe dispatch — the receiver stored in the transit queue for conduit pipes.
+  /// Separate class from ReceptorAdapter so the JIT sees a monomorphic type profile.
+  /// The receptor field is swapped after channel rebuild to point at the dispatch
+  /// receptor, removing the channel from the hot emission path.
+  @SuppressWarnings ( "unchecked" )
+  static final class PipeDispatch < E > implements Consumer < Object > {
     Receptor < ? super E > receptor;
+
+    PipeDispatch ( Receptor < ? super E > receptor ) {
+      this.receptor = receptor;
+    }
+
+    @Override
+    public void accept ( Object o ) {
+      receptor.receive ( (E) o );
+    }
+  }
+
+  /// General-purpose receptor adapter — wraps a Receptor in a Consumer<Object>.
+  /// Used for markers, cross-circuit pipes, and other non-hot-path dispatch.
+  @SuppressWarnings ( "unchecked" )
+  static final class ReceptorAdapter < E > implements Consumer < Object >, Receptor < E > {
+    final Receptor < ? super E > receptor;
 
     ReceptorAdapter ( Receptor < ? super E > receptor ) {
       this.receptor = receptor;
     }
 
     @Override
-    @SuppressWarnings ( "unchecked" )
     public void accept ( Object o ) {
       receptor.receive ( (E) o );
     }
 
     @Override
-    @SuppressWarnings ( "unchecked" )
     public void receive ( E emission ) {
       receptor.receive ( emission );
     }

@@ -89,9 +89,9 @@ public final class FsPipe < E > implements Pipe < E > {
   public < I > Pipe < I > pipe ( @NotNull Flow < I, E > flow ) {
     requireNonNull ( flow, "flow must not be null" );
     FsFlow < I, E > fsFlow = (FsFlow < I, E >) flow;
-    // Flow runs on the circuit thread. Terminal calls this pipe's emit()
-    // which enqueues (inlet boundary). Returns an outlet pipe (no queue on emit).
-    // The inlet enqueue breaks cyclic call chains for stack safety.
+    // Flow terminal re-enters this inlet's emit(), which enqueues to
+    // the circuit (transit if on circuit thread, ingress if external).
+    // This is the queue boundary for cyclic stack safety.
     Consumer < I > chain = fsFlow.materialise ( v -> emit ( v ) );
     @SuppressWarnings ( "unchecked" )
     Consumer < Object > outletReceiver = (Consumer < Object >) (Consumer < ? >) new FsCircuit.ReceptorAdapter <> ( chain::accept );
