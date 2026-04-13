@@ -43,22 +43,11 @@ public final class FsRegistrar < E > implements Registrar < E > {
   }
 
   @Override
-  @SuppressWarnings ( "unchecked" )
   public void register ( Pipe < ? super E > pipe ) {
     if ( closed ) throw new IllegalStateException ( "Registrar is closed — register() only valid during callback" );
-    // For same-circuit FsPipes, register the receiver directly.
-    // The receiver is a ReceptorAdapter wrapping the flow chain (or channel).
-    // When the channel dispatches, it calls receiver.accept(v) which runs
-    // the flow chain and enqueues the output to transit — one queue hop total.
-    // This is safe because the channel dispatch already runs on the circuit
-    // thread, and the receiver's accept() will submitTransit for cascades.
-    // Cross-circuit pipes still go through pipe.emit() for correct routing.
-    if ( pipe instanceof FsPipe < ? > fsPipe && fsPipe.isOnCircuitThread () ) {
-      @SuppressWarnings ( "unchecked" )
-      Receptor < ? super E > r = (Receptor < ? super E >) (Receptor < ? >) fsPipe.receiver ();
-      receptors.add ( r );
-    } else {
-      receptors.add ( pipe::emit );
-    }
+    // Register via pipe::emit — the pipe's emit() is the async boundary.
+    // For cyclic patterns (subscriber re-emits to same conduit), emit()
+    // enqueues to the circuit queue, breaking the synchronous call chain.
+    receptors.add ( pipe::emit );
   }
 }

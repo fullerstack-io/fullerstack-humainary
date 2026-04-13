@@ -417,23 +417,20 @@ public final class FsCircuit implements Circuit {
   // Factory Methods - Pipe
   // ===================================================================================
 
-  /// Extract receiver for same-circuit FsPipe targets to avoid double-queue.
-  private < E > Consumer < Object > targetReceiver ( Pipe < ? super E > target ) {
-    if ( target instanceof FsPipe < ? > fsPipe && fsPipe.circuit () == this ) {
-      return fsPipe.receiver ();
-    }
-    return new ReceptorAdapter <> ( target::emit );
-  }
-
-  @New
+  @New ( conditional = true )
   @NotNull
   @Override
   public < E > Pipe < E > pipe ( @NotNull Pipe < E > target ) {
     requireNonNull ( target );
+    // Same-circuit pipes are already dispatched on this circuit — return as-is
     if ( target instanceof FsPipe < E > fsPipe && fsPipe.circuit () == this ) {
       return target;
     }
-    return newPipe ( null, targetReceiver ( target ) );
+    if ( target instanceof FsOutletPipe < E > ) {
+      return target;
+    }
+    // Cross-circuit: wrap in an inlet that enqueues to this circuit
+    return newPipe ( null, new ReceptorAdapter <> ( target::emit ) );
   }
 
   @New
