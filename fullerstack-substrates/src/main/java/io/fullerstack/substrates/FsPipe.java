@@ -1,9 +1,5 @@
 package io.fullerstack.substrates;
 
-import jdk.internal.vm.annotation.Stable;
-
-import java.util.function.Consumer;
-
 import io.humainary.substrates.api.Substrates.Flow;
 import io.humainary.substrates.api.Substrates.Name;
 import io.humainary.substrates.api.Substrates.New;
@@ -11,6 +7,10 @@ import io.humainary.substrates.api.Substrates.NotNull;
 import io.humainary.substrates.api.Substrates.Pipe;
 import io.humainary.substrates.api.Substrates.Provided;
 import io.humainary.substrates.api.Substrates.Subject;
+
+import jdk.internal.vm.annotation.Stable;
+
+import java.util.function.Consumer;
 
 /**
  * Pipe implementation with direct circuit emission.

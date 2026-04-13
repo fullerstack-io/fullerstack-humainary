@@ -53,7 +53,7 @@ final class FsChannel < E > implements Receptor < E >, Consumer < Object > {
   /// Version this channel was last built at — starts at -1 to force first rebuild.
   int builtVersion = -1;
 
-  /// The pipe's dispatch adapter — updated after rebuild to point at fastDispatch,
+  /// The pipe's dispatch adapter — updated after rebuild to point at dispatch,
   /// removing the channel from the hot emission path.
   FsCircuit.ReceptorAdapter < E > pipeDispatch;
 
@@ -79,7 +79,7 @@ final class FsChannel < E > implements Receptor < E >, Consumer < Object > {
 
   /// Pre-computed fast dispatch — single receptor for the common case,
   /// avoids array read + loop on every emission. Updated by rebuildReceptorsArray().
-  Receptor < ? super E > fastDispatch;
+  Receptor < ? super E > dispatch;
 
   @Override
   @SuppressWarnings ( "unchecked" )
@@ -92,7 +92,7 @@ final class FsChannel < E > implements Receptor < E >, Consumer < Object > {
     if ( conduit != null && builtVersion != conduit.subscriberVersion ) {
       conduit.rebuildChannelPipes ( this );
     }
-    Receptor < ? super E > fast = fastDispatch;
+    Receptor < ? super E > fast = dispatch;
     if ( fast != null ) {
       fast.receive ( emission );
     }
@@ -115,7 +115,7 @@ final class FsChannel < E > implements Receptor < E >, Consumer < Object > {
     if ( conduit != null && builtVersion != conduit.subscriberVersion ) {
       conduit.rebuildChannelPipes ( this );
     }
-    Receptor < ? super E > fast = fastDispatch;
+    Receptor < ? super E > fast = dispatch;
     if ( fast != null ) {
       fast.receive ( emission );
     }
@@ -131,19 +131,19 @@ final class FsChannel < E > implements Receptor < E >, Consumer < Object > {
     // Pre-compute fast dispatch: single receptor avoids array access,
     // multi-receptor builds a composed receptor.
     if ( all.isEmpty () ) {
-      fastDispatch = null;
+      dispatch = null;
     } else if ( all.size () == 1 ) {
       // Unwrap ReceptorAdapter to eliminate one virtual dispatch
       @SuppressWarnings ( "unchecked" )
       Receptor < ? super E > r = all.getFirst ();
       if ( r instanceof FsCircuit.ReceptorAdapter < ? > a ) {
-        fastDispatch = (Receptor < ? super E >) a.receptor;
+        dispatch = (Receptor < ? super E >) a.receptor;
       } else {
-        fastDispatch = r;
+        dispatch = r;
       }
     } else {
       Receptor < ? super E >[] arr = receptors;
-      fastDispatch = v -> {
+      dispatch = v -> {
         for ( int i = 0, len = arr.length; i < len; i++ ) arr[i].receive ( v );
       };
     }

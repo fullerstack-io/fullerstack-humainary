@@ -1,13 +1,5 @@
 package io.fullerstack.substrates;
 
-import static io.humainary.substrates.api.Substrates.cortex;
-
-import java.util.ArrayList;
-import java.util.IdentityHashMap;
-import java.util.Map;
-import java.util.function.Consumer;
-import java.util.function.Function;
-
 import io.humainary.substrates.api.Substrates.Conduit;
 import io.humainary.substrates.api.Substrates.Name;
 import io.humainary.substrates.api.Substrates.New;
@@ -23,6 +15,14 @@ import io.humainary.substrates.api.Substrates.Subject;
 import io.humainary.substrates.api.Substrates.Subscriber;
 import io.humainary.substrates.api.Substrates.Subscription;
 import io.humainary.substrates.api.Substrates.Tap;
+
+import java.util.ArrayList;
+import java.util.IdentityHashMap;
+import java.util.Map;
+import java.util.function.Consumer;
+import java.util.function.Function;
+
+import static io.humainary.substrates.api.Substrates.cortex;
 
 /// A container of pipes that can be subscribed to and looked up by name.
 ///
@@ -161,7 +161,7 @@ public final class FsConduit < E > extends FsSubstrate < Conduit < E > > impleme
 
       // Pipe receiver: transit calls accept() → target.receive().
       // Channel is the initial target (handles first-emission rebuild).
-      // After rebuild, conduit swaps target to the fastDispatch receptor directly.
+      // After rebuild, conduit swaps target to the dispatch receptor directly.
       @SuppressWarnings ( "unchecked" )
       FsCircuit.ReceptorAdapter < E > dispatch = new FsCircuit.ReceptorAdapter <> ( channel );
 
@@ -256,13 +256,13 @@ public final class FsConduit < E > extends FsSubstrate < Conduit < E > > impleme
     channel.rebuildReceptorsArray ();
     channel.builtVersion = subscriberVersion;
     // For PIPE routing, swap the pipe's dispatch to point directly at
-    // fastDispatch, removing the channel from the hot emission path.
+    // dispatch, removing the channel from the hot emission path.
     // For STEM routing, keep the channel in the path — it handles
     // ancestor propagation in receive().
     if ( channel.pipeDispatch != null && routing == Routing.PIPE ) {
       @SuppressWarnings ( "unchecked" )
-      Receptor < ? super E > target = channel.fastDispatch != null
-        ? channel.fastDispatch : (Receptor < ? super E >) (Receptor < ? >) channel;
+      Receptor < ? super E > target = channel.dispatch != null
+        ? channel.dispatch : (Receptor < ? super E >) (Receptor < ? >) channel;
       channel.pipeDispatch.receptor = target;
     }
   }

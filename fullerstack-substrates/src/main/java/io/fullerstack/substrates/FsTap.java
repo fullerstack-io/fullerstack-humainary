@@ -1,13 +1,5 @@
 package io.fullerstack.substrates;
 
-import static io.humainary.substrates.api.Substrates.cortex;
-
-import java.util.ArrayList;
-import java.util.IdentityHashMap;
-import java.util.Map;
-import java.util.function.Consumer;
-import java.util.function.Function;
-
 import io.humainary.substrates.api.Substrates.Flow;
 import io.humainary.substrates.api.Substrates.Idempotent;
 import io.humainary.substrates.api.Substrates.Name;
@@ -23,6 +15,14 @@ import io.humainary.substrates.api.Substrates.Subject;
 import io.humainary.substrates.api.Substrates.Subscriber;
 import io.humainary.substrates.api.Substrates.Subscription;
 import io.humainary.substrates.api.Substrates.Tap;
+
+import java.util.ArrayList;
+import java.util.IdentityHashMap;
+import java.util.Map;
+import java.util.function.Consumer;
+import java.util.function.Function;
+
+import static io.humainary.substrates.api.Substrates.cortex;
 
 /// A transformed view of a source's emissions (Substrates 2.0).
 ///

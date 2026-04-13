@@ -1,13 +1,13 @@
 package io.fullerstack.substrates;
 
-import java.util.IdentityHashMap;
-import java.util.Map;
-import java.util.function.Function;
-
 import io.humainary.substrates.api.Substrates.Name;
 import io.humainary.substrates.api.Substrates.NotNull;
 import io.humainary.substrates.api.Substrates.Pool;
 import io.humainary.substrates.api.Substrates.Provided;
+
+import java.util.IdentityHashMap;
+import java.util.Map;
+import java.util.function.Function;
 
 /// A derived pool that applies a transformation function to each result from
 /// an underlying pool. Results are cached per name — the function is applied
