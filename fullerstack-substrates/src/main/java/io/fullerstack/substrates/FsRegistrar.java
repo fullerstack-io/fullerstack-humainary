@@ -47,9 +47,14 @@ public final class FsRegistrar < E > implements Registrar < E > {
   @SuppressWarnings ( "unchecked" )
   public void register ( Pipe < ? super E > pipe ) {
     if ( closed ) throw new IllegalStateException ( "Registrar is closed — register() only valid during callback" );
-    // Outlet pipes: unwrap to the inner receptor (flow chain).
-    // Inlet pipes: pipe::emit enqueues to circuit (cyclic boundary).
-    if ( pipe instanceof FsOutletPipe < ? > outlet
+    // Extract the pipe's receiver for direct dispatch on the circuit thread.
+    // Inlet: receiver is the outlet (flow chain) — dispatch synchronously.
+    // Outlet: receiver is the flow chain — dispatch synchronously.
+    // Both avoid pipe.emit() which would go through ingress/transit unnecessarily.
+    if ( pipe instanceof FsPipe < ? > inlet
+      && inlet.receiver () instanceof FsCircuit.ReceptorAdapter < ? > adapter ) {
+      receptors.add ( (Receptor < ? super E >) adapter );
+    } else if ( pipe instanceof FsOutletPipe < ? > outlet
       && outlet.receiver () instanceof FsCircuit.ReceptorAdapter < ? > adapter ) {
       receptors.add ( (Receptor < ? super E >) adapter );
     } else {

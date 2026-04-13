@@ -14,23 +14,25 @@ import java.util.function.Consumer;
 
 import static java.util.Objects.requireNonNull;
 
-/**
- * Pipe implementation with direct circuit emission.
- *
- * <p>Routes emissions directly to circuit:
- * <ul>
- *   <li>External threads → circuit.submitIngress()
- *   <li>Worker thread → circuit.submitTransit()
- * </ul>
- */
+/// Inlet pipe — the external-facing pipe returned by conduit.get() and circuit.pipe().
+///
+/// emit() always enqueues to ingress (no thread check). External threads
+/// call this to submit emissions to the circuit.
+///
+/// Each inlet has a paired transit pipe that shares the same receiver.
+/// pipe.pipe(flow) materialises the flow terminal to call the transit pipe,
+/// enabling zero-check cascade re-entry on the circuit thread.
 @Provided
 public final class FsPipe < E > implements Pipe < E > {
 
   @Stable private final Consumer < Object > receiver;
   @Stable private final FsCircuit           circuit;
-  @Stable private final Thread              worker;
   @Stable private final Name                name;
   @Stable private final FsSubject < ? >     parentSubject;
+
+  /// Paired transit pipe — emit() always submitTransit. No checks.
+  /// Used by flow terminals for circuit-thread re-entry.
+  @Stable final FsTransitPipe < E > transitPipe;
 
   private volatile Subject < Pipe < E > > subject;
 
@@ -42,9 +44,9 @@ public final class FsPipe < E > implements Pipe < E > {
   ) {
     this.receiver = receiver;
     this.circuit = circuit;
-    this.worker = circuit.worker ();
     this.name = name;
     this.parentSubject = parentSubject;
+    this.transitPipe = new FsTransitPipe <> ( receiver, circuit );
   }
 
   @Override
@@ -70,18 +72,8 @@ public final class FsPipe < E > implements Pipe < E > {
     return receiver;
   }
 
-  /**
-   * Returns true if caller is on this pipe's circuit thread.
-   * Used to determine if receiver can be extracted safely (same circuit)
-   * or if emit() must be used (cross-circuit).
-   */
-  @jdk.internal.vm.annotation.ForceInline
-  final boolean isOnCircuitThread () {
-    return Thread.currentThread () == worker;
-  }
-
-  /// Creates a new pipe that applies flow processing before emitting to this pipe.
-  /// Each call materialises an independent operator chain from the immutable flow.
+  /// Creates an outlet pipe with flow processing.
+  /// Flow terminal calls the paired transit pipe (submitTransit, no checks).
   @New
   @NotNull
   @Override
@@ -89,24 +81,23 @@ public final class FsPipe < E > implements Pipe < E > {
   public < I > Pipe < I > pipe ( @NotNull Flow < I, E > flow ) {
     requireNonNull ( flow, "flow must not be null" );
     FsFlow < I, E > fsFlow = (FsFlow < I, E >) flow;
-    // Flow terminal re-enters this inlet's emit(), which enqueues to
-    // the circuit (transit if on circuit thread, ingress if external).
-    // This is the queue boundary for cyclic stack safety.
-    Consumer < I > chain = fsFlow.materialise ( v -> emit ( v ) );
-    @SuppressWarnings ( "unchecked" )
+    // Flow terminal targets the transit pipe — direct submitTransit,
+    // no null/closed/thread checks. Safe because the flow only runs
+    // on the circuit thread (dispatched there via channel rebuild).
+    FsTransitPipe < E > tp = transitPipe;
+    Consumer < I > chain = fsFlow.materialise ( v -> tp.emit ( v ) );
+    // Outlet wraps the flow chain — runs synchronously on circuit thread
     Consumer < Object > outletReceiver = (Consumer < Object >) (Consumer < ? >) new FsCircuit.ReceptorAdapter <> ( chain::accept );
-    return new FsOutletPipe <> ( name, circuit, parentSubject, outletReceiver );
+    // Return an inlet wrapping the outlet — external callers hit ingress,
+    // circuit dequeues and calls the outlet on the circuit thread.
+    return new FsPipe <> ( name, circuit, parentSubject, outletReceiver );
   }
 
+  /// Inlet emit — always enqueues to ingress. No thread check.
   @Override
-  @jdk.internal.vm.annotation.ForceInline
   public final void emit ( @NotNull final E emission ) {
     requireNonNull ( emission, "emission must not be null" );
     if ( circuit.closed ) return;
-    if ( isOnCircuitThread () ) {
-      circuit.submitTransit ( receiver, emission );
-    } else {
-      circuit.submitIngress ( receiver, emission );
-    }
+    circuit.submitIngress ( receiver, emission );
   }
 }
