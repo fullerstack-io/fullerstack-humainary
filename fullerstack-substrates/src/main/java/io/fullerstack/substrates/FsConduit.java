@@ -255,10 +255,11 @@ public final class FsConduit < E > extends FsSubstrate < Conduit < E > > impleme
 
     channel.rebuildReceptorsArray ();
     channel.builtVersion = subscriberVersion;
-    // Swap the pipe's dispatch to point directly at the fastDispatch,
-    // removing the channel from the hot emission path. If no receptors,
-    // point back at the channel (it handles the null fastDispatch case).
-    if ( channel.pipeDispatch != null ) {
+    // For PIPE routing, swap the pipe's dispatch to point directly at
+    // fastDispatch, removing the channel from the hot emission path.
+    // For STEM routing, keep the channel in the path — it handles
+    // ancestor propagation in receive().
+    if ( channel.pipeDispatch != null && routing == Routing.PIPE ) {
       @SuppressWarnings ( "unchecked" )
       Receptor < ? super E > target = channel.fastDispatch != null
         ? channel.fastDispatch : (Receptor < ? super E >) (Receptor < ? >) channel;

@@ -1426,6 +1426,41 @@ class Substrates2Test implements Substrates {
     }
 
     @Test
+    @DisplayName ( "STEM: multiple emissions propagate on every emit, not just first" )
+    void stem_propagatesOnEveryEmit () throws Exception {
+      final var cortex = Substrates.cortex ();
+      final var circuit = cortex.circuit ();
+      try {
+        final var conduit = circuit.conduit (
+          cortex.name ( "log" ), Integer.class, Routing.STEM );
+        final List < Integer > received = new ArrayList <> ();
+        final var latch = new CountDownLatch ( 6 );
+
+        conduit.subscribe (
+          circuit.subscriber (
+            cortex.name ( "sub" ),
+            ( subject, registrar ) ->
+              registrar.register ( v -> { received.add ( v ); latch.countDown (); } )
+          )
+        );
+
+        conduit.get ( cortex.name ( "log.app" ) );
+
+        // 3 emissions, each propagates to child + parent = 2 per emit = 6 total
+        var pipe = conduit.get ( cortex.name ( "log.app.auth" ) );
+        pipe.emit ( 1 );
+        pipe.emit ( 2 );
+        pipe.emit ( 3 );
+        circuit.await ();
+        assertTrue ( latch.await ( 2, TimeUnit.SECONDS ) );
+        assertEquals ( 6, received.size (),
+          "STEM: every emission must propagate, not just the first" );
+      } finally {
+        circuit.close ();
+      }
+    }
+
+    @Test
     @DisplayName ( "PIPE routing does NOT propagate to parent" )
     void pipe_doesNotPropagate () throws Exception {
       final var cortex = Substrates.cortex ();
