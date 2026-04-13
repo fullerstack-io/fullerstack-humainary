@@ -1553,4 +1553,55 @@ class Substrates2Test implements Substrates {
     }
   }
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Cyclic cascade verification
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  @Nested
+  @DisplayName ( "Cyclic cascade" )
+  class CyclicCascadeTests {
+
+    @Test
+    @DisplayName ( "subscriber callback fires exactly once per channel in cyclic cascade" )
+    void callbackFiresOnce () throws Exception {
+      final var cortex = Substrates.cortex ();
+      final var circuit = cortex.circuit ();
+      try {
+        final var callbackCount = new java.util.concurrent.atomic.AtomicInteger ( 0 );
+        final var emissionCount = new java.util.concurrent.atomic.AtomicInteger ( 0 );
+        final var conduit = circuit.conduit ( Integer.class );
+        final var latch = new CountDownLatch ( 1 );
+
+        conduit.subscribe (
+          circuit.subscriber (
+            cortex.name ( "sub" ),
+            ( subject, registrar ) -> {
+              callbackCount.incrementAndGet ();
+              registrar.register (
+                conduit.get ( subject ).pipe (
+                  cortex.flow ( Integer.class )
+                    .peek ( v -> {
+                      if ( emissionCount.incrementAndGet () >= 100 ) latch.countDown ();
+                    } )
+                    .limit ( 100 )
+                )
+              );
+            }
+          )
+        );
+
+        conduit.get ( cortex.name ( "cyclic" ) ).emit ( 0 );
+        circuit.await ();
+        assertTrue ( latch.await ( 2, TimeUnit.SECONDS ) );
+
+        assertEquals ( 1, callbackCount.get (),
+          "Subscriber callback must fire exactly once per channel" );
+        assertEquals ( 100, emissionCount.get (),
+          "Cyclic cascade must produce exactly limit emissions" );
+      } finally {
+        circuit.close ();
+      }
+    }
+  }
+
 }

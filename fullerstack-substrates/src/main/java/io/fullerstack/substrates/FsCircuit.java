@@ -123,7 +123,7 @@ public final class FsCircuit implements Circuit {
    * 1. Devirtualize the accept() call (lambda has invokedynamic overhead)
    * 2. Inline the receptor.receive() call when the receptor type is known
    */
-  static final class ReceptorAdapter < E > implements Consumer < Object > {
+  static final class ReceptorAdapter < E > implements Consumer < Object >, Receptor < E > {
     final Receptor < ? super E > receptor;
 
     ReceptorAdapter ( Receptor < ? super E > receptor ) {
@@ -134,6 +134,12 @@ public final class FsCircuit implements Circuit {
     @SuppressWarnings ( "unchecked" )
     public void accept ( Object o ) {
       receptor.receive ( (E) o );
+    }
+
+    @Override
+    @SuppressWarnings ( "unchecked" )
+    public void receive ( E emission ) {
+      receptor.receive ( emission );
     }
   }
 

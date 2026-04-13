@@ -65,7 +65,9 @@ public final class FsConduit < E > extends FsSubstrate < Conduit < E > > impleme
   @SuppressWarnings ( "unchecked" )
   private              FsSubscriber < E >[] subscribersSnapshot = (FsSubscriber < E >[]) EMPTY_SUBSCRIBERS;
 
-  boolean subscribersDirty;
+  /// Version counter — incremented on subscriber add/remove.
+  /// Channels compare against their cached version to detect rebuild need.
+  int subscriberVersion;
 
   private volatile boolean hasSubscribers = false;
 
@@ -154,18 +156,14 @@ public final class FsConduit < E > extends FsSubstrate < Conduit < E > > impleme
       @SuppressWarnings ( "unchecked" )
       FsSubject < Pipe < E > > pipeSubject = new FsSubject <> ( name, (FsSubject < ? >) lazySubject (), Pipe.class );
 
-      // Create channel (internal) for subscriber dispatch
+      // Create channel (internal) for subscriber dispatch.
+      // Channel implements Consumer<Object> directly — no ReceptorAdapter wrapper needed.
       FsChannel < E > channel = new FsChannel <> ( pipeSubject, circuit, this, null );
 
-      // Create the circuit-dispatched pipe that routes through this channel
       @SuppressWarnings ( "unchecked" )
-      Consumer < E > receiver = (Consumer < E >) (Consumer < ? >) new FsCircuit.ReceptorAdapter <> ( channel );
+      Pipe < E > pipe = circuit.createPipe ( name, pipeSubject, (Consumer < Object >) (Consumer < ? >) channel );
 
-      @SuppressWarnings ( "unchecked" )
-      Pipe < E > pipe = circuit.createPipe ( name, pipeSubject, (Consumer < Object >) (Consumer < ? >) receiver );
-
-      // Set the channel's router to the receiver (no flow configurer in 2.0 — flows are standalone)
-      channel.router = receiver;
+      channel.router = (Consumer < E >) (Consumer < ? >) channel;
 
       // Copy-on-write: publish new maps
       Map < Name, Pipe < E > > newPipes = new IdentityHashMap <> ( pipes );
@@ -193,24 +191,26 @@ public final class FsConduit < E > extends FsSubstrate < Conduit < E > > impleme
     }
     subscribersList.add ( subscriber );
     hasSubscribers = true;
-    subscribersDirty = true;
+    subscriberVersion++;
   }
 
   private void removeSubscriber ( FsSubscriber < E > subscriber ) {
     if ( subscribersList != null ) {
       subscribersList.remove ( subscriber );
       hasSubscribers = !subscribersList.isEmpty ();
-      subscribersDirty = true;
+      subscriberVersion++;
     }
   }
 
+  private int snapshotVersion = -1;
+
   @SuppressWarnings ( "unchecked" )
   private FsSubscriber < E >[] ensureSubscribersSnapshot () {
-    if ( subscribersDirty ) {
+    if ( snapshotVersion != subscriberVersion ) {
       subscribersSnapshot = ( subscribersList == null || subscribersList.isEmpty () )
                             ? (FsSubscriber < E >[]) EMPTY_SUBSCRIBERS
                             : subscribersList.toArray ( new FsSubscriber[0] );
-      subscribersDirty = false;
+      snapshotVersion = subscriberVersion;
     }
     return subscribersSnapshot;
   }
@@ -234,6 +234,7 @@ public final class FsConduit < E > extends FsSubstrate < Conduit < E > > impleme
     }
 
     channel.rebuildReceptorsArray ();
+    channel.builtVersion = subscriberVersion;
   }
 
   // ─────────────────────────────────────────────────────────────────────────────

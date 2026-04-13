@@ -87,7 +87,15 @@ public final class FsPipe < E > implements Pipe < E > {
   public < I > Pipe < I > pipe ( @NotNull Flow < I, E > flow ) {
     java.util.Objects.requireNonNull ( flow, "flow must not be null" );
     FsFlow < I, E > fsFlow = (FsFlow < I, E >) flow;
-    Consumer < I > chain = fsFlow.materialise ( v -> emit ( v ) );
+    // Flow terminal submits directly to transit with the target's receiver,
+    // bypassing the full emit() path (null check, closed check, thread check).
+    // This eliminates one transit queue round-trip in cascade chains.
+    // Safe because: flow chain runs on the circuit thread (dispatched there),
+    // null values are rejected by flow operators, and closed check is on the
+    // outer emit that enqueued this work.
+    final Consumer < Object > target = receiver;
+    final FsCircuit c = circuit;
+    Consumer < I > chain = fsFlow.materialise ( v -> c.submitTransit ( target, v ) );
     return circuit.createPipe ( name, parentSubject, (Consumer < Object >) (Consumer < ? >) new FsCircuit.ReceptorAdapter <> ( chain::accept ) );
   }
 
