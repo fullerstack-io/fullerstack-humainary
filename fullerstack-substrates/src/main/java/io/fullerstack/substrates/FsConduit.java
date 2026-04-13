@@ -17,12 +17,15 @@ import io.humainary.substrates.api.Substrates.Subscription;
 import io.humainary.substrates.api.Substrates.Tap;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.IdentityHashMap;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
 import static io.humainary.substrates.api.Substrates.cortex;
+import static java.util.Objects.requireNonNull;
 
 /// A container of pipes that can be subscribed to and looked up by name.
 ///
@@ -238,7 +241,7 @@ public final class FsConduit < E > extends FsSubstrate < Conduit < E > > impleme
   void rebuildChannelPipes ( FsChannel < E > channel ) {
     FsSubscriber < E >[] currentSubs = ensureSubscribersSnapshot ();
 
-    java.util.Set < FsSubscriber < E > > activeSet = java.util.Collections.newSetFromMap ( new IdentityHashMap <> () );
+    Set < FsSubscriber < E > > activeSet = Collections.newSetFromMap ( new IdentityHashMap <> () );
     for ( FsSubscriber < E > sub : currentSubs ) {
       activeSet.add ( sub );
     }
@@ -321,7 +324,7 @@ public final class FsConduit < E > extends FsSubstrate < Conduit < E > > impleme
   @NotNull
   @Override
   public < T > Tap < T > tap ( @NotNull Function < Pipe < T >, Pipe < E > > fn ) {
-    java.util.Objects.requireNonNull ( fn, "fn must not be null" );
+    requireNonNull ( fn, "fn must not be null" );
     return new FsTap <> ( (FsSubject < ? >) lazySubject (), cortex ().name ( "tap" ), this, circuit, fn );
   }
 

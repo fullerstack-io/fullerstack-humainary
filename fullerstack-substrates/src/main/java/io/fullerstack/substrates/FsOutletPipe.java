@@ -10,6 +10,8 @@ import io.humainary.substrates.api.Substrates.Subject;
 
 import java.util.function.Consumer;
 
+import static java.util.Objects.requireNonNull;
+
 /// Outlet pipe — runs on the circuit thread. emit() dispatches synchronously
 /// to the receiver with no queue, no null check, no thread check.
 ///
@@ -68,7 +70,7 @@ final class FsOutletPipe < E > implements Pipe < E > {
   @Override
   @SuppressWarnings ( "unchecked" )
   public < I > Pipe < I > pipe ( @NotNull Flow < I, E > flow ) {
-    java.util.Objects.requireNonNull ( flow, "flow must not be null" );
+    requireNonNull ( flow, "flow must not be null" );
     FsFlow < I, E > fsFlow = (FsFlow < I, E >) flow;
     Consumer < I > chain = fsFlow.materialise ( v -> receiver.accept ( v ) );
     return new FsOutletPipe <> ( name, circuit, parentSubject,

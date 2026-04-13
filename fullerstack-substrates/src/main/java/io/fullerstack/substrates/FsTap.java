@@ -17,12 +17,15 @@ import io.humainary.substrates.api.Substrates.Subscription;
 import io.humainary.substrates.api.Substrates.Tap;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.IdentityHashMap;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
 import static io.humainary.substrates.api.Substrates.cortex;
+import static java.util.Objects.requireNonNull;
 
 /// A transformed view of a source's emissions (Substrates 2.0).
 ///
@@ -99,9 +102,9 @@ final class FsTap < T > implements Tap < T > {
           @SuppressWarnings ( "unchecked" )
           public < I > Pipe < I > pipe ( Flow < I, T > flow ) {
             FsFlow < I, T > fsFlow = (FsFlow < I, T >) flow;
-            java.util.function.Consumer < I > chain = fsFlow.materialise ( this::emit );
+            Consumer < I > chain = fsFlow.materialise ( this::emit );
             return circuit.createPipe ( channelName, (FsSubject < ? >) tapChannel.subject (),
-              (java.util.function.Consumer < Object >) (java.util.function.Consumer < ? >) new FsCircuit.ReceptorAdapter <> ( chain::accept ) );
+              (Consumer < Object >) (Consumer < ? >) new FsCircuit.ReceptorAdapter <> ( chain::accept ) );
           }
         };
 
@@ -153,7 +156,7 @@ final class FsTap < T > implements Tap < T > {
   private void rebuildChannelPipes ( FsChannel < T > channel ) {
     FsSubscriber < T >[] currentSubs = getSubscribersSnapshot ();
 
-    java.util.Set < FsSubscriber < T > > activeSet = java.util.Collections.newSetFromMap ( new IdentityHashMap <> () );
+    Set < FsSubscriber < T > > activeSet = Collections.newSetFromMap ( new IdentityHashMap <> () );
     for ( FsSubscriber < T > sub : currentSubs ) activeSet.add ( sub );
 
     channel.subscriberReceptors.keySet ().removeIf ( sub -> !activeSet.contains ( sub ) );
@@ -193,7 +196,7 @@ final class FsTap < T > implements Tap < T > {
   public Subscription subscribe (
     @NotNull Subscriber < T > subscriber,
     @NotNull @Queued Consumer < ? super Subscription > onClose ) {
-    java.util.Objects.requireNonNull ( subscriber );
+    requireNonNull ( subscriber );
     if ( closed ) throw new IllegalStateException ( "Tap is closed" );
 
     FsSubscriber < T > fs = (FsSubscriber < T >) subscriber;
@@ -235,7 +238,7 @@ final class FsTap < T > implements Tap < T > {
 
   @Override
   public < U > Tap < U > tap ( @NotNull Function < Pipe < U >, Pipe < T > > fn ) {
-    java.util.Objects.requireNonNull ( fn );
+    requireNonNull ( fn );
     return new FsTap <> ( (FsSubject < ? >) subject, cortex ().name ( "tap" ), this, circuit, fn );
   }
 

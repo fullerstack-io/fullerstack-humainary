@@ -13,6 +13,8 @@ import io.humainary.substrates.api.Substrates.Substrate;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;
 
+import static java.util.Objects.requireNonNull;
+
 /// The identity of a substrate.
 /// Supports null name for anonymous subjects - delegates to parent's name.
 @Identity
@@ -92,7 +94,7 @@ public final class FsSubject < S extends Substrate < S > > implements Subject < 
   /// using default Extent.within() which allocates Optional per level.
   @Override
   public boolean within ( final Extent < ?, ? > enclosure ) {
-    java.util.Objects.requireNonNull ( enclosure, "enclosure must not be null" );
+    requireNonNull ( enclosure, "enclosure must not be null" );
     for ( FsSubject < ? > current = parent; current != null; current = current.parent ) {
       if ( current == enclosure ) {
         return true;

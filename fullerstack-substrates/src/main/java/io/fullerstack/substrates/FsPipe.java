@@ -12,6 +12,8 @@ import jdk.internal.vm.annotation.Stable;
 
 import java.util.function.Consumer;
 
+import static java.util.Objects.requireNonNull;
+
 /**
  * Pipe implementation with direct circuit emission.
  *
@@ -85,7 +87,7 @@ public final class FsPipe < E > implements Pipe < E > {
   @Override
   @SuppressWarnings ( "unchecked" )
   public < I > Pipe < I > pipe ( @NotNull Flow < I, E > flow ) {
-    java.util.Objects.requireNonNull ( flow, "flow must not be null" );
+    requireNonNull ( flow, "flow must not be null" );
     FsFlow < I, E > fsFlow = (FsFlow < I, E >) flow;
     // Flow runs on the circuit thread. Terminal calls this pipe's emit()
     // which enqueues (inlet boundary). Returns an outlet pipe (no queue on emit).
@@ -99,7 +101,7 @@ public final class FsPipe < E > implements Pipe < E > {
   @Override
   @jdk.internal.vm.annotation.ForceInline
   public final void emit ( @NotNull final E emission ) {
-    java.util.Objects.requireNonNull ( emission, "emission must not be null" );
+    requireNonNull ( emission, "emission must not be null" );
     if ( circuit.closed ) return;
     if ( isOnCircuitThread () ) {
       circuit.submitTransit ( receiver, emission );

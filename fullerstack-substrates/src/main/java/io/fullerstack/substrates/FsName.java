@@ -7,6 +7,8 @@ import io.humainary.substrates.api.Substrates.Provided;
 
 import java.lang.reflect.Member;
 import java.util.Iterator;
+import java.util.List;
+import java.util.NoSuchElementException;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
@@ -173,7 +175,7 @@ public final class FsName implements Name {
   /// with inline guard for null/empty/dot edge cases.
   @SuppressWarnings ( "unchecked" )
   static FsName fromIterable ( Iterable < String > parts ) {
-    if ( parts instanceof java.util.List < String > list ) {
+    if ( parts instanceof List < String > list ) {
       return fromList ( list );
     }
     Iterator < String > it = parts.iterator ();
@@ -190,7 +192,7 @@ public final class FsName implements Name {
   /// Fast path for List inputs — indexed access avoids iterator allocation.
   /// internChild handles null/empty/dot validation in its slow path, so
   /// warm-path lookups skip per-element validation entirely.
-  private static FsName fromList ( java.util.List < String > parts ) {
+  private static FsName fromList ( List < String > parts ) {
     int size = parts.size ();
     if ( size == 0 ) {
       throw new IllegalArgumentException ( "parts must not be empty" );
@@ -206,8 +208,8 @@ public final class FsName implements Name {
   /// Uses indexed access for List inputs to avoid iterator allocation.
   @SuppressWarnings ( "unchecked" )
   static < T > FsName fromIterable ( Iterable < ? extends T > parts, Function < ? super T, String > mapper ) {
-    if ( parts instanceof java.util.List < ? > list ) {
-      return fromListMapped ( (java.util.List < ? extends T >) list, mapper );
+    if ( parts instanceof List < ? > list ) {
+      return fromListMapped ( (List < ? extends T >) list, mapper );
     }
     Iterator < ? extends T > it = parts.iterator ();
     if ( !it.hasNext () ) {
@@ -221,7 +223,7 @@ public final class FsName implements Name {
   }
 
   /// Fast path for List inputs with mapper — indexed access avoids iterator allocation.
-  private static < T > FsName fromListMapped ( java.util.List < ? extends T > parts, Function < T, String > mapper ) {
+  private static < T > FsName fromListMapped ( List < ? extends T > parts, Function < T, String > mapper ) {
     int size = parts.size ();
     if ( size == 0 ) {
       throw new IllegalArgumentException ( "parts must not be empty" );
@@ -505,7 +507,7 @@ public final class FsName implements Name {
     public Name next () {
       FsName result = cursor;
       if ( result == null ) {
-        throw new java.util.NoSuchElementException ();
+        throw new NoSuchElementException ();
       }
       cursor = result.parent;
       return result;

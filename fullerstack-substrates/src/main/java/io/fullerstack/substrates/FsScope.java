@@ -17,6 +17,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
+import static java.util.Objects.requireNonNull;
+
 /// A container for grouping resources with coordinated lifecycle management.
 ///
 /// Scope provides structured resource management - resources registered with
@@ -113,7 +115,7 @@ final class FsScope implements Scope {
   /// using default Extent.within() which allocates Optional per level.
   @Override
   public boolean within ( final Extent < ?, ? > enclosure ) {
-    java.util.Objects.requireNonNull ( enclosure, "enclosure must not be null" );
+    requireNonNull ( enclosure, "enclosure must not be null" );
     for ( FsScope current = parent; current != null; current = current.parent ) {
       if ( current == enclosure ) {
         return true;
@@ -126,7 +128,7 @@ final class FsScope implements Scope {
   @Override
   @SuppressWarnings ( "unchecked" )
   public < R extends Resource > Closure < R > closure ( @NotNull R resource ) {
-    java.util.Objects.requireNonNull ( resource, "resource must not be null" );
+    requireNonNull ( resource, "resource must not be null" );
     if ( closed ) {
       throw new IllegalStateException ( "Scope is closed" );
     }
@@ -154,7 +156,7 @@ final class FsScope implements Scope {
   @NotNull
   @Override
   public < R extends Resource > R register ( @NotNull R resource ) {
-    java.util.Objects.requireNonNull ( resource, "resource must not be null" );
+    requireNonNull ( resource, "resource must not be null" );
     if ( closed ) {
       throw new IllegalStateException ( "Scope is closed" );
     }
@@ -188,7 +190,7 @@ final class FsScope implements Scope {
   @NotNull
   @Override
   public Scope scope ( @NotNull Name childName ) {
-    java.util.Objects.requireNonNull ( childName, "name must not be null" );
+    requireNonNull ( childName, "name must not be null" );
     if ( closed ) {
       throw new IllegalStateException ( "Scope is closed" );
     }
@@ -214,7 +216,7 @@ final class FsScope implements Scope {
       for ( FsScope child : children ) {
         try {
           child.close ();
-        } catch ( java.lang.Exception e ) {
+        } catch ( Exception e ) {
           // Suppress and continue
         }
       }
@@ -225,7 +227,7 @@ final class FsScope implements Scope {
       for ( int i = resources.size () - 1; i >= 0; i-- ) {
         try {
           resources.get ( i ).close ();
-        } catch ( java.lang.Exception e ) {
+        } catch ( Exception e ) {
           // Suppress and continue
         }
       }
