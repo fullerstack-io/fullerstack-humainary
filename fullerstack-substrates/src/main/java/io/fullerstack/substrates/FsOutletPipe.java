@@ -1,7 +1,5 @@
 package io.fullerstack.substrates;
 
-import java.util.function.Consumer;
-
 import io.humainary.substrates.api.Substrates.Flow;
 import io.humainary.substrates.api.Substrates.Name;
 import io.humainary.substrates.api.Substrates.New;
@@ -9,6 +7,8 @@ import io.humainary.substrates.api.Substrates.NotNull;
 import io.humainary.substrates.api.Substrates.Pipe;
 import io.humainary.substrates.api.Substrates.Provided;
 import io.humainary.substrates.api.Substrates.Subject;
+
+import java.util.function.Consumer;
 
 /// Outlet pipe — runs on the circuit thread. emit() dispatches synchronously
 /// to the receiver with no queue, no null check, no thread check.
