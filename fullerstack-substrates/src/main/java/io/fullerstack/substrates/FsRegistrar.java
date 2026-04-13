@@ -10,10 +10,11 @@ import java.util.List;
 
 /// A registrar that collects receptors during subscriber activation.
 ///
-/// Registered pipes always go through pipe.emit() to preserve the
-/// transit-queue async boundary. This prevents stack overflow in
-/// cyclic emission patterns (subscriber re-emits to same conduit)
-/// by ensuring each re-emission is enqueued rather than inlined.
+/// Registered pipes are stored via pipe::emit. For outlet pipes (created by
+/// pipe.pipe(flow)), emit() dispatches synchronously on the circuit thread.
+/// For inlet pipes (conduit pipes), emit() enqueues to the circuit queue.
+/// Cyclic safety is provided by the flow terminal calling the inlet's emit,
+/// not by the registrar.
 ///
 /// The registrar enforces the @Temporal contract: register() may only
 /// be called during the subscriber callback. After the callback completes,
@@ -45,9 +46,8 @@ public final class FsRegistrar < E > implements Registrar < E > {
   @Override
   public void register ( Pipe < ? super E > pipe ) {
     if ( closed ) throw new IllegalStateException ( "Registrar is closed — register() only valid during callback" );
-    // Register via pipe::emit — the pipe's emit() is the async boundary.
-    // For cyclic patterns (subscriber re-emits to same conduit), emit()
-    // enqueues to the circuit queue, breaking the synchronous call chain.
+    // Register via pipe::emit. For outlet pipes this is synchronous.
+    // For inlet pipes (conduit pipes) this enqueues to the circuit queue.
     receptors.add ( pipe::emit );
   }
 }
