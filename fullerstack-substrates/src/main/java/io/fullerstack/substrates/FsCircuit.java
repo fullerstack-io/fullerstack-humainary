@@ -422,14 +422,13 @@ public final class FsCircuit implements Circuit {
   @Override
   public < E > Pipe < E > pipe ( @NotNull Pipe < E > target ) {
     requireNonNull ( target );
-    // Same-circuit pipes are already dispatched on this circuit — return as-is
+    // Same-circuit inlet already has the async boundary — return as-is
     if ( target instanceof FsPipe < E > fsPipe && fsPipe.circuit () == this ) {
       return target;
     }
-    if ( target instanceof FsOutletPipe < E > ) {
-      return target;
-    }
-    // Cross-circuit: wrap in an inlet that enqueues to this circuit
+    // Everything else (outlets, cross-circuit pipes) gets wrapped in an inlet.
+    // The inlet enqueues to this circuit; when dequeued, target.emit() runs
+    // on the circuit thread.
     return newPipe ( null, new ReceptorAdapter <> ( target::emit ) );
   }
 
