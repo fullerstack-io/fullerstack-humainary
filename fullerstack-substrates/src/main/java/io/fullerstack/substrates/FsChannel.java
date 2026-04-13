@@ -53,6 +53,10 @@ final class FsChannel < E > implements Receptor < E >, Consumer < Object > {
   /// Version this channel was last built at — starts at -1 to force first rebuild.
   int builtVersion = -1;
 
+  /// The pipe's dispatch adapter — updated after rebuild to point at fastDispatch,
+  /// removing the channel from the hot emission path.
+  FsCircuit.ReceptorAdapter < E > pipeDispatch;
+
   FsChannel ( Subject < Pipe < E > > subject, FsCircuit circuit, FsConduit < E > conduit, Consumer < E > router ) {
     this.subject = subject;
     this.circuit = circuit;

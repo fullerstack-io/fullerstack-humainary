@@ -124,7 +124,7 @@ public final class FsCircuit implements Circuit {
    * 2. Inline the receptor.receive() call when the receptor type is known
    */
   static final class ReceptorAdapter < E > implements Consumer < Object >, Receptor < E > {
-    final Receptor < ? super E > receptor;
+    Receptor < ? super E > receptor;
 
     ReceptorAdapter ( Receptor < ? super E > receptor ) {
       this.receptor = receptor;

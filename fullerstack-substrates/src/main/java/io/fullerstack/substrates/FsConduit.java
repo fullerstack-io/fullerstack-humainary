@@ -156,14 +156,19 @@ public final class FsConduit < E > extends FsSubstrate < Conduit < E > > impleme
       @SuppressWarnings ( "unchecked" )
       FsSubject < Pipe < E > > pipeSubject = new FsSubject <> ( name, (FsSubject < ? >) lazySubject (), Pipe.class );
 
-      // Create channel (internal) for subscriber dispatch.
-      // Channel implements Consumer<Object> directly — no ReceptorAdapter wrapper needed.
+      // Create channel for cold-path subscriber management
       FsChannel < E > channel = new FsChannel <> ( pipeSubject, circuit, this, null );
 
+      // Pipe receiver: transit calls accept() → target.receive().
+      // Channel is the initial target (handles first-emission rebuild).
+      // After rebuild, conduit swaps target to the fastDispatch receptor directly.
       @SuppressWarnings ( "unchecked" )
-      Pipe < E > pipe = circuit.createPipe ( name, pipeSubject, (Consumer < Object >) (Consumer < ? >) channel );
+      FsCircuit.ReceptorAdapter < E > dispatch = new FsCircuit.ReceptorAdapter <> ( channel );
 
-      channel.router = (Consumer < E >) (Consumer < ? >) channel;
+      Pipe < E > pipe = circuit.createPipe ( name, pipeSubject, dispatch );
+
+      channel.pipeDispatch = dispatch;
+      channel.router = (Consumer < E >) (Consumer < ? >) dispatch;
 
       // Copy-on-write: publish new maps
       Map < Name, Pipe < E > > newPipes = new IdentityHashMap <> ( pipes );
@@ -192,6 +197,7 @@ public final class FsConduit < E > extends FsSubstrate < Conduit < E > > impleme
     subscribersList.add ( subscriber );
     hasSubscribers = true;
     subscriberVersion++;
+    resetDispatches ();
   }
 
   private void removeSubscriber ( FsSubscriber < E > subscriber ) {
@@ -199,6 +205,20 @@ public final class FsConduit < E > extends FsSubstrate < Conduit < E > > impleme
       subscribersList.remove ( subscriber );
       hasSubscribers = !subscribersList.isEmpty ();
       subscriberVersion++;
+      resetDispatches ();
+    }
+  }
+
+  /// Reset all dispatches to point back at their channels so the next
+  /// emission triggers a rebuild with the updated subscriber list.
+  @SuppressWarnings ( "unchecked" )
+  private void resetDispatches () {
+    Map < Name, FsChannel < E > > ch = channels;
+    if ( ch == null ) return;
+    for ( FsChannel < E > channel : ch.values () ) {
+      if ( channel.pipeDispatch != null ) {
+        channel.pipeDispatch.receptor = (Receptor < ? super E >) (Receptor < ? >) channel;
+      }
     }
   }
 
@@ -235,6 +255,15 @@ public final class FsConduit < E > extends FsSubstrate < Conduit < E > > impleme
 
     channel.rebuildReceptorsArray ();
     channel.builtVersion = subscriberVersion;
+    // Swap the pipe's dispatch to point directly at the fastDispatch,
+    // removing the channel from the hot emission path. If no receptors,
+    // point back at the channel (it handles the null fastDispatch case).
+    if ( channel.pipeDispatch != null ) {
+      @SuppressWarnings ( "unchecked" )
+      Receptor < ? super E > target = channel.fastDispatch != null
+        ? channel.fastDispatch : (Receptor < ? super E >) (Receptor < ? >) channel;
+      channel.pipeDispatch.receptor = target;
+    }
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
