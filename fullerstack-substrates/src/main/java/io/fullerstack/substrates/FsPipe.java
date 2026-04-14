@@ -100,14 +100,18 @@ public final class FsPipe < E > implements Pipe < E >, Consumer < Object > {
 
   final FsCircuit circuit () { return circuit; }
 
-  // ─── Emit (entry path — called by external code) ───
+  // ─── Emit (entry path — called from any thread) ───
 
-  /// Enqueues to ingress. Called from any thread.
   @Override
+  @jdk.internal.vm.annotation.ForceInline
   public void emit ( @NotNull E emission ) {
     requireNonNull ( emission, "emission must not be null" );
     if ( circuit.closed ) return;
-    circuit.submitIngress ( this, emission );
+    if ( Thread.currentThread () == circuit.worker () ) {
+      circuit.submitTransit ( this, emission );
+    } else {
+      circuit.submitIngress ( this, emission );
+    }
   }
 
   // ─── Accept (hot path — called by queue drain loop) ───
