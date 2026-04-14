@@ -117,26 +117,7 @@ public final class FsCircuit implements Circuit {
   // ReceptorAdapter - Concrete class for JIT devirtualization/inlining
   // ─────────────────────────────────────────────────────────────────────────────
 
-  /// Pipe dispatch — the receiver stored in the transit queue for conduit pipes.
-  /// Separate class from ReceptorAdapter so the JIT sees a monomorphic type profile.
-  /// The receptor field is swapped after channel rebuild to point at the dispatch
-  /// receptor, removing the channel from the hot emission path.
-  @SuppressWarnings ( "unchecked" )
-  static final class PipeDispatch < E > implements Consumer < Object > {
-    Receptor < ? super E > receptor;
-
-    PipeDispatch ( Receptor < ? super E > receptor ) {
-      this.receptor = receptor;
-    }
-
-    @Override
-    public void accept ( Object o ) {
-      receptor.receive ( (E) o );
-    }
-  }
-
   /// General-purpose receptor adapter — wraps a Receptor in a Consumer<Object>.
-  /// Used for markers, cross-circuit pipes, and other non-hot-path dispatch.
   @SuppressWarnings ( "unchecked" )
   static final class ReceptorAdapter < E > implements Consumer < Object >, Receptor < E > {
     final Receptor < ? super E > receptor;
