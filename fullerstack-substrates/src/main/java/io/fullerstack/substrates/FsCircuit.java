@@ -264,13 +264,9 @@ public final class FsCircuit implements Circuit {
   // Pipe Factory Helper
   // ─────────────────────────────────────────────────────────────────────────────
 
-  private < E > FsPipe < E > newPipe ( Name name, Consumer < Object > receiver ) {
-    return new FsPipe <> ( name, this, (FsSubject < ? >) subject, receiver );
-  }
-
-  /** Package-private pipe factory for FsChannel, FsConduit, FsFlow */
-  < E > FsPipe < E > createPipe ( Name name, FsSubject < ? > parent, Consumer < Object > receiver ) {
-    return new FsPipe <> ( name, this, parent, receiver );
+  /// Creates a receptor pipe — for circuit.pipe(receptor).
+  private < E > FsPipe < E > newReceptorPipe ( Name name, Receptor < ? super E > receptor ) {
+    return new FsPipe <> ( name, this, (FsSubject < ? >) subject, receptor );
   }
 
 
@@ -416,14 +412,12 @@ public final class FsCircuit implements Circuit {
   @Override
   public < E > Pipe < E > pipe ( @NotNull Pipe < E > target ) {
     requireNonNull ( target );
-    // Same-circuit inlet already has the async boundary — return as-is
+    // Same-circuit pipe already routes through this circuit — return as-is
     if ( target instanceof FsPipe < E > fsPipe && fsPipe.circuit () == this ) {
       return target;
     }
-    // Everything else (outlets, cross-circuit pipes) gets wrapped in an inlet.
-    // The inlet enqueues to this circuit; when dequeued, target.emit() runs
-    // on the circuit thread.
-    return newPipe ( null, new ReceptorAdapter <> ( target::emit ) );
+    // Cross-circuit: wrap in a receptor pipe that calls target.emit()
+    return newReceptorPipe ( null, target::emit );
   }
 
   @New
@@ -431,7 +425,7 @@ public final class FsCircuit implements Circuit {
   @Override
   public < E > Pipe < E > pipe ( @NotNull Receptor < ? super E > receptor ) {
     requireNonNull ( receptor );
-    return newPipe ( null, new ReceptorAdapter <> ( receptor ) );
+    return newReceptorPipe ( null, receptor );
   }
 
   // ===================================================================================

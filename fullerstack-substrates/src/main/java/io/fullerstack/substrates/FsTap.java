@@ -43,7 +43,7 @@ final class FsTap < T > implements Tap < T > {
   private final Subscription           sourceSubscription;
 
   /// Channels by name for T-typed emissions to tap subscribers.
-  private volatile Map < Name, FsChannel < T > > channels = new IdentityHashMap <> ();
+  private volatile Map < Name, FsPipe < T > > channels = new IdentityHashMap <> ();
 
   private          ArrayList < FsSubscriber < T > > subscribersList;
   private volatile FsSubscriber < T >[]             subscribersSnapshot;
@@ -79,7 +79,7 @@ final class FsTap < T > implements Tap < T > {
         Name channelName = pipeSubject.name ();
 
         // Create tap-side channel for T output (lazy init)
-        FsChannel < T > tapChannel = getOrCreateChannel ( channelName );
+        FsPipe < T > tapChannel = getOrCreateChannel ( channelName );
 
         // Create a target pipe that routes to tap subscribers
         Pipe < T > targetPipe = new Pipe <> () {
@@ -89,8 +89,8 @@ final class FsTap < T > implements Tap < T > {
             if ( tapChannel.builtVersion != version ) {
               rebuildChannelPipes ( tapChannel );
             }
-            Consumer < T > router = tapChannel.router;
-            if ( router != null ) router.accept ( emission );
+            Receptor < ? super T > d = tapChannel.dispatch;
+            if ( d != null ) d.receive ( emission );
           }
 
           @Override
@@ -103,8 +103,8 @@ final class FsTap < T > implements Tap < T > {
           public < I > Pipe < I > pipe ( Flow < I, T > flow ) {
             FsFlow < I, T > fsFlow = (FsFlow < I, T >) flow;
             Consumer < I > chain = fsFlow.materialise ( this::emit );
-            return circuit.createPipe ( channelName, (FsSubject < ? >) tapChannel.subject (),
-              (Consumer < Object >) (Consumer < ? >) new FsCircuit.ReceptorAdapter <> ( chain::accept ) );
+            return new FsPipe <> ( channelName, circuit, (FsSubject < ? >) tapChannel.subject (),
+              (Receptor < I >) chain::accept );
           }
         };
 
@@ -118,16 +118,16 @@ final class FsTap < T > implements Tap < T > {
     this.sourceSubscription = source.subscribe ( tapSubscriber );
   }
 
-  private FsChannel < T > getOrCreateChannel ( Name name ) {
-    FsChannel < T > ch = channels.get ( name );
+  private FsPipe < T > getOrCreateChannel ( Name name ) {
+    FsPipe < T > ch = channels.get ( name );
     if ( ch != null ) return ch;
     synchronized ( this ) {
       ch = channels.get ( name );
       if ( ch != null ) return ch;
       @SuppressWarnings ( "unchecked" )
       Subject < Pipe < T > > tapPipeSubject = new FsSubject <> ( name, (FsSubject < ? >) subject, Pipe.class );
-      ch = new FsChannel <> ( tapPipeSubject, circuit, (Consumer < T >) null );
-      Map < Name, FsChannel < T > > copy = new IdentityHashMap <> ( channels );
+      ch = new FsPipe <> ( name, circuit, (FsSubject < ? >) subject );
+      Map < Name, FsPipe < T > > copy = new IdentityHashMap <> ( channels );
       copy.put ( name, ch );
       channels = copy;
       return ch;
@@ -153,36 +153,28 @@ final class FsTap < T > implements Tap < T > {
     return snapshot;
   }
 
-  private void rebuildChannelPipes ( FsChannel < T > channel ) {
+  private void rebuildChannelPipes ( FsPipe < T > pipe ) {
     FsSubscriber < T >[] currentSubs = getSubscribersSnapshot ();
+
+    if ( pipe.subscriberReceptors == null ) {
+      pipe.subscriberReceptors = new IdentityHashMap <> ();
+    }
 
     Set < FsSubscriber < T > > activeSet = Collections.newSetFromMap ( new IdentityHashMap <> () );
     for ( FsSubscriber < T > sub : currentSubs ) activeSet.add ( sub );
 
-    channel.subscriberReceptors.keySet ().removeIf ( sub -> !activeSet.contains ( sub ) );
+    pipe.subscriberReceptors.keySet ().removeIf ( sub -> !activeSet.contains ( sub ) );
 
     for ( FsSubscriber < T > subscriber : currentSubs ) {
-      if ( !channel.subscriberReceptors.containsKey ( subscriber ) ) {
+      if ( !pipe.subscriberReceptors.containsKey ( subscriber ) ) {
         FsRegistrar < T > registrar = new FsRegistrar <> ();
-        subscriber.activate ( channel.subject (), registrar );
-        channel.subscriberReceptors.put ( subscriber, registrar.receptors () );
+        subscriber.activate ( pipe.subject (), registrar );
+        pipe.subscriberReceptors.put ( subscriber, registrar.receptors () );
       }
     }
-    channel.rebuildReceptorsArray ();
+    pipe.rebuildDispatch ();
 
-    // Build router: direct receptor dispatch
-    if ( channel.receptors != null ) {
-      channel.router = value -> {
-        Receptor < ? super T >[] r = channel.receptors;
-        if ( r != null ) {
-          for ( int i = 0, len = r.length; i < len; i++ ) r[i].receive ( value );
-        }
-      };
-    } else {
-      channel.router = null;
-    }
-
-    channel.builtVersion = version;
+    pipe.builtVersion = version;
   }
 
   @Override

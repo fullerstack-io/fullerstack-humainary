@@ -27,56 +27,42 @@ import java.util.function.Function;
 import static io.humainary.substrates.api.Substrates.cortex;
 import static java.util.Objects.requireNonNull;
 
-/// A container of pipes that can be subscribed to and looked up by name.
+/// Conduit — pools named pipes and manages subscriptions.
 ///
-/// In 2.0, Conduit<E> extends Pool<Pipe<E>> — the get(Name) method returns
-/// Pipe<E> directly. Channels are an internal implementation detail; the
-/// public API exposes only Pipes. Derived views via pool(Function) provide
-/// composable transformations with per-name caching.
-///
-/// All subscriber state is managed exclusively on the circuit thread.
-/// subscribe() and unsubscribe() enqueue to the circuit thread per the API contract.
-///
-/// @param <E> the emission type
+/// Named pipes are FsPipe instances stored directly by name.
+/// No separate channel object — the pipe IS the named dispatch point.
+/// Version-tracked lazy rebuild per the spec (§7.6.2).
 @Provided
 public final class FsConduit < E > extends FsSubstrate < Conduit < E > > implements Conduit < E > {
 
   private final FsCircuit circuit;
   private final Routing   routing;
 
-  /// Cache of pipes by name - copy-on-write for fast reads.
-  /// Using IdentityHashMap since FsName is interned (same path = same object).
-  /// Reads are lock-free via volatile; writes synchronize and replace.
-  /// Lazy: only allocated on first get() call to minimize conduit create cost.
-  private volatile Map < Name, Pipe < E > > pipes;
+  /// Named pipes by name — the pipe IS the dispatch point.
+  /// Copy-on-write for thread-safe reads from caller contexts.
+  private volatile Map < Name, FsPipe < E > > namedPipes;
 
-  /// Last lookup cache - optimizes repeated lookups of the same name.
-  private Name     lastLookupName;
-  private Pipe < E > lastLookupPipe;
+  /// Last lookup cache.
+  private Name         lastLookupName;
+  private FsPipe < E > lastLookupPipe;
 
-  /// Channels by name - internal implementation detail.
-  /// Each channel manages per-name subscriber receptors and emission dispatch.
-  private volatile Map < Name, FsChannel < E > > channels; // Lazy
+  // ─── Subscriber state (circuit-thread only) ───
 
-  // ─────────────────────────────────────────────────────────────────────────────
-  // Subscriber state - ALL plain fields, only accessed from circuit thread
-  // ─────────────────────────────────────────────────────────────────────────────
+  private ArrayList < FsSubscriber < E > > subscribersList;
 
-  private ArrayList < FsSubscriber < E > > subscribersList; // Lazy
-
-  private static final FsSubscriber < ? >[] EMPTY_SUBSCRIBERS   = new FsSubscriber < ? >[0];
+  private static final FsSubscriber < ? >[] EMPTY_SUBSCRIBERS = new FsSubscriber < ? >[0];
   @SuppressWarnings ( "unchecked" )
-  private              FsSubscriber < E >[] subscribersSnapshot = (FsSubscriber < E >[]) EMPTY_SUBSCRIBERS;
+  private FsSubscriber < E >[] subscribersSnapshot = (FsSubscriber < E >[]) EMPTY_SUBSCRIBERS;
 
   /// Version counter — incremented on subscriber add/remove.
-  /// Channels compare against their cached version to detect rebuild need.
+  /// Named pipes compare their builtVersion against this.
   int subscriberVersion;
+
+  private int snapshotVersion = -1;
 
   private volatile boolean hasSubscribers = false;
 
-  boolean hasSubscribers () {
-    return hasSubscribers;
-  }
+  // ─── Construction ───
 
   public FsConduit ( FsSubject < ? > parent, Name name, FsCircuit circuit ) {
     this ( parent, name, circuit, Routing.PIPE );
@@ -93,24 +79,22 @@ public final class FsConduit < E > extends FsSubstrate < Conduit < E > > impleme
     return Conduit.class;
   }
 
-  Routing routing () {
-    return routing;
-  }
-
-  /// Returns the channel for the given name, or null if not yet created.
-  FsChannel < E > channel ( Name name ) {
-    Map < Name, FsChannel < E > > map = channels;
-    return map != null ? map.get ( name ) : null;
-  }
-
   @Override
   public Subject < Conduit < E > > subject () {
     return lazySubject ();
   }
 
-  // ─────────────────────────────────────────────────────────────────────────────
-  // Pool<Pipe<E>> — get(Name) returns Pipe directly
-  // ─────────────────────────────────────────────────────────────────────────────
+  FsCircuit circuit () {
+    return circuit;
+  }
+
+  /// Returns the named pipe for the given name, or null if not yet created.
+  FsPipe < E > namedPipe ( Name name ) {
+    Map < Name, FsPipe < E > > map = namedPipes;
+    return map != null ? map.get ( name ) : null;
+  }
+
+  // ─── Pool<Pipe<E>> ───
 
   @NotNull
   @Override
@@ -120,18 +104,16 @@ public final class FsConduit < E > extends FsSubstrate < Conduit < E > > impleme
     if ( last != null && name == last ) {
       return lastLookupPipe;
     }
-
-    // Check pipes map (single volatile read)
-    Map < Name, Pipe < E > > map = pipes;
+    // Check map
+    Map < Name, FsPipe < E > > map = namedPipes;
     if ( map != null ) {
-      Pipe < E > cached = map.get ( name );
+      FsPipe < E > cached = map.get ( name );
       if ( cached != null ) {
         lastLookupName = name;
         lastLookupPipe = cached;
         return cached;
       }
     }
-
     return createAndCachePipe ( name );
   }
 
@@ -141,42 +123,31 @@ public final class FsConduit < E > extends FsSubstrate < Conduit < E > > impleme
     return new FsDerivedPool <> ( this, fn );
   }
 
-  private Pipe < E > createAndCachePipe ( Name name ) {
+  private FsPipe < E > createAndCachePipe ( Name name ) {
     synchronized ( this ) {
-      Map < Name, Pipe < E > > map = pipes;
+      Map < Name, FsPipe < E > > map = namedPipes;
       if ( map == null ) {
-        map = pipes = new IdentityHashMap <> ();
+        map = namedPipes = new IdentityHashMap <> ();
       }
-      Pipe < E > cached = map.get ( name );
+      FsPipe < E > cached = map.get ( name );
       if ( cached != null ) {
+        lastLookupName = name;
+        lastLookupPipe = cached;
         return cached;
-      }
-
-      if ( channels == null ) {
-        channels = new IdentityHashMap <> ();
       }
 
       @SuppressWarnings ( "unchecked" )
       FsSubject < Pipe < E > > pipeSubject = new FsSubject <> ( name, (FsSubject < ? >) lazySubject (), Pipe.class );
 
-      // Channel is the permanent pipe receiver in the transit queue.
-      // Stable type — no JIT profile pollution from dispatch swaps.
-      // After rebuild, channel.dispatch is monomorphic (flow chain).
-      FsChannel < E > channel = new FsChannel <> ( pipeSubject, circuit, this, null );
+      // The named pipe IS the dispatch point — no separate channel.
+      FsPipe < E > pipe = new FsPipe <> ( name, circuit, pipeSubject );
+      pipe.conduit = this;
+      pipe.stem = ( routing == Routing.STEM );
 
-      @SuppressWarnings ( "unchecked" )
-      Pipe < E > pipe = circuit.createPipe ( name, pipeSubject, (Consumer < Object >) (Consumer < ? >) channel );
-
-      channel.router = (Consumer < E >) (Consumer < ? >) channel;
-
-      // Copy-on-write: publish new maps
-      Map < Name, Pipe < E > > newPipes = new IdentityHashMap <> ( pipes );
-      newPipes.put ( name, pipe );
-      Map < Name, FsChannel < E > > newChannels = new IdentityHashMap <> ( channels );
-      newChannels.put ( name, channel );
-
-      channels = newChannels;
-      pipes = newPipes;
+      // Copy-on-write
+      Map < Name, FsPipe < E > > newMap = new IdentityHashMap <> ( namedPipes );
+      newMap.put ( name, pipe );
+      namedPipes = newMap;
 
       lastLookupName = name;
       lastLookupPipe = pipe;
@@ -185,9 +156,7 @@ public final class FsConduit < E > extends FsSubstrate < Conduit < E > > impleme
     }
   }
 
-  // ─────────────────────────────────────────────────────────────────────────────
-  // Subscriber management - circuit thread only
-  // ─────────────────────────────────────────────────────────────────────────────
+  // ─── Subscriber management (circuit-thread only) ───
 
   private void addSubscriber ( FsSubscriber < E > subscriber ) {
     if ( subscribersList == null ) {
@@ -203,10 +172,8 @@ public final class FsConduit < E > extends FsSubstrate < Conduit < E > > impleme
       subscribersList.remove ( subscriber );
       hasSubscribers = !subscribersList.isEmpty ();
       subscriberVersion++;
-      }
+    }
   }
-
-  private int snapshotVersion = -1;
 
   @SuppressWarnings ( "unchecked" )
   private FsSubscriber < E >[] ensureSubscribersSnapshot () {
@@ -219,31 +186,36 @@ public final class FsConduit < E > extends FsSubstrate < Conduit < E > > impleme
     return subscribersSnapshot;
   }
 
-  void rebuildChannelPipes ( FsChannel < E > channel ) {
+  /// Rebuild a named pipe's subscriber dispatch.
+  /// Called lazily on first emission after subscriber changes (§7.6.2).
+  void rebuildPipe ( FsPipe < E > pipe ) {
     FsSubscriber < E >[] currentSubs = ensureSubscribersSnapshot ();
+
+    // Lazy init subscriber receptors map on the pipe
+    if ( pipe.subscriberReceptors == null ) {
+      pipe.subscriberReceptors = new IdentityHashMap <> ();
+    }
 
     Set < FsSubscriber < E > > activeSet = Collections.newSetFromMap ( new IdentityHashMap <> () );
     for ( FsSubscriber < E > sub : currentSubs ) {
       activeSet.add ( sub );
     }
 
-    channel.subscriberReceptors.keySet ().removeIf ( sub -> !activeSet.contains ( sub ) );
+    pipe.subscriberReceptors.keySet ().removeIf ( sub -> !activeSet.contains ( sub ) );
 
     for ( FsSubscriber < E > subscriber : currentSubs ) {
-      if ( !channel.subscriberReceptors.containsKey ( subscriber ) ) {
+      if ( !pipe.subscriberReceptors.containsKey ( subscriber ) ) {
         FsRegistrar < E > registrar = new FsRegistrar <> ();
-        subscriber.activate ( channel.subject (), registrar );
-        channel.subscriberReceptors.put ( subscriber, registrar.receptors () );
+        subscriber.activate ( pipe.subject (), registrar );
+        pipe.subscriberReceptors.put ( subscriber, registrar.receptors () );
       }
     }
 
-    channel.rebuildReceptorsArray ();
-    channel.builtVersion = subscriberVersion;
+    pipe.rebuildDispatch ();
+    pipe.builtVersion = subscriberVersion;
   }
 
-  // ─────────────────────────────────────────────────────────────────────────────
-  // Public API
-  // ─────────────────────────────────────────────────────────────────────────────
+  // ─── Source<E, Conduit<E>> ───
 
   @New
   @NotNull

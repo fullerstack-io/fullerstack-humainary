@@ -8,27 +8,18 @@ import io.humainary.substrates.api.Substrates.Registrar;
 import java.util.ArrayList;
 import java.util.List;
 
-/// A registrar that collects receptors during subscriber activation.
+/// Registrar — collects receptors during subscriber activation.
 ///
-/// Registered pipes are stored via pipe::emit. For outlet pipes (created by
-/// pipe.pipe(flow)), emit() dispatches synchronously on the circuit thread.
-/// For inlet pipes (conduit pipes), emit() enqueues to the circuit queue.
-/// Cyclic safety is provided by the flow terminal calling the inlet's emit,
-/// not by the registrar.
+/// Registered pipes execute synchronously during dispatch via accept().
+/// For flow-composed pipes, accept() runs the flow chain on the circuit
+/// thread. For named pipes, accept() does version check + dispatch —
+/// but the flow terminal handles cascade re-entry via submitTransit.
 ///
-/// The registrar enforces the @Temporal contract: register() may only
-/// be called during the subscriber callback. After the callback completes,
-/// the registrar is closed and subsequent register() calls throw
-/// IllegalStateException.
-///
-/// @param <E> the emission type
+/// Enforces the @Temporal contract: register() only valid during callback.
 @Provided
 public final class FsRegistrar < E > implements Registrar < E > {
 
-  /// Receptors registered by the subscriber.
   private final List < Receptor < ? super E > > receptors = new ArrayList <> ();
-
-  /// Temporal enforcement flag — set after callback completes.
   private boolean closed;
 
   @Override
@@ -37,28 +28,24 @@ public final class FsRegistrar < E > implements Registrar < E > {
     receptors.add ( receptor );
   }
 
-  /// Returns the registered receptors and closes this registrar.
-  public List < Receptor < ? super E > > receptors () {
-    closed = true;
-    return receptors;
-  }
-
   @Override
   @SuppressWarnings ( "unchecked" )
   public void register ( Pipe < ? super E > pipe ) {
     if ( closed ) throw new IllegalStateException ( "Registrar is closed — register() only valid during callback" );
-    // Extract the pipe's receiver for direct dispatch on the circuit thread.
-    // Inlet: receiver is the outlet (flow chain) — dispatch synchronously.
-    // Outlet: receiver is the flow chain — dispatch synchronously.
-    // Both avoid pipe.emit() which would go through ingress/transit unnecessarily.
-    if ( pipe instanceof FsPipe < ? > inlet
-      && inlet.receiver () instanceof FsCircuit.ReceptorAdapter < ? > adapter ) {
-      receptors.add ( (Receptor < ? super E >) adapter );
-    } else if ( pipe instanceof FsOutletPipe < ? > outlet
-      && outlet.receiver () instanceof FsCircuit.ReceptorAdapter < ? > adapter ) {
-      receptors.add ( (Receptor < ? super E >) adapter );
+    // Registered downstream pipes execute synchronously during dispatch (§6.3).
+    // pipe.accept() runs synchronously on the circuit thread:
+    // - Flow pipes: runs flow chain, terminal -> submitTransit for cascade
+    // - Receptor pipes: calls receptor directly
+    // - Named pipes: version check + dispatch (cyclic re-entry via transit)
+    if ( pipe instanceof FsPipe < ? > fp ) {
+      receptors.add ( v -> fp.accept ( v ) );
     } else {
       receptors.add ( pipe::emit );
     }
+  }
+
+  public List < Receptor < ? super E > > receptors () {
+    closed = true;
+    return receptors;
   }
 }

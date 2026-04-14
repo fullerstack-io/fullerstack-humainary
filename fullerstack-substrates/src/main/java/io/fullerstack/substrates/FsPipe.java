@@ -6,51 +6,87 @@ import io.humainary.substrates.api.Substrates.New;
 import io.humainary.substrates.api.Substrates.NotNull;
 import io.humainary.substrates.api.Substrates.Pipe;
 import io.humainary.substrates.api.Substrates.Provided;
+import io.humainary.substrates.api.Substrates.Receptor;
+import io.humainary.substrates.api.Substrates.Routing;
 import io.humainary.substrates.api.Substrates.Subject;
 
 import jdk.internal.vm.annotation.Stable;
 
+import java.util.ArrayList;
+import java.util.IdentityHashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.function.Consumer;
 
 import static java.util.Objects.requireNonNull;
 
-/// Inlet pipe — the external-facing pipe returned by conduit.get() and circuit.pipe().
+/// Unified pipe implementation — the single pipe class for all roles.
 ///
-/// emit() always enqueues to ingress (no thread check). External threads
-/// call this to submit emissions to the circuit.
+/// The pipe's role depends on how it was created:
+/// - **Conduit pipe** (`conduit.get(name)`): `emit()` enqueues to ingress.
+///   `accept()` does version check + dispatches to registered receptors.
+/// - **Flow pipe** (`pipe.pipe(flow)`): `emit()` enqueues to ingress.
+///   `accept()` runs the flow chain synchronously on the circuit thread.
+/// - **Receptor pipe** (`circuit.pipe(receptor)`): `emit()` enqueues to ingress.
+///   `accept()` calls the receptor directly.
 ///
-/// Each inlet has a paired transit pipe that shares the same receiver.
-/// pipe.pipe(flow) materialises the flow terminal to call the transit pipe,
-/// enabling zero-check cascade re-entry on the circuit thread.
+/// The transit queue stores the pipe itself as the `Consumer<Object>`.
+/// This makes the drain loop monomorphic — always `FsPipe.accept()`.
 @Provided
-public final class FsPipe < E > implements Pipe < E > {
+public final class FsPipe < E > implements Pipe < E >, Consumer < Object > {
 
-  @Stable private final Consumer < Object > receiver;
-  @Stable private final FsCircuit           circuit;
-  @Stable private final Name                name;
-  @Stable private final FsSubject < ? >     parentSubject;
+  // ─── Identity (cold, @Stable) ───
+  @Stable private final Name          name;
+  @Stable private final FsCircuit     circuit;
+  @Stable private final FsSubject < ? > parentSubject;
 
-  /// Paired transit pipe — emit() always submitTransit. No checks.
-  /// Used by flow terminals for circuit-thread re-entry.
-  @Stable final FsTransitPipe < E > transitPipe;
+  // ─── Flow chain (for flow-composed pipes, null otherwise) ───
+  @Stable private final Consumer < Object > flowChain;
 
+  // ─── Named pipe dispatch (hot path, circuit-thread only) ───
+  // Only used when this pipe is a conduit's named pipe (conduit != null).
+  @Stable FsConduit < E > conduit;
+
+  Receptor < ? super E > dispatch;
+  int                     builtVersion = -1;
+  boolean                 stem;
+
+  // Subscriber bookkeeping — lazy, circuit-thread only
+  Map < FsSubscriber < E >, List < Receptor < ? super E > > > subscriberReceptors;
+
+  // ─── Subject (lazy) ───
   private volatile Subject < Pipe < E > > subject;
 
-  FsPipe (
-    Name name,
-    FsCircuit circuit,
-    FsSubject < ? > parentSubject,
-    Consumer < Object > receiver
-  ) {
-    this.receiver = receiver;
-    this.circuit = circuit;
+  /// Named pipe constructor — for conduit pipes.
+  FsPipe ( Name name, FsCircuit circuit, FsSubject < ? > parentSubject ) {
     this.name = name;
+    this.circuit = circuit;
     this.parentSubject = parentSubject;
-    this.transitPipe = new FsTransitPipe <> ( receiver, circuit );
+    this.flowChain = null;
   }
 
+  /// Receptor pipe constructor — for circuit.pipe(receptor).
+  FsPipe ( Name name, FsCircuit circuit, FsSubject < ? > parentSubject, Receptor < ? super E > receptor ) {
+    this.name = name;
+    this.circuit = circuit;
+    this.parentSubject = parentSubject;
+    this.flowChain = null;
+    this.dispatch = receptor;
+  }
+
+  /// Flow pipe constructor — for pipe.pipe(flow).
+  @SuppressWarnings ( "unchecked" )
+  private FsPipe ( Name name, FsCircuit circuit, FsSubject < ? > parentSubject, Consumer < Object > flowChain ) {
+    this.name = name;
+    this.circuit = circuit;
+    this.parentSubject = parentSubject;
+    this.flowChain = flowChain;
+  }
+
+  // ─── Identity ───
+
   @Override
-  public final Subject < Pipe < E > > subject () {
+  public Subject < Pipe < E > > subject () {
     Subject < Pipe < E > > s = subject;
     if ( s == null ) {
       Name actualName = ( name != null ) ? name : parentSubject.name ();
@@ -60,20 +96,66 @@ public final class FsPipe < E > implements Pipe < E > {
     return s;
   }
 
-  final Name name () {
-    return name;
+  final Name name () { return name; }
+
+  final FsCircuit circuit () { return circuit; }
+
+  // ─── Emit (entry path — called by external code) ───
+
+  /// Enqueues to ingress. Called from any thread.
+  @Override
+  public void emit ( @NotNull E emission ) {
+    requireNonNull ( emission, "emission must not be null" );
+    if ( circuit.closed ) return;
+    circuit.submitIngress ( this, emission );
   }
 
-  final FsCircuit circuit () {
-    return circuit;
+  // ─── Accept (hot path — called by queue drain loop) ───
+
+  /// Dispatches the emission. Called by the circuit thread when
+  /// dequeuing from ingress or transit. Monomorphic call site —
+  /// always FsPipe.accept().
+  @Override
+  @SuppressWarnings ( "unchecked" )
+  public void accept ( Object o ) {
+    // Flow-composed pipe: run the flow chain synchronously
+    if ( flowChain != null ) {
+      flowChain.accept ( o );
+      return;
+    }
+    // Named conduit pipe: version check + dispatch
+    if ( conduit != null && builtVersion != conduit.subscriberVersion ) {
+      conduit.rebuildPipe ( this );
+    }
+    Receptor < ? super E > d = dispatch;
+    if ( d != null ) {
+      d.receive ( (E) o );
+    }
+    // STEM routing: propagate upward through name hierarchy
+    if ( stem ) {
+      dispatchStem ( (E) o );
+    }
   }
 
-  final Consumer < Object > receiver () {
-    return receiver;
+  /// STEM dispatch — propagate to ancestor named pipes.
+  private void dispatchStem ( E emission ) {
+    Name n = name;
+    while ( n.enclosure ().isPresent () ) {
+      n = n.enclosure ().get ();
+      FsPipe < E > ancestor = conduit.namedPipe ( n );
+      if ( ancestor != null ) {
+        // Dispatch to ancestor's receptors only (no further STEM propagation)
+        if ( ancestor.conduit != null && ancestor.builtVersion != conduit.subscriberVersion ) {
+          conduit.rebuildPipe ( ancestor );
+        }
+        Receptor < ? super E > d = ancestor.dispatch;
+        if ( d != null ) d.receive ( emission );
+      }
+    }
   }
 
-  /// Creates an outlet pipe with flow processing.
-  /// Flow terminal calls the paired transit pipe (submitTransit, no checks).
+  // ─── Pipe composition ───
+
   @New
   @NotNull
   @Override
@@ -81,23 +163,41 @@ public final class FsPipe < E > implements Pipe < E > {
   public < I > Pipe < I > pipe ( @NotNull Flow < I, E > flow ) {
     requireNonNull ( flow, "flow must not be null" );
     FsFlow < I, E > fsFlow = (FsFlow < I, E >) flow;
-    // Flow terminal targets the transit pipe — direct submitTransit,
-    // no null/closed/thread checks. Safe because the flow only runs
-    // on the circuit thread (dispatched there via channel rebuild).
-    FsTransitPipe < E > tp = transitPipe;
-    Consumer < I > chain = fsFlow.materialise ( v -> tp.emit ( v ) );
-    // Outlet wraps the flow chain — runs synchronously on circuit thread
-    Consumer < Object > outletReceiver = (Consumer < Object >) (Consumer < ? >) new FsCircuit.ReceptorAdapter <> ( chain::accept );
-    // Return an inlet wrapping the outlet — external callers hit ingress,
-    // circuit dequeues and calls the outlet on the circuit thread.
-    return new FsPipe <> ( name, circuit, parentSubject, outletReceiver );
+    // Flow terminal: for named conduit pipes, submit directly to transit
+    // with the named pipe as the receiver (cascade safety, no checks).
+    // For non-conduit pipes, fall back to emit() which routes through ingress.
+    FsPipe < E > target = this;
+    FsCircuit c = circuit;
+    Consumer < I > chain;
+    if ( conduit != null ) {
+      chain = fsFlow.materialise ( v -> c.submitTransit ( target, v ) );
+    } else {
+      chain = fsFlow.materialise ( v -> target.emit ( v ) );
+    }
+    return new FsPipe <> ( name, circuit, parentSubject, (Consumer < Object >) (Consumer < ? >) chain );
   }
 
-  /// Inlet emit — always enqueues to ingress. No thread check.
-  @Override
-  public final void emit ( @NotNull final E emission ) {
-    requireNonNull ( emission, "emission must not be null" );
-    if ( circuit.closed ) return;
-    circuit.submitIngress ( receiver, emission );
+  // ─── Subscriber dispatch rebuild ───
+
+  @SuppressWarnings ( "unchecked" )
+  void rebuildDispatch () {
+    if ( subscriberReceptors == null || subscriberReceptors.isEmpty () ) {
+      dispatch = null;
+      return;
+    }
+    List < Receptor < ? super E > > all = new ArrayList <> ();
+    for ( List < Receptor < ? super E > > list : subscriberReceptors.values () ) {
+      all.addAll ( list );
+    }
+    if ( all.isEmpty () ) {
+      dispatch = null;
+    } else if ( all.size () == 1 ) {
+      dispatch = all.getFirst ();
+    } else {
+      Receptor < ? super E >[] arr = all.toArray ( new Receptor[0] );
+      dispatch = v -> {
+        for ( int i = 0, len = arr.length; i < len; i++ ) arr[i].receive ( v );
+      };
+    }
   }
 }
