@@ -158,10 +158,14 @@ public final class IngressQueue {
   /**
    * Peek for ingress work. Returns non-null if a committed slot exists.
    */
+  /// Peek at the next ingress slot. Returns non-null if work is available.
+  /// Only checks the current chunk — if idx has reached capacity, returns
+  /// null and lets drainBatch handle the chunk advance. This avoids an
+  /// unstable_if branch that causes workerLoop deoptimisation.
   @jdk.internal.vm.annotation.ForceInline
   public Object peek () {
     int idx = headIndex;
-    if ( idx >= QChunk.CAPACITY ) return headChunk.next;
+    if ( idx >= QChunk.CAPACITY ) return null;
     return QChunk.SLOTS.getAcquire ( headChunk.slots, idx << 1 );
   }
 
