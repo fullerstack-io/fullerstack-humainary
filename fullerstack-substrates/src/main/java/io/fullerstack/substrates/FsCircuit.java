@@ -264,9 +264,9 @@ public final class FsCircuit implements Circuit {
   // Pipe Factory Helper
   // ─────────────────────────────────────────────────────────────────────────────
 
-  /// Creates a receptor pipe — for circuit.pipe(receptor).
-  private < E > FsPipe < E > newReceptorPipe ( Name name, Receptor < ? super E > receptor ) {
-    return new FsPipe <> ( name, this, (FsSubject < ? >) subject, receptor );
+  /// Creates a pipe wrapping a receptor adapter.
+  private < E > FsPipe < E > newPipe ( Receptor < ? super E > receptor ) {
+    return new FsPipe <> ( new ReceptorAdapter <> ( receptor ), this );
   }
 
 
@@ -417,7 +417,7 @@ public final class FsCircuit implements Circuit {
       return target;
     }
     // Cross-circuit: wrap in a receptor pipe that calls target.emit()
-    return newReceptorPipe ( null, target::emit );
+    return newPipe ( target::emit );
   }
 
   @New
@@ -425,7 +425,7 @@ public final class FsCircuit implements Circuit {
   @Override
   public < E > Pipe < E > pipe ( @NotNull Receptor < ? super E > receptor ) {
     requireNonNull ( receptor );
-    return newReceptorPipe ( null, receptor );
+    return newPipe ( receptor );
   }
 
   // ===================================================================================

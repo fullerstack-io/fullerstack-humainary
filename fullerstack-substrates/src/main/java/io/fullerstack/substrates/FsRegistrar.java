@@ -10,10 +10,9 @@ import java.util.List;
 
 /// Registrar — collects receptors during subscriber activation.
 ///
-/// Registered pipes execute synchronously during dispatch via accept().
-/// For flow-composed pipes, accept() runs the flow chain on the circuit
-/// thread. For named pipes, accept() does version check + dispatch —
-/// but the flow terminal handles cascade re-entry via submitTransit.
+/// Registered pipes execute on the circuit thread during dispatch.
+/// pipe::emit is used as the receptor — the pipe's emit() routes
+/// correctly (transit for circuit thread, ingress for external).
 ///
 /// Enforces the @Temporal contract: register() only valid during callback.
 @Provided
@@ -29,19 +28,9 @@ public final class FsRegistrar < E > implements Registrar < E > {
   }
 
   @Override
-  @SuppressWarnings ( "unchecked" )
   public void register ( Pipe < ? super E > pipe ) {
     if ( closed ) throw new IllegalStateException ( "Registrar is closed — register() only valid during callback" );
-    // Registered downstream pipes execute synchronously during dispatch (§6.3).
-    // pipe.accept() runs synchronously on the circuit thread:
-    // - Flow pipes: runs flow chain, terminal -> submitTransit for cascade
-    // - Receptor pipes: calls receptor directly
-    // - Named pipes: version check + dispatch (cyclic re-entry via transit)
-    if ( pipe instanceof FsPipe < ? > fp ) {
-      receptors.add ( v -> fp.accept ( v ) );
-    } else {
-      receptors.add ( pipe::emit );
-    }
+    receptors.add ( pipe::emit );
   }
 
   public List < Receptor < ? super E > > receptors () {

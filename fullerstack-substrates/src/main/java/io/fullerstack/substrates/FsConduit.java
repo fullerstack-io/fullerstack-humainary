@@ -16,53 +16,31 @@ import io.humainary.substrates.api.Substrates.Subscriber;
 import io.humainary.substrates.api.Substrates.Subscription;
 import io.humainary.substrates.api.Substrates.Tap;
 
-import java.util.ArrayList;
-import java.util.Collections;
 import java.util.IdentityHashMap;
 import java.util.Map;
-import java.util.Set;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
 import static io.humainary.substrates.api.Substrates.cortex;
 import static java.util.Objects.requireNonNull;
 
-/// Conduit — pools named pipes and manages subscriptions.
+/// Conduit — pools named channels and manages subscriptions.
 ///
-/// Named pipes are FsPipe instances stored directly by name.
-/// No separate channel object — the pipe IS the named dispatch point.
-/// Version-tracked lazy rebuild per the spec (§7.6.2).
+/// Pool side: maps names to channels. conduit.get(name) returns channel.pipe.
+/// Source side: delegates to Hub for subscriber management.
 @Provided
 public final class FsConduit < E > extends FsSubstrate < Conduit < E > > implements Conduit < E > {
 
-  private final FsCircuit circuit;
-  private final Routing   routing;
+  private final FsCircuit  circuit;
+  private final Routing    routing;
+  final FsHub < E >        hub;
 
-  /// Named pipes by name — the pipe IS the dispatch point.
-  /// Copy-on-write for thread-safe reads from caller contexts.
-  private volatile Map < Name, FsPipe < E > > namedPipes;
+  /// Channels by name — copy-on-write for thread-safe reads.
+  private volatile Map < Name, FsChannel < E > > channels;
 
   /// Last lookup cache.
-  private Name         lastLookupName;
-  private FsPipe < E > lastLookupPipe;
-
-  // ─── Subscriber state (circuit-thread only) ───
-
-  private ArrayList < FsSubscriber < E > > subscribersList;
-
-  private static final FsSubscriber < ? >[] EMPTY_SUBSCRIBERS = new FsSubscriber < ? >[0];
-  @SuppressWarnings ( "unchecked" )
-  private FsSubscriber < E >[] subscribersSnapshot = (FsSubscriber < E >[]) EMPTY_SUBSCRIBERS;
-
-  /// Version counter — incremented on subscriber add/remove.
-  /// Named pipes compare their builtVersion against this.
-  int subscriberVersion;
-
-  private int snapshotVersion = -1;
-
-  private volatile boolean hasSubscribers = false;
-
-  // ─── Construction ───
+  private Name              lastLookupName;
+  private FsChannel < E >   lastLookupChannel;
 
   public FsConduit ( FsSubject < ? > parent, Name name, FsCircuit circuit ) {
     this ( parent, name, circuit, Routing.PIPE );
@@ -72,6 +50,7 @@ public final class FsConduit < E > extends FsSubstrate < Conduit < E > > impleme
     super ( parent, name );
     this.circuit = circuit;
     this.routing = routing;
+    this.hub = new FsHub <> ();
   }
 
   @Override
@@ -84,13 +63,9 @@ public final class FsConduit < E > extends FsSubstrate < Conduit < E > > impleme
     return lazySubject ();
   }
 
-  FsCircuit circuit () {
-    return circuit;
-  }
-
-  /// Returns the named pipe for the given name, or null if not yet created.
-  FsPipe < E > namedPipe ( Name name ) {
-    Map < Name, FsPipe < E > > map = namedPipes;
+  /// Returns the channel for the given name, or null if not yet created.
+  FsChannel < E > channel ( Name name ) {
+    Map < Name, FsChannel < E > > map = channels;
     return map != null ? map.get ( name ) : null;
   }
 
@@ -99,22 +74,20 @@ public final class FsConduit < E > extends FsSubstrate < Conduit < E > > impleme
   @NotNull
   @Override
   public Pipe < E > get ( @NotNull Name name ) {
-    // Fast path: same name as last lookup
     Name last = lastLookupName;
     if ( last != null && name == last ) {
-      return lastLookupPipe;
+      return lastLookupChannel.pipe;
     }
-    // Check map
-    Map < Name, FsPipe < E > > map = namedPipes;
+    Map < Name, FsChannel < E > > map = channels;
     if ( map != null ) {
-      FsPipe < E > cached = map.get ( name );
+      FsChannel < E > cached = map.get ( name );
       if ( cached != null ) {
         lastLookupName = name;
-        lastLookupPipe = cached;
-        return cached;
+        lastLookupChannel = cached;
+        return cached.pipe;
       }
     }
-    return createAndCachePipe ( name );
+    return createChannel ( name ).pipe;
   }
 
   @NotNull
@@ -123,96 +96,32 @@ public final class FsConduit < E > extends FsSubstrate < Conduit < E > > impleme
     return new FsDerivedPool <> ( this, fn );
   }
 
-  private FsPipe < E > createAndCachePipe ( Name name ) {
+  @SuppressWarnings ( "unchecked" )
+  private FsChannel < E > createChannel ( Name name ) {
     synchronized ( this ) {
-      Map < Name, FsPipe < E > > map = namedPipes;
-      if ( map == null ) {
-        map = namedPipes = new IdentityHashMap <> ();
+      if ( channels == null ) {
+        channels = new IdentityHashMap <> ();
       }
-      FsPipe < E > cached = map.get ( name );
+      FsChannel < E > cached = channels.get ( name );
       if ( cached != null ) {
         lastLookupName = name;
-        lastLookupPipe = cached;
+        lastLookupChannel = cached;
         return cached;
       }
 
-      @SuppressWarnings ( "unchecked" )
       FsSubject < Pipe < E > > pipeSubject = new FsSubject <> ( name, (FsSubject < ? >) lazySubject (), Pipe.class );
 
-      // The named pipe IS the dispatch point — no separate channel.
-      FsPipe < E > pipe = new FsPipe <> ( name, circuit, pipeSubject );
-      pipe.conduit = this;
-      pipe.stem = ( routing == Routing.STEM );
+      FsChannel < E > channel = new FsChannel <> ( pipeSubject, circuit, hub, this, routing );
 
-      // Copy-on-write
-      Map < Name, FsPipe < E > > newMap = new IdentityHashMap <> ( namedPipes );
-      newMap.put ( name, pipe );
-      namedPipes = newMap;
+      Map < Name, FsChannel < E > > newMap = new IdentityHashMap <> ( channels );
+      newMap.put ( name, channel );
+      channels = newMap;
 
       lastLookupName = name;
-      lastLookupPipe = pipe;
+      lastLookupChannel = channel;
 
-      return pipe;
+      return channel;
     }
-  }
-
-  // ─── Subscriber management (circuit-thread only) ───
-
-  private void addSubscriber ( FsSubscriber < E > subscriber ) {
-    if ( subscribersList == null ) {
-      subscribersList = new ArrayList <> ();
-    }
-    subscribersList.add ( subscriber );
-    hasSubscribers = true;
-    subscriberVersion++;
-  }
-
-  private void removeSubscriber ( FsSubscriber < E > subscriber ) {
-    if ( subscribersList != null ) {
-      subscribersList.remove ( subscriber );
-      hasSubscribers = !subscribersList.isEmpty ();
-      subscriberVersion++;
-    }
-  }
-
-  @SuppressWarnings ( "unchecked" )
-  private FsSubscriber < E >[] ensureSubscribersSnapshot () {
-    if ( snapshotVersion != subscriberVersion ) {
-      subscribersSnapshot = ( subscribersList == null || subscribersList.isEmpty () )
-                            ? (FsSubscriber < E >[]) EMPTY_SUBSCRIBERS
-                            : subscribersList.toArray ( new FsSubscriber[0] );
-      snapshotVersion = subscriberVersion;
-    }
-    return subscribersSnapshot;
-  }
-
-  /// Rebuild a named pipe's subscriber dispatch.
-  /// Called lazily on first emission after subscriber changes (§7.6.2).
-  void rebuildPipe ( FsPipe < E > pipe ) {
-    FsSubscriber < E >[] currentSubs = ensureSubscribersSnapshot ();
-
-    // Lazy init subscriber receptors map on the pipe
-    if ( pipe.subscriberReceptors == null ) {
-      pipe.subscriberReceptors = new IdentityHashMap <> ();
-    }
-
-    Set < FsSubscriber < E > > activeSet = Collections.newSetFromMap ( new IdentityHashMap <> () );
-    for ( FsSubscriber < E > sub : currentSubs ) {
-      activeSet.add ( sub );
-    }
-
-    pipe.subscriberReceptors.keySet ().removeIf ( sub -> !activeSet.contains ( sub ) );
-
-    for ( FsSubscriber < E > subscriber : currentSubs ) {
-      if ( !pipe.subscriberReceptors.containsKey ( subscriber ) ) {
-        FsRegistrar < E > registrar = new FsRegistrar <> ();
-        subscriber.activate ( pipe.subject (), registrar );
-        pipe.subscriberReceptors.put ( subscriber, registrar.receptors () );
-      }
-    }
-
-    pipe.rebuildDispatch ();
-    pipe.builtVersion = subscriberVersion;
   }
 
   // ─── Source<E, Conduit<E>> ───
@@ -238,21 +147,21 @@ public final class FsConduit < E > extends FsSubstrate < Conduit < E > > impleme
 
     fs.trackSubscription ( subscription );
 
-    circuit.submitIngress ( new FsCircuit.ReceptorAdapter < Object > ( _ -> addSubscriber ( fs ) ), null );
+    circuit.submitIngress ( new FsCircuit.ReceptorAdapter < Object > ( _ -> hub.addSubscriber ( fs ) ), null );
 
     return subscription;
   }
 
   private void enqueueUnsubscribe ( FsSubscriber < E > subscriber ) {
-    circuit.submitIngress ( new FsCircuit.ReceptorAdapter < Object > ( _ -> removeSubscriber ( subscriber ) ), null );
+    circuit.submitIngress ( new FsCircuit.ReceptorAdapter < Object > ( _ -> hub.removeSubscriber ( subscriber ) ), null );
   }
 
   @New
   @NotNull
   @Override
   public Reservoir < E > reservoir () {
-    FsSubject < Reservoir < E > > resSubject = new FsSubject <> ( cortex ().name ( "reservoir" ), (FsSubject < ? >) lazySubject (),
-      Reservoir.class );
+    FsSubject < Reservoir < E > > resSubject = new FsSubject <> ( cortex ().name ( "reservoir" ),
+      (FsSubject < ? >) lazySubject (), Reservoir.class );
     FsReservoir < E > reservoir = new FsReservoir <> ( resSubject );
 
     FsSubscriber < E > sub = new FsSubscriber <> (
@@ -270,5 +179,4 @@ public final class FsConduit < E > extends FsSubstrate < Conduit < E > > impleme
     requireNonNull ( fn, "fn must not be null" );
     return new FsTap <> ( (FsSubject < ? >) lazySubject (), cortex ().name ( "tap" ), this, circuit, fn );
   }
-
 }
