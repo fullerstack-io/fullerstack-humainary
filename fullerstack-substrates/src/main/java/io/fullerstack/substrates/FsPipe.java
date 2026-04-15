@@ -95,9 +95,12 @@ public final class FsPipe < E > implements Pipe < E > {
     FsCircuit c = circuit;
     Consumer < I > chain;
     if ( target instanceof FsChannel ) {
+      // Conduit pipe: flow terminal submits to transit for cascade safety
       chain = fsFlow.materialise ( v -> c.submitTransit ( target, v ) );
     } else {
-      chain = fsFlow.materialise ( v -> emit ( (E) v ) );
+      // Non-conduit pipe: flow terminal delivers to receiver synchronously
+      // (flow runs on circuit thread after dequeue — no need to re-enqueue)
+      chain = fsFlow.materialise ( v -> target.accept ( v ) );
     }
     // The flow receiver: runs the flow chain on the circuit thread.
     Consumer < Object > flowReceiver = (Consumer < Object >) (Consumer < ? >) chain;

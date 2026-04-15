@@ -39,9 +39,11 @@ final class FsChannel < E > implements Receptor < E >, Consumer < Object > {
   /// The upstream pipe — what conduit.get(name) returns.
   final FsPipe < E > pipe;
 
-  /// Downstream receptor dispatch — built on rebuild.
-  Receptor < ? super E >[] receptors;
-  Receptor < ? super E >   singleReceptor;
+  /// Downstream dispatch — a single Receptor that handles all cases.
+  /// For one subscriber: the receptor directly.
+  /// For multiple: a composed receptor that loops.
+  /// Null before first rebuild.
+  Receptor < ? super E > dispatch;
 
   /// Version this channel was last built at.
   int builtVersion = -1;
@@ -79,25 +81,12 @@ final class FsChannel < E > implements Receptor < E >, Consumer < Object > {
   // ─── Dispatch (hot path) ───
 
   @Override
+  @jdk.internal.vm.annotation.ForceInline
   public void receive ( E emission ) {
-    if ( builtVersion != hub.subscriberVersion ) {
-      rebuild ();
-    }
-    // Single-receptor fast path (common case: one subscriber, one registration)
-    Receptor < ? super E > single = singleReceptor;
-    if ( single != null ) {
-      single.receive ( emission );
-    } else {
-      Receptor < ? super E >[] r = receptors;
-      if ( r != null ) {
-        for ( int i = 0, len = r.length; i < len; i++ ) {
-          r[i].receive ( emission );
-        }
-      }
-    }
-    if ( stem ) {
-      dispatchStem ( emission );
-    }
+    if ( builtVersion != hub.subscriberVersion ) rebuild ();
+    Receptor < ? super E > d = dispatch;
+    if ( d != null ) d.receive ( emission );
+    if ( stem ) dispatchStem ( emission );
   }
 
   /// STEM — propagate to ancestor channels.
@@ -107,20 +96,9 @@ final class FsChannel < E > implements Receptor < E >, Consumer < Object > {
       n = n.enclosure ().get ();
       FsChannel < E > ancestor = conduit.channel ( n );
       if ( ancestor != null ) {
-        if ( ancestor.builtVersion != hub.subscriberVersion ) {
-          ancestor.rebuild ();
-        }
-        Receptor < ? super E > single = ancestor.singleReceptor;
-        if ( single != null ) {
-          single.receive ( emission );
-        } else {
-          Receptor < ? super E >[] r = ancestor.receptors;
-          if ( r != null ) {
-            for ( int i = 0, len = r.length; i < len; i++ ) {
-              r[i].receive ( emission );
-            }
-          }
-        }
+        if ( ancestor.builtVersion != hub.subscriberVersion ) ancestor.rebuild ();
+        Receptor < ? super E > d = ancestor.dispatch;
+        if ( d != null ) d.receive ( emission );
       }
     }
   }
@@ -150,21 +128,22 @@ final class FsChannel < E > implements Receptor < E >, Consumer < Object > {
       }
     }
 
-    // Build dispatch: single-receptor fast path or array
+    // Build dispatch receptor
     List < Receptor < ? super E > > all = new ArrayList <> ();
     for ( List < Receptor < ? super E > > list : subscriberReceptors.values () ) {
       all.addAll ( list );
     }
 
     if ( all.isEmpty () ) {
-      singleReceptor = null;
-      receptors = null;
+      dispatch = null;
     } else if ( all.size () == 1 ) {
-      singleReceptor = all.getFirst ();
-      receptors = null;
+      dispatch = all.getFirst ();
     } else {
-      singleReceptor = null;
-      receptors = all.toArray ( new Receptor[0] );
+      @SuppressWarnings ( "unchecked" )
+      Receptor < ? super E >[] arr = all.toArray ( new Receptor[0] );
+      dispatch = v -> {
+        for ( int i = 0, len = arr.length; i < len; i++ ) arr[i].receive ( v );
+      };
     }
 
     builtVersion = hub.subscriberVersion;
