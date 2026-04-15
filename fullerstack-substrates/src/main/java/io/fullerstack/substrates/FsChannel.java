@@ -18,16 +18,16 @@ import java.util.function.Consumer;
 ///
 /// Cortex → Circuit → Conduit → **Channel** → Pipe → Receptor
 ///
-/// Implements Receptor<E> and Consumer<Object> — it IS what the
-/// transit/ingress queue stores. On dequeue, the circuit calls
-/// channel.accept(v) which routes to receive(v).
+/// The channel has two roles:
+/// - **Ingress receiver**: implements Consumer<Object>. Stored in the
+///   ingress queue. On dequeue, checks version and dispatches.
+/// - **Dispatch builder**: after rebuild, sets the dispatch Consumer
+///   which is used directly on the transit hot path — no channel,
+///   no version check, no wrappers.
 ///
-/// receive(v) checks the hub's subscriber version. If stale, rebuilds
-/// the downstream receptor list by invoking subscriber callbacks.
-/// After rebuild (or if version matches), dispatches to receptors.
-///
-/// The channel creates and owns its pipe — the upstream entry point
-/// that users hold. The pipe enqueues [channel, v] to the circuit.
+/// The dispatch is Consumer<Object> throughout — same type as the
+/// transit queue, the flow chain, and the registrar's stored receivers.
+/// No lambda wrappers on the hot path.
 final class FsChannel < E > implements Receptor < E >, Consumer < Object > {
 
   private final Subject < Pipe < E > > subject;
@@ -39,22 +39,18 @@ final class FsChannel < E > implements Receptor < E >, Consumer < Object > {
   /// The upstream pipe — what conduit.get(name) returns.
   final FsPipe < E > pipe;
 
-  /// Downstream dispatch — a single Receptor that handles all cases.
-  /// For one subscriber: the receptor directly.
-  /// For multiple: a composed receptor that loops.
-  /// Null before first rebuild.
-  Receptor < ? super E > dispatch;
-
-  /// Transit-compatible dispatch — same as dispatch but typed as Consumer<Object>.
-  /// Used by flow terminals for cascade re-entry: submitTransit(transitDispatch, v).
-  /// Bypasses the channel entirely on the transit hot path — no version check.
-  Consumer < Object > transitDispatch;
+  /// Downstream dispatch — Consumer<Object> for zero-wrapper hot path.
+  /// For one subscriber: the flow receiver directly.
+  /// For multiple: a composed consumer that loops.
+  /// This IS what transit stores for cascade re-entry. No transitDispatch
+  /// wrapper needed — dispatch IS transit-compatible.
+  Consumer < Object > dispatch;
 
   /// Version this channel was last built at.
   int builtVersion = -1;
 
   /// Per-subscriber receptor registrations — lazy, circuit-thread only.
-  Map < FsSubscriber < E >, List < Receptor < ? super E > > > subscriberReceptors;
+  Map < FsSubscriber < E >, List < Consumer < Object > > > subscriberReceptors;
 
   FsChannel (
     Subject < Pipe < E > > subject,
@@ -75,7 +71,7 @@ final class FsChannel < E > implements Receptor < E >, Consumer < Object > {
     return subject;
   }
 
-  // ─── Queue receiver ───
+  // ─── Ingress receiver ───
 
   @Override
   @SuppressWarnings ( "unchecked" )
@@ -83,14 +79,14 @@ final class FsChannel < E > implements Receptor < E >, Consumer < Object > {
     receive ( (E) o );
   }
 
-  // ─── Dispatch (hot path) ───
+  // ─── Dispatch (ingress path — version check) ───
 
   @Override
   @jdk.internal.vm.annotation.ForceInline
   public void receive ( E emission ) {
     if ( builtVersion != hub.subscriberVersion ) rebuild ();
-    Receptor < ? super E > d = dispatch;
-    if ( d != null ) d.receive ( emission );
+    Consumer < Object > d = dispatch;
+    if ( d != null ) d.accept ( emission );
     if ( stem ) dispatchStem ( emission );
   }
 
@@ -102,8 +98,8 @@ final class FsChannel < E > implements Receptor < E >, Consumer < Object > {
       FsChannel < E > ancestor = conduit.channel ( n );
       if ( ancestor != null ) {
         if ( ancestor.builtVersion != hub.subscriberVersion ) ancestor.rebuild ();
-        Receptor < ? super E > d = ancestor.dispatch;
-        if ( d != null ) d.receive ( emission );
+        Consumer < Object > d = ancestor.dispatch;
+        if ( d != null ) d.accept ( emission );
       }
     }
   }
@@ -129,13 +125,13 @@ final class FsChannel < E > implements Receptor < E >, Consumer < Object > {
       if ( !subscriberReceptors.containsKey ( subscriber ) ) {
         FsRegistrar < E > registrar = new FsRegistrar <> ();
         subscriber.activate ( subject, registrar );
-        subscriberReceptors.put ( subscriber, registrar.receptors () );
+        subscriberReceptors.put ( subscriber, registrar.consumers () );
       }
     }
 
-    // Build dispatch receptor
-    List < Receptor < ? super E > > all = new ArrayList <> ();
-    for ( List < Receptor < ? super E > > list : subscriberReceptors.values () ) {
+    // Build dispatch — Consumer<Object> throughout, no wrappers
+    List < Consumer < Object > > all = new ArrayList <> ();
+    for ( List < Consumer < Object > > list : subscriberReceptors.values () ) {
       all.addAll ( list );
     }
 
@@ -144,20 +140,10 @@ final class FsChannel < E > implements Receptor < E >, Consumer < Object > {
     } else if ( all.size () == 1 ) {
       dispatch = all.getFirst ();
     } else {
-      @SuppressWarnings ( "unchecked" )
-      Receptor < ? super E >[] arr = all.toArray ( new Receptor[0] );
+      Consumer < Object >[] arr = all.toArray ( new Consumer[0] );
       dispatch = v -> {
-        for ( int i = 0, len = arr.length; i < len; i++ ) arr[i].receive ( v );
+        for ( int i = 0, len = arr.length; i < len; i++ ) arr[i].accept ( v );
       };
-    }
-
-    // Build transit dispatch — wraps dispatch as Consumer<Object> for transit queue.
-    // This is what cascade re-entry submits. Bypasses channel entirely.
-    Receptor < ? super E > d = dispatch;
-    if ( d != null ) {
-      transitDispatch = o -> d.receive ( (E) o );
-    } else {
-      transitDispatch = null;
     }
 
     builtVersion = hub.subscriberVersion;

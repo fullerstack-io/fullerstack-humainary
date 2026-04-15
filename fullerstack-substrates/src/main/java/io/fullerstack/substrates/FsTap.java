@@ -39,9 +39,9 @@ final class FsTap < T > implements Tap < T > {
   /// Lightweight per-name dispatch for tap channels.
   static final class TapChannel < T > {
     final Subject < Pipe < T > > subject;
-    Receptor < ? super T >       dispatch;
+    Consumer < Object >          dispatch;
     int                          builtVersion = -1;
-    Map < FsSubscriber < T >, List < Receptor < ? super T > > > subscriberReceptors;
+    Map < FsSubscriber < T >, List < Consumer < Object > > > subscriberReceptors;
 
     TapChannel ( Subject < Pipe < T > > subject ) {
       this.subject = subject;
@@ -80,8 +80,8 @@ final class FsTap < T > implements Tap < T > {
             if ( tapChannel.builtVersion != version ) {
               rebuildTapChannel ( tapChannel );
             }
-            Receptor < ? super T > d = tapChannel.dispatch;
-            if ( d != null ) d.receive ( emission );
+            Consumer < Object > d = tapChannel.dispatch;
+            if ( d != null ) d.accept ( emission );
           }
 
           @Override
@@ -157,12 +157,12 @@ final class FsTap < T > implements Tap < T > {
       if ( !ch.subscriberReceptors.containsKey ( subscriber ) ) {
         FsRegistrar < T > registrar = new FsRegistrar <> ();
         subscriber.activate ( ch.subject, registrar );
-        ch.subscriberReceptors.put ( subscriber, registrar.receptors () );
+        ch.subscriberReceptors.put ( subscriber, registrar.consumers () );
       }
     }
 
-    List < Receptor < ? super T > > all = new ArrayList <> ();
-    for ( List < Receptor < ? super T > > list : ch.subscriberReceptors.values () ) {
+    List < Consumer < Object > > all = new ArrayList <> ();
+    for ( List < Consumer < Object > > list : ch.subscriberReceptors.values () ) {
       all.addAll ( list );
     }
     if ( all.isEmpty () ) {
@@ -170,9 +170,9 @@ final class FsTap < T > implements Tap < T > {
     } else if ( all.size () == 1 ) {
       ch.dispatch = all.getFirst ();
     } else {
-      Receptor < ? super T >[] arr = all.toArray ( new Receptor[0] );
+      Consumer < Object >[] arr = all.toArray ( new Consumer[0] );
       ch.dispatch = v -> {
-        for ( int i = 0, len = arr.length; i < len; i++ ) arr[i].receive ( v );
+        for ( int i = 0, len = arr.length; i < len; i++ ) arr[i].accept ( v );
       };
     }
 

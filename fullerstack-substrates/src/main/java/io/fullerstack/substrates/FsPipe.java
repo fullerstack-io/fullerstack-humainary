@@ -95,12 +95,12 @@ public final class FsPipe < E > implements Pipe < E > {
     FsCircuit c = circuit;
     Consumer < I > chain;
     if ( target instanceof FsChannel < ? > ch ) {
-      // Conduit pipe: flow terminal reads channel.transitDispatch at re-entry.
-      // Transit dispatch bypasses the channel — no version check on cascade.
-      // Falls back to channel if transitDispatch not yet set (before first rebuild).
+      // Conduit pipe: flow terminal reads channel.dispatch at re-entry.
+      // dispatch IS Consumer<Object> — goes directly into transit, no wrapper.
+      // Falls back to channel before first rebuild (dispatch is null).
       chain = fsFlow.materialise ( v -> {
-        Consumer < Object > td = ch.transitDispatch;
-        c.submitTransit ( td != null ? td : target, v );
+        Consumer < Object > d = ch.dispatch;
+        c.submitTransit ( d != null ? d : target, v );
       } );
     } else {
       // Non-conduit pipe: flow terminal delivers to receiver synchronously

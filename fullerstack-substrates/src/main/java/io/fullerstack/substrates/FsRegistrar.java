@@ -7,42 +7,55 @@ import io.humainary.substrates.api.Substrates.Registrar;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Consumer;
 
-/// Registrar — collects receptors during subscriber activation.
+/// Registrar — collects consumers during subscriber activation.
 ///
-/// Registered pipes execute on the circuit thread during dispatch.
-/// pipe::emit is used as the receptor — the pipe's emit() routes
-/// correctly (transit for circuit thread, ingress for external).
+/// Everything is Consumer<Object> on the hot path — no lambda wrappers
+/// between the channel dispatch and the flow chain.
 ///
 /// Enforces the @Temporal contract: register() only valid during callback.
 @Provided
 public final class FsRegistrar < E > implements Registrar < E > {
 
-  private final List < Receptor < ? super E > > receptors = new ArrayList <> ();
+  private final List < Consumer < Object > > consumers = new ArrayList <> ();
   private boolean closed;
 
   @Override
+  @SuppressWarnings ( "unchecked" )
   public void register ( Receptor < ? super E > receptor ) {
     if ( closed ) throw new IllegalStateException ( "Registrar is closed — register() only valid during callback" );
-    receptors.add ( receptor );
+    // Wrap Receptor in Consumer<Object> — this is the cold path (subscriber callback)
+    consumers.add ( v -> receptor.receive ( (E) v ) );
   }
 
   @Override
   public void register ( Pipe < ? super E > pipe ) {
     if ( closed ) throw new IllegalStateException ( "Registrar is closed — register() only valid during callback" );
-    // Registered downstream pipes execute synchronously during dispatch (§6.3).
-    // For FsPipe: call the receiver directly (no queue hop).
-    // For unknown pipes: fall back to pipe::emit.
+    // For FsPipe: store the receiver directly — it's already Consumer<Object>.
+    // No lambda wrapper on the hot path.
+    // For unknown pipes: wrap pipe::emit.
     if ( pipe instanceof FsPipe < ? > fp ) {
-      var receiver = fp.receiver ();
-      receptors.add ( v -> receiver.accept ( v ) );
+      consumers.add ( fp.receiver () );
     } else {
-      receptors.add ( pipe::emit );
+      consumers.add ( v -> pipe.emit ( (E) v ) );
     }
   }
 
+  /// Returns the registered consumers and closes this registrar.
+  public List < Consumer < Object > > consumers () {
+    closed = true;
+    return consumers;
+  }
+
+  /// Legacy accessor — returns consumers as receptors for compatibility.
+  @SuppressWarnings ( "unchecked" )
   public List < Receptor < ? super E > > receptors () {
     closed = true;
-    return receptors;
+    List < Receptor < ? super E > > result = new ArrayList <> ();
+    for ( Consumer < Object > c : consumers ) {
+      result.add ( v -> c.accept ( v ) );
+    }
+    return result;
   }
 }
