@@ -45,6 +45,11 @@ final class FsChannel < E > implements Receptor < E >, Consumer < Object > {
   /// Null before first rebuild.
   Receptor < ? super E > dispatch;
 
+  /// Transit-compatible dispatch — same as dispatch but typed as Consumer<Object>.
+  /// Used by flow terminals for cascade re-entry: submitTransit(transitDispatch, v).
+  /// Bypasses the channel entirely on the transit hot path — no version check.
+  Consumer < Object > transitDispatch;
+
   /// Version this channel was last built at.
   int builtVersion = -1;
 
@@ -144,6 +149,15 @@ final class FsChannel < E > implements Receptor < E >, Consumer < Object > {
       dispatch = v -> {
         for ( int i = 0, len = arr.length; i < len; i++ ) arr[i].receive ( v );
       };
+    }
+
+    // Build transit dispatch — wraps dispatch as Consumer<Object> for transit queue.
+    // This is what cascade re-entry submits. Bypasses channel entirely.
+    Receptor < ? super E > d = dispatch;
+    if ( d != null ) {
+      transitDispatch = o -> d.receive ( (E) o );
+    } else {
+      transitDispatch = null;
     }
 
     builtVersion = hub.subscriberVersion;
