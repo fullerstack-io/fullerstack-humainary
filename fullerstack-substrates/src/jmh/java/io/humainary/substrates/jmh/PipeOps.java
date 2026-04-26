@@ -298,10 +298,10 @@ public class PipeOps
   public Pipe < Integer > pipe_create_with_flow () {
 
     return
-      circuit.pipe (
-        Receptor.of ( Integer.class )
-      ).pipe (
-        cortex.flow ( Integer.class ).guard ( v -> v > 0 ).diff ()
+      cortex.fiber ( Integer.class ).guard ( v -> v > 0 ).diff ().pipe (
+        circuit.pipe (
+          Receptor.of ( Integer.class )
+        )
       );
 
   }
@@ -331,10 +331,10 @@ public class PipeOps
 
     // Async pipe with flow operations
     asyncPipeWithFlow =
-      circuit.pipe (
-        Receptor.of ( Integer.class )
-      ).pipe (
-        cortex.flow ( Integer.class ).guard ( v -> v > 0 ).diff ()
+      cortex.fiber ( Integer.class ).guard ( v -> v > 0 ).diff ().pipe (
+        circuit.pipe (
+          Receptor.of ( Integer.class )
+        )
       );
 
     // Chained pipe - pipe to pipe forwarding

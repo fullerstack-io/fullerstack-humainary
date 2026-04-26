@@ -5,6 +5,8 @@ import static java.util.Objects.requireNonNull;
 
 import io.humainary.substrates.api.Substrates.Circuit;
 import io.humainary.substrates.api.Substrates.Conduit;
+import io.humainary.substrates.api.Substrates.Fiber;
+import io.humainary.substrates.api.Substrates.Flow;
 import io.humainary.substrates.api.Substrates.Idempotent;
 import io.humainary.substrates.api.Substrates.Name;
 import io.humainary.substrates.api.Substrates.New;
@@ -386,6 +388,14 @@ public final class FsCircuit implements Circuit {
   @New
   @NotNull
   @Override
+  public < E > Conduit < E > conduit () {
+    // 2.3: no-arg conduit uses the circuit's own subject name.
+    return new FsConduit <> ( (FsSubject < ? >) subject, subject.name (), this );
+  }
+
+  @New
+  @NotNull
+  @Override
   public < E > Conduit < E > conduit ( @NotNull Name name, @NotNull Class < E > type ) {
     requireNonNull ( name );
     requireNonNull ( type );
@@ -406,6 +416,15 @@ public final class FsCircuit implements Circuit {
   // ===================================================================================
   // Factory Methods - Pipe
   // ===================================================================================
+
+  @New
+  @NotNull
+  @Override
+  public < E > Pipe < E > pipe () {
+    // 2.3: no-arg pipe — queues emissions and discards them on the circuit thread.
+    // Equivalent to circuit.pipe(Receptor.NOOP) but without the wrapper.
+    return newPipe ( v -> { /* no-op */ } );
+  }
 
   @New ( conditional = true )
   @NotNull
@@ -453,6 +472,22 @@ public final class FsCircuit implements Circuit {
   public < T > Tap < T > tap ( @NotNull java.util.function.Function < Pipe < T >, Pipe < State > > fn ) {
     requireNonNull ( fn );
     return stateConduit ().tap ( fn );
+  }
+
+  @New
+  @NotNull
+  @Override
+  public < T > Tap < T > tap ( @NotNull Flow < State, T > flow ) {
+    requireNonNull ( flow );
+    return stateConduit ().tap ( flow );
+  }
+
+  @New
+  @NotNull
+  @Override
+  public Tap < State > tap ( @NotNull Fiber < State > fiber ) {
+    requireNonNull ( fiber );
+    return stateConduit ().tap ( fiber );
   }
 
   @New

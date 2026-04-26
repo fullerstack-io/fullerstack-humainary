@@ -1,6 +1,8 @@
 package io.fullerstack.substrates;
 
 import io.humainary.substrates.api.Substrates.Conduit;
+import io.humainary.substrates.api.Substrates.Fiber;
+import io.humainary.substrates.api.Substrates.Flow;
 import io.humainary.substrates.api.Substrates.Name;
 import io.humainary.substrates.api.Substrates.New;
 import io.humainary.substrates.api.Substrates.NotNull;
@@ -96,6 +98,32 @@ public final class FsConduit < E > extends FsSubstrate < Conduit < E > > impleme
     return new FsDerivedPool <> ( this, fn );
   }
 
+  /// 2.3: derived pool for flow preprocessing.
+  /// Each pipe `get(name)` returned by the derived pool emits T; the flow
+  /// transforms T → E before reaching this conduit's pipes.
+  @NotNull
+  @Override
+  public < T > Pool < Pipe < T > > pool ( @NotNull Flow < T, E > flow ) {
+    requireNonNull ( flow );
+    if ( !( flow instanceof FsFlow < T, E > fsFlow ) ) {
+      throw new IllegalArgumentException ( "flow must be an FsFlow instance" );
+    }
+    return new FsDerivedPool <> ( this, p -> fsFlow.pipe ( p ) );
+  }
+
+  /// 2.3: derived pool for fiber preprocessing.
+  /// Each pipe `get(name)` returned by the derived pool applies the fiber
+  /// before reaching this conduit's pipe (same emission type).
+  @NotNull
+  @Override
+  public Pool < Pipe < E > > pool ( @NotNull Fiber < E > fiber ) {
+    requireNonNull ( fiber );
+    if ( !( fiber instanceof FsFiber < E > fsFiber ) ) {
+      throw new IllegalArgumentException ( "fiber must be an FsFiber instance" );
+    }
+    return new FsDerivedPool <> ( this, p -> fsFiber.pipe ( p ) );
+  }
+
   @SuppressWarnings ( "unchecked" )
   private FsChannel < E > createChannel ( Name name ) {
     synchronized ( this ) {
@@ -178,5 +206,23 @@ public final class FsConduit < E > extends FsSubstrate < Conduit < E > > impleme
   public < T > Tap < T > tap ( @NotNull Function < Pipe < T >, Pipe < E > > fn ) {
     requireNonNull ( fn, "fn must not be null" );
     return new FsTap <> ( (FsSubject < ? >) lazySubject (), cortex ().name ( "tap" ), this, circuit, fn );
+  }
+
+  /// 2.3: tap with flow transformation (E → T).
+  @New
+  @NotNull
+  @Override
+  public < T > Tap < T > tap ( @NotNull Flow < E, T > flow ) {
+    requireNonNull ( flow, "flow must not be null" );
+    return tap ( target -> flow.pipe ( target ) );
+  }
+
+  /// 2.3: type-preserving tap with fiber per-emission processing.
+  @New
+  @NotNull
+  @Override
+  public Tap < E > tap ( @NotNull Fiber < E > fiber ) {
+    requireNonNull ( fiber, "fiber must not be null" );
+    return tap ( (Function < Pipe < E >, Pipe < E > >) target -> fiber.pipe ( target ) );
   }
 }

@@ -1,11 +1,13 @@
 package io.fullerstack.substrates;
 
+import io.humainary.substrates.api.Substrates.Fiber;
 import io.humainary.substrates.api.Substrates.Flow;
+import io.humainary.substrates.api.Substrates.New;
 import io.humainary.substrates.api.Substrates.NotNull;
+import io.humainary.substrates.api.Substrates.Pipe;
 import io.humainary.substrates.api.Substrates.Provided;
 import io.humainary.substrates.api.Substrates.Receptor;
 
-import java.util.Comparator;
 import java.util.Objects;
 import java.util.function.BiPredicate;
 import java.util.function.BinaryOperator;
@@ -14,17 +16,16 @@ import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.function.UnaryOperator;
 
-/// Immutable Flow<I,O> implementation for Substrates 2.0.
+/// Immutable Flow<I,O> implementation for Substrates 2.3.
 ///
-/// Each operator method returns a NEW FsFlow with the operator appended.
-/// Flows are standalone values — created via Cortex.flow(), storable in fields,
-/// sharable across threads, and materialisable multiple times with independent
-/// state per materialisation.
+/// Flow now carries only type-changing composition: `map`, `flow`, `fiber`, `pipe`.
+/// Per-emission operators (diff, guard, limit, peek, etc.) live on Fiber<E>.
+/// Each method returns a new immutable FsFlow.
 ///
-/// Operators are stored as an immutable array. Materialisation (via Pipe.pipe(Flow))
-/// walks the array front-to-back, wrapping the target consumer with each operator.
-/// operators[0] is innermost (closest to target); operators[n-1] is outermost
-/// (closest to input).
+/// The shared operator classes (Guard, Diff, Limit, Skip, Replace, Reduce, Peek,
+/// DropWhile, TakeWhile, Integrate, Relate, GuardStateful) are kept here as
+/// package-private nested classes because both FsFlow's `fiber` composition and
+/// FsFiber's per-emission operators reuse them.
 ///
 /// @param <I> input type (what Pipe.pipe(Flow) receives)
 /// @param <O> output type (what the target pipe emits)
@@ -32,7 +33,7 @@ import java.util.function.UnaryOperator;
 public final class FsFlow < I, O > implements Flow < I, O > {
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // Concrete operator classes (same as 1.0 — good JIT inlining characteristics)
+  // Shared operator classes (used by FsFlow.fiber composition + FsFiber)
   // ═══════════════════════════════════════════════════════════════════════════
 
   static final class Guard < E > implements Consumer < E > {
@@ -64,14 +65,15 @@ public final class FsFlow < I, O > implements Flow < I, O > {
   static final class Diff < E > implements Consumer < E > {
     final Consumer < E > d;
     Object prev;
+    boolean has;
 
     Diff ( Consumer < E > d )            { this.d = d; }
 
-    Diff ( E initial, Consumer < E > d ) { this.prev = initial; this.d = d; }
+    Diff ( E initial, Consumer < E > d ) { this.prev = initial; this.has = true; this.d = d; }
 
     @Override
     public void accept ( E v ) {
-      if ( !Objects.equals ( v, prev ) ) { prev = v; d.accept ( v ); }
+      if ( !has || !Objects.equals ( v, prev ) ) { prev = v; has = true; d.accept ( v ); }
     }
   }
 
@@ -95,27 +97,6 @@ public final class FsFlow < I, O > implements Flow < I, O > {
 
     @Override
     public void accept ( E v ) { if ( count++ >= n ) d.accept ( v ); }
-  }
-
-  static final class SampleN < E > implements Consumer < E > {
-    final Consumer < E > d;
-    final int            n;
-    int count;
-
-    SampleN ( int n, Consumer < E > d ) { this.n = n; this.d = d; }
-
-    @Override
-    public void accept ( E v ) { if ( ++count % n == 0 ) d.accept ( v ); }
-  }
-
-  static final class SampleP < E > implements Consumer < E > {
-    final Consumer < E > d;
-    final double         p;
-
-    SampleP ( double p, Consumer < E > d ) { this.p = p; this.d = d; }
-
-    @Override
-    public void accept ( E v ) { if ( Math.random () < p ) d.accept ( v ); }
   }
 
   static final class Replace < E > implements Consumer < E > {
@@ -213,7 +194,7 @@ public final class FsFlow < I, O > implements Flow < I, O > {
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // Operator factory interface + map marker
+  // Operator factory interface + map marker + fiber-attachment marker
   // ═══════════════════════════════════════════════════════════════════════════
 
   @FunctionalInterface
@@ -224,8 +205,12 @@ public final class FsFlow < I, O > implements Flow < I, O > {
   /// Marker for a map() node in the operator chain.
   record MapOp( Function < ?, ? > fn ) {}
 
+  /// Marker for an attached Fiber<O>. Fiber.materialise() runs at the output
+  /// side of the flow.
+  record FiberOp( FsFiber < ? > fiber ) {}
+
   // ═══════════════════════════════════════════════════════════════════════════
-  // Immutable state: an array of operator factories (Wrap or MapOp)
+  // Immutable state
   // ═══════════════════════════════════════════════════════════════════════════
 
   private static final Object[] EMPTY = new Object[0];
@@ -254,11 +239,11 @@ public final class FsFlow < I, O > implements Flow < I, O > {
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // Materialisation — called from Pipe.pipe(Flow)
+  // Materialisation — called from Pipe.pipe(Flow) [legacy] or Flow.pipe(Pipe)
   // ═══════════════════════════════════════════════════════════════════════════
 
   /// Materialises this flow into a concrete consumer chain.
-  /// Each call produces independent state for stateful operators (diff, limit, etc.).
+  /// Each call produces independent state for stateful operators.
   ///
   /// operators[0] = first-added = innermost (closest to target)
   /// operators[n-1] = last-added = outermost (closest to input)
@@ -272,194 +257,79 @@ public final class FsFlow < I, O > implements Flow < I, O > {
       } else if ( op instanceof MapOp m ) {
         final Consumer downstream = c;
         final Function fn = m.fn ();
-        c = v -> downstream.accept ( fn.apply ( v ) );
+        c = v -> {
+          Object r = fn.apply ( v );
+          if ( r != null ) downstream.accept ( r );
+        };
+      } else if ( op instanceof FiberOp fo ) {
+        FsFiber f = (FsFiber) fo.fiber ();
+        c = f.materialise ( c );
       }
     }
     return c;
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // Flow<I,O> API — each method returns a new immutable FsFlow
+  // Flow<I,O> API (2.3) — only map/flow/fiber/pipe
   // ═══════════════════════════════════════════════════════════════════════════
 
   @NotNull
   @Override
-  public Flow < I, O > guard ( @NotNull Predicate < ? super I > predicate ) {
-    Objects.requireNonNull ( predicate );
-    return append ( (Wrap < I >) ( d -> new Guard <> ( predicate, d ) ) );
-  }
-
-  @NotNull
-  @Override
-  public Flow < I, O > guard ( I initial, @NotNull BiPredicate < ? super I, ? super I > predicate ) {
-    Objects.requireNonNull ( predicate );
-    return append ( (Wrap < I >) ( d -> new GuardStateful <> ( initial, predicate, d ) ) );
-  }
-
-  @NotNull
-  @Override
-  public Flow < I, O > diff () {
-    return append ( (Wrap < I >) Diff::new );
-  }
-
-  @NotNull
-  @Override
-  public Flow < I, O > diff ( @NotNull I initial ) {
-    Objects.requireNonNull ( initial );
-    return append ( (Wrap < I >) ( d -> new Diff <> ( initial, d ) ) );
-  }
-
-  @NotNull
-  @Override
-  public Flow < I, O > limit ( long n ) {
-    if ( n < 0 ) throw new IllegalArgumentException ( "count must not be negative" );
-    return append ( (Wrap < I >) ( d -> new Limit <> ( n, d ) ) );
-  }
-
-  @NotNull
-  @Override
-  public Flow < I, O > skip ( long n ) {
-    if ( n < 0 ) throw new IllegalArgumentException ( "count must not be negative" );
-    return append ( (Wrap < I >) ( d -> new Skip <> ( n, d ) ) );
-  }
-
-  @NotNull
-  @Override
-  public Flow < I, O > sample ( int n ) {
-    if ( n <= 0 ) throw new IllegalArgumentException ( "sample count must be positive" );
-    return append ( (Wrap < I >) ( d -> new SampleN <> ( n, d ) ) );
-  }
-
-  @NotNull
-  @Override
-  public Flow < I, O > sample ( double probability ) {
-    if ( Double.isNaN ( probability ) || probability < 0.0 || probability > 1.0 )
-      throw new IllegalArgumentException ( "probability must be in [0.0, 1.0]" );
-    if ( probability == 0.0 || probability == 1.0 ) return this;
-    return append ( (Wrap < I >) ( d -> new SampleP <> ( probability, d ) ) );
-  }
-
-  @NotNull
-  @Override
-  public Flow < I, O > replace ( @NotNull UnaryOperator < I > operator ) {
-    Objects.requireNonNull ( operator );
-    return append ( (Wrap < I >) ( d -> new Replace <> ( operator, d ) ) );
-  }
-
-  @NotNull
-  @Override
-  public Flow < I, O > reduce ( @NotNull I initial, @NotNull BinaryOperator < I > operator ) {
-    Objects.requireNonNull ( operator );
-    return append ( (Wrap < I >) ( d -> new Reduce <> ( initial, operator, d ) ) );
-  }
-
-  @NotNull
-  @Override
-  public Flow < I, O > peek ( @NotNull Receptor < ? super I > receptor ) {
-    Objects.requireNonNull ( receptor );
-    return append ( (Wrap < I >) ( d -> new Peek <> ( receptor, d ) ) );
-  }
-
-  // ─── New 2.0 operators ────────────────────────────────────────────────────
-
-  @NotNull
-  @Override
-  public < J > Flow < J, O > map ( @NotNull Function < ? super J, ? extends I > fn ) {
+  public < P > Flow < I, P > map ( @NotNull Function < ? super O, ? extends P > fn ) {
     Objects.requireNonNull ( fn );
     return append ( new MapOp ( fn ) );
   }
 
   @NotNull
   @Override
-  public Flow < I, O > above ( @NotNull Comparator < ? super I > comparator, @NotNull I lower ) {
-    Objects.requireNonNull ( comparator );
-    Objects.requireNonNull ( lower );
-    return append ( (Wrap < I >) ( d -> new Guard <> ( v -> comparator.compare ( v, lower ) > 0, d ) ) );
+  @SuppressWarnings ( "unchecked" )
+  public Flow < I, O > fiber ( @NotNull Fiber < O > fiber ) {
+    Objects.requireNonNull ( fiber );
+    if ( !( fiber instanceof FsFiber < ? > fsFiber ) ) {
+      throw new IllegalArgumentException ( "fiber must be an FsFiber instance" );
+    }
+    return append ( new FiberOp ( fsFiber ) );
   }
 
   @NotNull
   @Override
-  public Flow < I, O > below ( @NotNull Comparator < ? super I > comparator, @NotNull I upper ) {
-    Objects.requireNonNull ( comparator );
-    Objects.requireNonNull ( upper );
-    return append ( (Wrap < I >) ( d -> new Guard <> ( v -> comparator.compare ( v, upper ) < 0, d ) ) );
+  @SuppressWarnings ( "unchecked" )
+  public < P > Flow < I, P > flow ( @NotNull Flow < ? super O, ? extends P > next ) {
+    Objects.requireNonNull ( next );
+    if ( !( next instanceof FsFlow < ?, ? > nextFlow ) ) {
+      throw new IllegalArgumentException ( "next flow must be an FsFlow instance" );
+    }
+    if ( nextFlow.count == 0 ) return (Flow < I, P >) (Flow < ?, ? >) this;
+    Object[] merged = new Object[count + nextFlow.count];
+    // operators[0..count) of `this` — innermost at index 0 — must remain innermost.
+    // next's operators run after `this`, so they wrap further out (higher indices).
+    System.arraycopy ( operators, 0, merged, 0, count );
+    System.arraycopy ( nextFlow.operators, 0, merged, count, nextFlow.count );
+    return new FsFlow <> ( merged, count + nextFlow.count );
   }
 
+  @New
   @NotNull
   @Override
-  public Flow < I, O > clamp ( @NotNull Comparator < ? super I > comparator, @NotNull I lower, @NotNull I upper ) {
-    Objects.requireNonNull ( comparator );
-    Objects.requireNonNull ( lower );
-    Objects.requireNonNull ( upper );
-    return append ( (Wrap < I >) ( d -> new Guard <> (
-      v -> comparator.compare ( v, lower ) >= 0 && comparator.compare ( v, upper ) <= 0, d ) ) );
+  @SuppressWarnings ( "unchecked" )
+  public Pipe < I > pipe ( @NotNull Pipe < O > target ) {
+    Objects.requireNonNull ( target );
+    final Consumer < I > chain = materialise ( target::emit );
+    if ( target instanceof FsPipe < ? > fp ) {
+      return new FsPipe <> ( (Consumer < Object >) (Consumer < ? >) chain, fp.circuit () );
+    }
+    // Foreign Pipe — wrap synchronously
+    return new Pipe <> () {
+      @Override
+      public void emit ( @NotNull I emission ) {
+        chain.accept ( emission );
+      }
+      @Override
+      public io.humainary.substrates.api.Substrates.Subject < Pipe < I > > subject () {
+        @SuppressWarnings ( "unchecked" )
+        var s = (io.humainary.substrates.api.Substrates.Subject < Pipe < I > >) (io.humainary.substrates.api.Substrates.Subject < ? >) target.subject ();
+        return s;
+      }
+    };
   }
-
-  @NotNull
-  @Override
-  public Flow < I, O > high ( @NotNull Comparator < ? super I > comparator ) {
-    Objects.requireNonNull ( comparator );
-    return append ( (Wrap < I >) ( d -> new GuardStateful <> ( null, ( prev, curr ) ->
-      prev == null || comparator.compare ( curr, prev ) > 0, d ) ) );
-  }
-
-  @NotNull
-  @Override
-  public Flow < I, O > low ( @NotNull Comparator < ? super I > comparator ) {
-    Objects.requireNonNull ( comparator );
-    return append ( (Wrap < I >) ( d -> new GuardStateful <> ( null, ( prev, curr ) ->
-      prev == null || comparator.compare ( curr, prev ) < 0, d ) ) );
-  }
-
-  @NotNull
-  @Override
-  public Flow < I, O > max ( @NotNull Comparator < ? super I > comparator, @NotNull I threshold ) {
-    Objects.requireNonNull ( comparator );
-    Objects.requireNonNull ( threshold );
-    return append ( (Wrap < I >) ( d -> new Guard <> ( v -> comparator.compare ( v, threshold ) <= 0, d ) ) );
-  }
-
-  @NotNull
-  @Override
-  public Flow < I, O > min ( @NotNull Comparator < ? super I > comparator, @NotNull I threshold ) {
-    Objects.requireNonNull ( comparator );
-    Objects.requireNonNull ( threshold );
-    return append ( (Wrap < I >) ( d -> new Guard <> ( v -> comparator.compare ( v, threshold ) >= 0, d ) ) );
-  }
-
-  @NotNull
-  @Override
-  public Flow < I, O > range ( @NotNull Comparator < ? super I > comparator, @NotNull I lower, @NotNull I upper ) {
-    return clamp ( comparator, lower, upper );
-  }
-
-  @NotNull
-  @Override
-  public Flow < I, O > dropWhile ( @NotNull Predicate < ? super I > predicate ) {
-    Objects.requireNonNull ( predicate );
-    return append ( (Wrap < I >) ( d -> new DropWhile <> ( predicate, d ) ) );
-  }
-
-  @NotNull
-  @Override
-  public Flow < I, O > takeWhile ( @NotNull Predicate < ? super I > predicate ) {
-    Objects.requireNonNull ( predicate );
-    return append ( (Wrap < I >) ( d -> new TakeWhile <> ( predicate, d ) ) );
-  }
-
-  @NotNull
-  @Override
-  public Flow < I, O > integrate ( @NotNull I initial, @NotNull BinaryOperator < I > accumulator, @NotNull Predicate < ? super I > fire ) {
-    Objects.requireNonNull ( accumulator );
-    Objects.requireNonNull ( fire );
-    return append ( (Wrap < I >) ( d -> new Integrate <> ( initial, accumulator, fire, d ) ) );
-  }
-
-  @NotNull
-  @Override
-  public Flow < I, O > relate ( @NotNull I initial, @NotNull BinaryOperator < I > operator ) {
-    Objects.requireNonNull ( operator );
-    return append ( (Wrap < I >) ( d -> new Relate <> ( initial, operator, d ) ) );
-  }
-
 }

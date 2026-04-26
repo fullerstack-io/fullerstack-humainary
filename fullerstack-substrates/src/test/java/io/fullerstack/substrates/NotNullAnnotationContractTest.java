@@ -131,14 +131,26 @@ class NotNullAnnotationContractTest {
     }
 
     @Test
-    @DisplayName ( "pipe.pipe(null flow) throws NPE" )
-    void pipeFlow_nullThrows () {
+    @DisplayName ( "fiber.pipe(null) throws NPE" )
+    void fiberPipe_nullThrows () {
       Cortex cortex = cortex ();
       var circuit = cortex.circuit ();
       try {
-        var conduit = circuit.conduit ( Integer.class );
-        var pipe = conduit.get ( cortex.name ( "p" ) );
-        assertThrows ( NullPointerException.class, () -> pipe.pipe ( null ) );
+        var fiber = cortex.fiber ( Integer.class );
+        assertThrows ( NullPointerException.class, () -> fiber.pipe ( null ) );
+      } finally {
+        circuit.close ();
+      }
+    }
+
+    @Test
+    @DisplayName ( "flow.pipe(null) throws NPE" )
+    void flowPipe_nullThrows () {
+      Cortex cortex = cortex ();
+      var circuit = cortex.circuit ();
+      try {
+        var flow = cortex.flow ( Integer.class );
+        assertThrows ( NullPointerException.class, () -> flow.pipe ( null ) );
       } finally {
         circuit.close ();
       }

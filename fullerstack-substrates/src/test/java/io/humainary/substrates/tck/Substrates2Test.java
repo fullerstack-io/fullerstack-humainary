@@ -168,48 +168,48 @@ class Substrates2Test implements Substrates {
     }
 
     @Test
-    @DisplayName ( "flow operators return NEW flow (immutable)" )
+    @DisplayName ( "fiber operators return NEW fiber (immutable)" )
     void flowOperatorsReturnNewInstance () {
       final var cortex = Substrates.cortex ();
-      final Flow < Integer, Integer > flow = cortex.flow ( Integer.class );
-      final Flow < Integer, Integer > guarded = flow.guard ( v -> v > 0 );
-      assertNotSame ( flow, guarded, "guard() must return a new flow" );
+      final Fiber < Integer > fiber = cortex.fiber ( Integer.class );
+      final Fiber < Integer > guarded = fiber.guard ( v -> v > 0 );
+      assertNotSame ( fiber, guarded, "guard() must return a new fiber" );
     }
 
     @Test
-    @DisplayName ( "flow.diff() returns new flow" )
+    @DisplayName ( "fiber.diff() returns new fiber" )
     void flowDiffReturnsNew () {
       final var cortex = Substrates.cortex ();
-      final var flow = cortex.flow ( Integer.class );
-      final var diffed = flow.diff ();
-      assertNotSame ( flow, diffed );
+      final var fiber = cortex.fiber ( Integer.class );
+      final var diffed = fiber.diff ();
+      assertNotSame ( fiber, diffed );
     }
 
     @Test
-    @DisplayName ( "flow.map() changes input type" )
+    @DisplayName ( "flow.map() appends output transformation" )
     void flowMapChangesType () {
       final var cortex = Substrates.cortex ();
-      final Flow < Integer, Integer > intFlow = cortex.flow ( Integer.class );
-      final Flow < String, Integer > stringFlow = intFlow.map ( Integer::parseInt );
-      assertNotNull ( stringFlow );
-      // stringFlow takes String input and produces Integer output
+      final Flow < String, String > stringFlow = cortex.flow ( String.class );
+      final Flow < String, Integer > mapped = stringFlow.map ( String::length );
+      assertNotNull ( mapped );
+      // mapped takes String input and produces Integer output
     }
 
     @Test
-    @DisplayName ( "flow can be reused across multiple pipes" )
+    @DisplayName ( "fiber can be reused across multiple pipes" )
     void flowReusable () {
       final var cortex = Substrates.cortex ();
       final var circuit = cortex.circuit ();
       try {
-        final var flow = cortex.flow ( Integer.class ).guard ( v -> v > 0 );
+        final var fiber = cortex.fiber ( Integer.class ).guard ( v -> v > 0 );
         final var conduit = circuit.conduit ( Integer.class );
         final var pipe1 = conduit.get ( cortex.name ( "a" ) );
         final var pipe2 = conduit.get ( cortex.name ( "b" ) );
 
-        // Same flow applied to two different pipes — should produce independent chains
-        final var flowPipe1 = pipe1.pipe ( flow );
-        final var flowPipe2 = pipe2.pipe ( flow );
-        assertNotSame ( flowPipe1, flowPipe2 );
+        // Same fiber applied to two different pipes — should produce independent chains
+        final var fiberPipe1 = fiber.pipe ( pipe1 );
+        final var fiberPipe2 = fiber.pipe ( pipe2 );
+        assertNotSame ( fiberPipe1, fiberPipe2 );
       } finally {
         circuit.close ();
       }
@@ -221,28 +221,28 @@ class Substrates2Test implements Substrates {
   // ═══════════════════════════════════════════════════════════════════════════
 
   @Nested
-  @DisplayName ( "Pipe.pipe(Flow) materialisation" )
+  @DisplayName ( "Fiber.pipe(Pipe) materialisation" )
   class PipeMaterialisationTests {
 
     @Test
-    @DisplayName ( "pipe.pipe(flow) returns a new pipe" )
+    @DisplayName ( "fiber.pipe(pipe) returns a new pipe" )
     void pipeFlowReturnsNewPipe () {
       final var cortex = Substrates.cortex ();
       final var circuit = cortex.circuit ();
       try {
         final var conduit = circuit.conduit ( Integer.class );
         final var basePipe = conduit.get ( cortex.name ( "base" ) );
-        final var flow = cortex.flow ( Integer.class ).guard ( v -> v > 0 );
-        final var flowPipe = basePipe.pipe ( flow );
-        assertNotNull ( flowPipe );
-        assertNotSame ( basePipe, flowPipe );
+        final var fiber = cortex.fiber ( Integer.class ).guard ( v -> v > 0 );
+        final var fiberPipe = fiber.pipe ( basePipe );
+        assertNotNull ( fiberPipe );
+        assertNotSame ( basePipe, fiberPipe );
       } finally {
         circuit.close ();
       }
     }
 
     @Test
-    @DisplayName ( "flow guard filters emissions" )
+    @DisplayName ( "fiber guard filters emissions" )
     void flowGuardFilters () throws Exception {
       final var cortex = Substrates.cortex ();
       final var circuit = cortex.circuit ();
@@ -259,9 +259,9 @@ class Substrates2Test implements Substrates {
           )
         );
 
-        // Create a flow that only passes values > 5
-        final var flow = cortex.flow ( Integer.class ).guard ( v -> v > 5 );
-        final var source = conduit.get ( cortex.name ( "source" ) ).pipe ( flow );
+        // Create a fiber that only passes values > 5
+        final var fiber = cortex.fiber ( Integer.class ).guard ( v -> v > 5 );
+        final var source = fiber.pipe ( conduit.get ( cortex.name ( "source" ) ) );
 
         source.emit ( 3 );  // filtered out
         source.emit ( 7 );  // passes
@@ -371,7 +371,7 @@ class Substrates2Test implements Substrates {
     }
 
     @Test
-    @DisplayName ( "pipe.pipe(flow) with diff filters duplicates" )
+    @DisplayName ( "fiber.pipe(pipe) with diff filters duplicates" )
     void pipePipeFlowDiffFiltersDuplicates () throws Exception {
       final var cortex = Substrates.cortex ();
       final var circuit = cortex.circuit ();
@@ -382,8 +382,8 @@ class Substrates2Test implements Substrates {
           received.add ( v );
           latch.countDown ();
         } );
-        final var flow = cortex.flow ( Integer.class ).diff ();
-        final var source = target.pipe ( flow );
+        final var fiber = cortex.fiber ( Integer.class ).diff ();
+        final var source = fiber.pipe ( target );
 
         source.emit ( 1 );
         source.emit ( 1 ); // duplicate — filtered
@@ -399,7 +399,7 @@ class Substrates2Test implements Substrates {
     }
 
     @Test
-    @DisplayName ( "pipe.pipe(flow) with limit stops after N" )
+    @DisplayName ( "fiber.pipe(pipe) with limit stops after N" )
     void pipePipeFlowLimit () throws Exception {
       final var cortex = Substrates.cortex ();
       final var circuit = cortex.circuit ();
@@ -410,8 +410,8 @@ class Substrates2Test implements Substrates {
           received.add ( v );
           latch.countDown ();
         } );
-        final var flow = cortex.flow ( Integer.class ).limit ( 3 );
-        final var source = target.pipe ( flow );
+        final var fiber = cortex.fiber ( Integer.class ).limit ( 3 );
+        final var source = fiber.pipe ( target );
 
         for ( int i = 1; i <= 10; i++ ) source.emit ( i );
         circuit.await ();
@@ -423,7 +423,7 @@ class Substrates2Test implements Substrates {
     }
 
     @Test
-    @DisplayName ( "pipe.pipe(flow) with replace transforms values" )
+    @DisplayName ( "fiber.pipe(pipe) with replace transforms values" )
     void pipePipeFlowReplace () throws Exception {
       final var cortex = Substrates.cortex ();
       final var circuit = cortex.circuit ();
@@ -434,8 +434,8 @@ class Substrates2Test implements Substrates {
           received.add ( v );
           latch.countDown ();
         } );
-        final var flow = cortex.flow ( Integer.class ).replace ( v -> v * 2 );
-        final var source = target.pipe ( flow );
+        final var fiber = cortex.fiber ( Integer.class ).replace ( v -> v * 2 );
+        final var source = fiber.pipe ( target );
 
         source.emit ( 1 );
         source.emit ( 2 );
@@ -494,7 +494,7 @@ class Substrates2Test implements Substrates {
   class FlowOperatorTests {
 
     @Test
-    @DisplayName ( "flow.skip(n) skips first N emissions" )
+    @DisplayName ( "fiber.skip(n) skips first N emissions" )
     void flowSkip () throws Exception {
       final var cortex = Substrates.cortex ();
       final var circuit = cortex.circuit ();
@@ -505,7 +505,7 @@ class Substrates2Test implements Substrates {
           received.add ( v );
           latch.countDown ();
         } );
-        final var source = target.pipe ( cortex.flow ( Integer.class ).skip ( 3 ) );
+        final var source = cortex.fiber ( Integer.class ).skip ( 3 ).pipe ( target );
 
         source.emit ( 1 ); // skipped
         source.emit ( 2 ); // skipped
@@ -521,7 +521,7 @@ class Substrates2Test implements Substrates {
     }
 
     @Test
-    @DisplayName ( "flow.peek(receptor) observes without filtering" )
+    @DisplayName ( "fiber.peek(receptor) observes without filtering" )
     void flowPeek () throws Exception {
       final var cortex = Substrates.cortex ();
       final var circuit = cortex.circuit ();
@@ -533,9 +533,7 @@ class Substrates2Test implements Substrates {
           received.add ( v );
           latch.countDown ();
         } );
-        final var source = target.pipe (
-          cortex.flow ( Integer.class ).peek ( observed::add )
-        );
+        final var source = cortex.fiber ( Integer.class ).peek ( observed::add ).pipe ( target );
 
         source.emit ( 1 );
         source.emit ( 2 );
@@ -550,7 +548,7 @@ class Substrates2Test implements Substrates {
     }
 
     @Test
-    @DisplayName ( "flow.reduce accumulates" )
+    @DisplayName ( "fiber.reduce accumulates" )
     void flowReduce () throws Exception {
       final var cortex = Substrates.cortex ();
       final var circuit = cortex.circuit ();
@@ -561,9 +559,7 @@ class Substrates2Test implements Substrates {
           received.add ( v );
           latch.countDown ();
         } );
-        final var source = target.pipe (
-          cortex.flow ( Integer.class ).reduce ( 0, Integer::sum )
-        );
+        final var source = cortex.fiber ( Integer.class ).reduce ( 0, Integer::sum ).pipe ( target );
 
         source.emit ( 1 ); // 0+1=1
         source.emit ( 2 ); // 1+2=3
@@ -577,7 +573,7 @@ class Substrates2Test implements Substrates {
     }
 
     @Test
-    @DisplayName ( "flow.diff emits differences between consecutive values" )
+    @DisplayName ( "fiber.diff emits differences between consecutive values" )
     void flowDiff () throws Exception {
       final var cortex = Substrates.cortex ();
       final var circuit = cortex.circuit ();
@@ -588,9 +584,7 @@ class Substrates2Test implements Substrates {
           received.add ( v );
           latch.countDown ();
         } );
-        final var source = target.pipe (
-          cortex.flow ( Integer.class ).diff ( 0 )
-        );
+        final var source = cortex.fiber ( Integer.class ).diff ( 0 ).pipe ( target );
 
         source.emit ( 10 ); // 10-0=10
         source.emit ( 15 ); // 15-10=5  — wait, diff might not subtract
@@ -605,7 +599,7 @@ class Substrates2Test implements Substrates {
     }
 
     @Test
-    @DisplayName ( "flow.limit(n) passes only first N emissions" )
+    @DisplayName ( "fiber.limit(n) passes only first N emissions" )
     void flowLimit () throws Exception {
       final var cortex = Substrates.cortex ();
       final var circuit = cortex.circuit ();
@@ -616,9 +610,7 @@ class Substrates2Test implements Substrates {
           received.add ( v );
           latch.countDown ();
         } );
-        final var source = target.pipe (
-          cortex.flow ( Integer.class ).limit ( 3 )
-        );
+        final var source = cortex.fiber ( Integer.class ).limit ( 3 ).pipe ( target );
 
         source.emit ( 1 );
         source.emit ( 2 );
@@ -634,7 +626,7 @@ class Substrates2Test implements Substrates {
     }
 
     @Test
-    @DisplayName ( "flow.replace transforms values" )
+    @DisplayName ( "fiber.replace transforms values" )
     void flowReplace () throws Exception {
       final var cortex = Substrates.cortex ();
       final var circuit = cortex.circuit ();
@@ -645,9 +637,7 @@ class Substrates2Test implements Substrates {
           received.add ( v );
           latch.countDown ();
         } );
-        final var source = target.pipe (
-          cortex.flow ( Integer.class ).replace ( v -> v * 2 )
-        );
+        final var source = cortex.fiber ( Integer.class ).replace ( v -> v * 2 ).pipe ( target );
 
         source.emit ( 1 );
         source.emit ( 5 );
@@ -661,7 +651,7 @@ class Substrates2Test implements Substrates {
     }
 
     @Test
-    @DisplayName ( "flow.map transforms input type" )
+    @DisplayName ( "flow.map transforms output type" )
     void flowMap () throws Exception {
       final var cortex = Substrates.cortex ();
       final var circuit = cortex.circuit ();
@@ -672,8 +662,8 @@ class Substrates2Test implements Substrates {
           received.add ( v );
           latch.countDown ();
         } );
-        Flow < String, Integer > flow = cortex.flow ( Integer.class ).map ( String::length );
-        final var source = target.pipe ( flow );
+        Flow < String, Integer > flow = cortex.flow ( String.class ).map ( String::length );
+        final var source = flow.pipe ( target );
 
         source.emit ( "hi" );
         source.emit ( "hello" );
@@ -687,7 +677,7 @@ class Substrates2Test implements Substrates {
     }
 
     @Test
-    @DisplayName ( "flow.dropWhile drops until predicate fails" )
+    @DisplayName ( "fiber.dropWhile drops until predicate fails" )
     void flowDropWhile () throws Exception {
       final var cortex = Substrates.cortex ();
       final var circuit = cortex.circuit ();
@@ -698,9 +688,7 @@ class Substrates2Test implements Substrates {
           received.add ( v );
           latch.countDown ();
         } );
-        final var source = target.pipe (
-          cortex.flow ( Integer.class ).dropWhile ( v -> v < 5 )
-        );
+        final var source = cortex.fiber ( Integer.class ).dropWhile ( v -> v < 5 ).pipe ( target );
 
         source.emit ( 1 ); // dropped
         source.emit ( 3 ); // dropped
@@ -716,7 +704,7 @@ class Substrates2Test implements Substrates {
     }
 
     @Test
-    @DisplayName ( "flow.takeWhile passes until predicate fails" )
+    @DisplayName ( "fiber.takeWhile passes until predicate fails" )
     void flowTakeWhile () throws Exception {
       final var cortex = Substrates.cortex ();
       final var circuit = cortex.circuit ();
@@ -727,9 +715,7 @@ class Substrates2Test implements Substrates {
           received.add ( v );
           latch.countDown ();
         } );
-        final var source = target.pipe (
-          cortex.flow ( Integer.class ).takeWhile ( v -> v < 5 )
-        );
+        final var source = cortex.fiber ( Integer.class ).takeWhile ( v -> v < 5 ).pipe ( target );
 
         source.emit ( 1 ); // passes
         source.emit ( 3 ); // passes
@@ -744,7 +730,7 @@ class Substrates2Test implements Substrates {
     }
 
     @Test
-    @DisplayName ( "flow.above filters values below threshold" )
+    @DisplayName ( "fiber.above filters values below threshold" )
     void flowAbove () throws Exception {
       final var cortex = Substrates.cortex ();
       final var circuit = cortex.circuit ();
@@ -755,9 +741,8 @@ class Substrates2Test implements Substrates {
           received.add ( v );
           latch.countDown ();
         } );
-        final var source = target.pipe (
-          cortex.flow ( Integer.class ).above ( Comparator.naturalOrder (), 5 )
-        );
+        final var source =
+          cortex.fiber ( Integer.class ).above ( Comparator.naturalOrder (), 5 ).pipe ( target );
 
         source.emit ( 3 ); // filtered
         source.emit ( 7 ); // passes
@@ -772,7 +757,7 @@ class Substrates2Test implements Substrates {
     }
 
     @Test
-    @DisplayName ( "flow.below filters values above threshold" )
+    @DisplayName ( "fiber.below filters values above threshold" )
     void flowBelow () throws Exception {
       final var cortex = Substrates.cortex ();
       final var circuit = cortex.circuit ();
@@ -783,9 +768,8 @@ class Substrates2Test implements Substrates {
           received.add ( v );
           latch.countDown ();
         } );
-        final var source = target.pipe (
-          cortex.flow ( Integer.class ).below ( Comparator.naturalOrder (), 5 )
-        );
+        final var source =
+          cortex.fiber ( Integer.class ).below ( Comparator.naturalOrder (), 5 ).pipe ( target );
 
         source.emit ( 3 ); // passes
         source.emit ( 7 ); // filtered
@@ -800,35 +784,35 @@ class Substrates2Test implements Substrates {
     }
 
     @Test
-    @DisplayName ( "flow.clamp passes only values within range" )
+    @DisplayName ( "fiber.clamp clamps values to range" )
     void flowClamp () throws Exception {
       final var cortex = Substrates.cortex ();
       final var circuit = cortex.circuit ();
       try {
         final List < Integer > received = new ArrayList <> ();
-        final var latch = new CountDownLatch ( 2 );
+        final var latch = new CountDownLatch ( 4 );
         final var target = circuit.pipe ( (Receptor < Integer >) v -> {
           received.add ( v );
           latch.countDown ();
         } );
-        final var source = target.pipe (
-          cortex.flow ( Integer.class ).clamp ( Comparator.naturalOrder (), 2, 8 )
-        );
+        final var source =
+          cortex.fiber ( Integer.class ).clamp ( Comparator.naturalOrder (), 2, 8 ).pipe ( target );
 
-        source.emit ( 1 );  // filtered (below range)
-        source.emit ( 5 );  // passes (in range)
-        source.emit ( 10 ); // filtered (above range)
-        source.emit ( 3 );  // passes (in range)
+        // clamp clamps, not filters: below-lower → lower; above-upper → upper; in-range → unchanged
+        source.emit ( 1 );  // clamped to 2
+        source.emit ( 5 );  // unchanged (in range)
+        source.emit ( 10 ); // clamped to 8
+        source.emit ( 3 );  // unchanged (in range)
         circuit.await ();
         assertTrue ( latch.await ( 2, TimeUnit.SECONDS ) );
-        assertEquals ( List.of ( 5, 3 ), received );
+        assertEquals ( List.of ( 2, 5, 8, 3 ), received );
       } finally {
         circuit.close ();
       }
     }
 
     @Test
-    @DisplayName ( "flow chaining: limit + replace + guard" )
+    @DisplayName ( "fiber chaining: limit + replace + guard" )
     void flowChaining () throws Exception {
       final var cortex = Substrates.cortex ();
       final var circuit = cortex.circuit ();
@@ -840,13 +824,13 @@ class Substrates2Test implements Substrates {
           latch.countDown ();
         } );
         // Materialisation wraps right-to-left: guard is outermost (applied first),
-        // then replace, then limit (innermost, closest to target)
-        final var source = target.pipe (
-          cortex.flow ( Integer.class )
+        // then replace, then limit (innermost, closest to target).
+        final var source =
+          cortex.fiber ( Integer.class )
             .limit ( 2 )                 // innermost: take first 2 that reach here
             .replace ( v -> v * 10 )     // middle: multiply by 10
             .guard ( v -> v > 0 )        // outermost: filter negatives
-        );
+            .pipe ( target );
 
         source.emit ( -1 ); // filtered by guard
         source.emit ( 3 );  // guard passes → replace(30) → limit count 1 → target
@@ -1096,7 +1080,7 @@ class Substrates2Test implements Substrates {
   class FlowStatefulTests {
 
     @Test
-    @DisplayName ( "flow.high tracks increasing values" )
+    @DisplayName ( "fiber.high tracks increasing values" )
     void flowHigh () throws Exception {
       final var cortex = Substrates.cortex ();
       final var circuit = cortex.circuit ();
@@ -1107,9 +1091,8 @@ class Substrates2Test implements Substrates {
           received.add ( v );
           latch.countDown ();
         } );
-        final var source = target.pipe (
-          cortex.flow ( Integer.class ).high ( Comparator.naturalOrder () )
-        );
+        final var source =
+          cortex.fiber ( Integer.class ).high ( Comparator.naturalOrder () ).pipe ( target );
 
         source.emit ( 5 );  // first value always passes
         source.emit ( 3 );  // not higher, filtered
@@ -1125,7 +1108,7 @@ class Substrates2Test implements Substrates {
     }
 
     @Test
-    @DisplayName ( "flow.low tracks decreasing values" )
+    @DisplayName ( "fiber.low tracks decreasing values" )
     void flowLow () throws Exception {
       final var cortex = Substrates.cortex ();
       final var circuit = cortex.circuit ();
@@ -1136,9 +1119,8 @@ class Substrates2Test implements Substrates {
           received.add ( v );
           latch.countDown ();
         } );
-        final var source = target.pipe (
-          cortex.flow ( Integer.class ).low ( Comparator.naturalOrder () )
-        );
+        final var source =
+          cortex.fiber ( Integer.class ).low ( Comparator.naturalOrder () ).pipe ( target );
 
         source.emit ( 5 );  // first value always passes
         source.emit ( 7 );  // not lower, filtered
@@ -1154,7 +1136,7 @@ class Substrates2Test implements Substrates {
     }
 
     @Test
-    @DisplayName ( "flow.relate computes relation between consecutive values" )
+    @DisplayName ( "fiber.relate computes relation between consecutive values" )
     void flowRelate () throws Exception {
       final var cortex = Substrates.cortex ();
       final var circuit = cortex.circuit ();
@@ -1166,9 +1148,8 @@ class Substrates2Test implements Substrates {
           latch.countDown ();
         } );
         // relate emits operator(previous, current) and sets previous = current
-        final var source = target.pipe (
-          cortex.flow ( Integer.class ).relate ( 0, ( prev, curr ) -> curr - prev )
-        );
+        final var source =
+          cortex.fiber ( Integer.class ).relate ( 0, ( prev, curr ) -> curr - prev ).pipe ( target );
 
         source.emit ( 10 ); // 10-0=10
         source.emit ( 15 ); // 15-10=5
@@ -1182,7 +1163,7 @@ class Substrates2Test implements Substrates {
     }
 
     @Test
-    @DisplayName ( "flow.integrate accumulates with fire predicate and resets to initial" )
+    @DisplayName ( "fiber.integrate accumulates with fire predicate and resets to initial" )
     void flowIntegrate () throws Exception {
       final var cortex = Substrates.cortex ();
       final var circuit = cortex.circuit ();
@@ -1195,9 +1176,8 @@ class Substrates2Test implements Substrates {
         } );
         // integrate: accumulates values, fires when predicate is true on accumulated
         // After fire, acc resets to initial value (0)
-        final var source = target.pipe (
-          cortex.flow ( Integer.class ).integrate ( 0, Integer::sum, acc -> acc >= 10 )
-        );
+        final var source =
+          cortex.fiber ( Integer.class ).integrate ( 0, Integer::sum, acc -> acc >= 10 ).pipe ( target );
 
         source.emit ( 3 );  // acc=0+3=3, <10, no fire
         source.emit ( 4 );  // acc=3+4=7, <10, no fire
@@ -1213,7 +1193,7 @@ class Substrates2Test implements Substrates {
     }
 
     @Test
-    @DisplayName ( "flow.max passes values at or below threshold" )
+    @DisplayName ( "fiber.max passes values at or below threshold" )
     void flowMax () throws Exception {
       final var cortex = Substrates.cortex ();
       final var circuit = cortex.circuit ();
@@ -1224,9 +1204,8 @@ class Substrates2Test implements Substrates {
           received.add ( v );
           latch.countDown ();
         } );
-        final var source = target.pipe (
-          cortex.flow ( Integer.class ).max ( Comparator.naturalOrder (), 5 )
-        );
+        final var source =
+          cortex.fiber ( Integer.class ).max ( Comparator.naturalOrder (), 5 ).pipe ( target );
 
         source.emit ( 7 );  // above max, filtered
         source.emit ( 3 );  // at or below max, passes
@@ -1241,7 +1220,7 @@ class Substrates2Test implements Substrates {
     }
 
     @Test
-    @DisplayName ( "flow.min passes values at or above threshold" )
+    @DisplayName ( "fiber.min passes values at or above threshold" )
     void flowMin () throws Exception {
       final var cortex = Substrates.cortex ();
       final var circuit = cortex.circuit ();
@@ -1252,9 +1231,8 @@ class Substrates2Test implements Substrates {
           received.add ( v );
           latch.countDown ();
         } );
-        final var source = target.pipe (
-          cortex.flow ( Integer.class ).min ( Comparator.naturalOrder (), 5 )
-        );
+        final var source =
+          cortex.fiber ( Integer.class ).min ( Comparator.naturalOrder (), 5 ).pipe ( target );
 
         source.emit ( 3 );  // below min, filtered
         source.emit ( 7 );  // at or above min, passes
@@ -1269,7 +1247,7 @@ class Substrates2Test implements Substrates {
     }
 
     @Test
-    @DisplayName ( "flow.range passes values within range" )
+    @DisplayName ( "fiber.range passes values within range" )
     void flowRange () throws Exception {
       final var cortex = Substrates.cortex ();
       final var circuit = cortex.circuit ();
@@ -1280,9 +1258,8 @@ class Substrates2Test implements Substrates {
           received.add ( v );
           latch.countDown ();
         } );
-        final var source = target.pipe (
-          cortex.flow ( Integer.class ).range ( Comparator.naturalOrder (), 3, 7 )
-        );
+        final var source =
+          cortex.fiber ( Integer.class ).range ( Comparator.naturalOrder (), 3, 7 ).pipe ( target );
 
         source.emit ( 1 );  // below range
         source.emit ( 5 );  // in range, passes
@@ -1613,13 +1590,12 @@ class Substrates2Test implements Substrates {
             ( subject, registrar ) -> {
               callbackCount.incrementAndGet ();
               registrar.register (
-                conduit.get ( subject ).pipe (
-                  cortex.flow ( Integer.class )
-                    .peek ( v -> {
-                      if ( emissionCount.incrementAndGet () >= 100 ) latch.countDown ();
-                    } )
-                    .limit ( 100 )
-                )
+                cortex.fiber ( Integer.class )
+                  .peek ( v -> {
+                    if ( emissionCount.incrementAndGet () >= 100 ) latch.countDown ();
+                  } )
+                  .limit ( 100 )
+                  .pipe ( conduit.get ( subject ) )
               );
             }
           )

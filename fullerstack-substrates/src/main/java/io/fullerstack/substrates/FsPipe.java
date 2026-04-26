@@ -1,8 +1,5 @@
 package io.fullerstack.substrates;
 
-import io.humainary.substrates.api.Substrates.Flow;
-import io.humainary.substrates.api.Substrates.Name;
-import io.humainary.substrates.api.Substrates.New;
 import io.humainary.substrates.api.Substrates.NotNull;
 import io.humainary.substrates.api.Substrates.Pipe;
 import io.humainary.substrates.api.Substrates.Provided;
@@ -79,35 +76,4 @@ public final class FsPipe < E > implements Pipe < E > {
     }
   }
 
-  // ─── Pipe composition ───
-
-  @New
-  @NotNull
-  @Override
-  @SuppressWarnings ( "unchecked" )
-  public < I > Pipe < I > pipe ( @NotNull Flow < I, E > flow ) {
-    requireNonNull ( flow, "flow must not be null" );
-    FsFlow < I, E > fsFlow = (FsFlow < I, E >) flow;
-    // Flow terminal: if receiver is a channel (conduit pipe), use
-    // submitTransit directly for cascade safety (flow runs on circuit thread).
-    // Otherwise fall back to emit() for correct routing.
-    Consumer < Object > target = receiver;
-    FsCircuit c = circuit;
-    Consumer < I > chain;
-    if ( target instanceof FsChannel < ? > ch ) {
-      // Conduit pipe: flow terminal reads channel.dispatch at re-entry.
-      // dispatch IS Consumer<Object> — goes directly into transit, no wrapper.
-      // Falls back to channel before first rebuild (dispatch is null).
-      chain = fsFlow.materialise ( v -> {
-        Consumer < Object > d = ch.dispatch;
-        c.submitTransit ( d != null ? d : target, v );
-      } );
-    } else {
-      // Non-conduit pipe: flow terminal delivers to receiver synchronously
-      chain = fsFlow.materialise ( v -> target.accept ( v ) );
-    }
-    // The flow receiver: runs the flow chain on the circuit thread.
-    Consumer < Object > flowReceiver = (Consumer < Object >) (Consumer < ? >) chain;
-    return new FsPipe <> ( flowReceiver, circuit );
-  }
 }

@@ -1,5 +1,6 @@
 package io.fullerstack.substrates;
 
+import io.humainary.substrates.api.Substrates.Fiber;
 import io.humainary.substrates.api.Substrates.Flow;
 import io.humainary.substrates.api.Substrates.Idempotent;
 import io.humainary.substrates.api.Substrates.Name;
@@ -87,14 +88,6 @@ final class FsTap < T > implements Tap < T > {
           @Override
           public Subject < Pipe < T > > subject () {
             return tapChannel.subject;
-          }
-
-          @Override
-          @SuppressWarnings ( "unchecked" )
-          public < I > Pipe < I > pipe ( Flow < I, T > flow ) {
-            FsFlow < I, T > fsFlow = (FsFlow < I, T >) flow;
-            Consumer < I > chain = fsFlow.materialise ( this::emit );
-            return new FsPipe <> ( (Consumer < Object >) (Consumer < ? >) chain, circuit );
           }
         };
 
@@ -234,6 +227,18 @@ final class FsTap < T > implements Tap < T > {
   public < U > Tap < U > tap ( @NotNull Function < Pipe < U >, Pipe < T > > fn ) {
     requireNonNull ( fn );
     return new FsTap <> ( (FsSubject < ? >) subject, cortex ().name ( "tap" ), this, circuit, fn );
+  }
+
+  @Override
+  public < U > Tap < U > tap ( @NotNull Flow < T, U > flow ) {
+    requireNonNull ( flow );
+    return tap ( target -> flow.pipe ( target ) );
+  }
+
+  @Override
+  public Tap < T > tap ( @NotNull Fiber < T > fiber ) {
+    requireNonNull ( fiber );
+    return tap ( (Function < Pipe < T >, Pipe < T > >) target -> fiber.pipe ( target ) );
   }
 
   @Override

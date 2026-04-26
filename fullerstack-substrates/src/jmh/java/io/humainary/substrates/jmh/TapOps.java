@@ -398,8 +398,8 @@ public class TapOps
       );
 
     // Create the string tap transformer using flow.map
-    Flow < Integer, String > intToString = cortex.flow ( String.class ).map ( Object::toString );
-    toStringTap = stringPipe -> stringPipe.pipe ( intToString );
+    Flow < Integer, String > intToString = cortex.flow ( Integer.class ).map ( Object::toString );
+    toStringTap = stringPipe -> intToString.pipe ( stringPipe );
 
   }
 

@@ -5,6 +5,7 @@ import static java.util.Objects.requireNonNull;
 import io.humainary.substrates.api.Substrates.Circuit;
 import io.humainary.substrates.api.Substrates.Cortex;
 import io.humainary.substrates.api.Substrates.Current;
+import io.humainary.substrates.api.Substrates.Fiber;
 import io.humainary.substrates.api.Substrates.Flow;
 import io.humainary.substrates.api.Substrates.Name;
 import io.humainary.substrates.api.Substrates.New;
@@ -143,7 +144,36 @@ final class FsCortex implements Cortex {
   @NotNull
   @Override
   public < E > Flow < E, E > flow ( @NotNull Class < E > type ) {
+    requireNonNull ( type, "type must not be null" );
     return new FsFlow <> ();
+  }
+
+  /// 2.3: returns an identity flow with the fiber attached at the output side.
+  /// Equivalent to `flow().fiber(fiber)`.
+  @New
+  @NotNull
+  @Override
+  public < E > Flow < E, E > flow ( @NotNull Fiber < E > fiber ) {
+    requireNonNull ( fiber, "fiber must not be null" );
+    Flow < E, E > f = new FsFlow <> ();
+    return f.fiber ( fiber );
+  }
+
+  /// 2.3: returns an empty identity fiber.
+  @New
+  @NotNull
+  @Override
+  public < E > Fiber < E > fiber () {
+    return new FsFiber <> ();
+  }
+
+  /// 2.3: returns an empty identity fiber. The class parameter is for type inference.
+  @New
+  @NotNull
+  @Override
+  public < E > Fiber < E > fiber ( @NotNull Class < E > type ) {
+    requireNonNull ( type, "type must not be null" );
+    return new FsFiber <> ();
   }
 
   @New

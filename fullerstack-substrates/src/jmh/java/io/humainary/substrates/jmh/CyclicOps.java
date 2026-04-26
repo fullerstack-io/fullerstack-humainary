@@ -40,8 +40,8 @@ public class CyclicOps
   private Name            pipesName;
   private Name            cyclicName;
   private Circuit         circuit;
-  private Flow < Integer, Integer > limitFlow;
-  private Flow < Integer, Integer > deepLimitFlow;
+  private Fiber < Integer > limitFlow;
+  private Fiber < Integer > deepLimitFlow;
 
   ///
   /// Benchmark cyclic emission setup and trigger (no await).
@@ -58,7 +58,7 @@ public class CyclicOps
         pipesName,
         ( subject, registrar ) ->
           registrar.register (
-            conduit.get ( subject ).pipe ( limitFlow )
+            limitFlow.pipe ( conduit.get ( subject ) )
           )
       )
     );
@@ -82,7 +82,7 @@ public class CyclicOps
         pipesName,
         ( subject, registrar ) ->
           registrar.register (
-            conduit.get ( subject ).pipe ( limitFlow )
+            limitFlow.pipe ( conduit.get ( subject ) )
           )
       )
     );
@@ -107,7 +107,7 @@ public class CyclicOps
         pipesName,
         ( subject, registrar ) ->
           registrar.register (
-            conduit.get ( subject ).pipe ( deepLimitFlow )
+            deepLimitFlow.pipe ( conduit.get ( subject ) )
           )
       )
     );
@@ -134,7 +134,7 @@ public class CyclicOps
           pipesName,
           ( subject, registrar ) ->
             registrar.register (
-              conduit.get ( subject ).pipe ( limitFlow )
+              limitFlow.pipe ( conduit.get ( subject ) )
             )
         )
       );
@@ -162,7 +162,7 @@ public class CyclicOps
           pipesName,
           ( subject, registrar ) ->
             registrar.register (
-              conduit.get ( subject ).pipe ( limitFlow )
+              limitFlow.pipe ( conduit.get ( subject ) )
             )
         )
       );
@@ -191,7 +191,7 @@ public class CyclicOps
           pipesName,
           ( subject, registrar ) ->
             registrar.register (
-              conduit.get ( subject ).pipe ( deepLimitFlow )
+              deepLimitFlow.pipe ( conduit.get ( subject ) )
             )
         )
       );
@@ -224,10 +224,10 @@ public class CyclicOps
       cortex.name ( "cyclic" );
 
     limitFlow =
-      cortex.flow ( Integer.class ).limit ( CYCLE_LIMIT );
+      cortex.fiber ( Integer.class ).limit ( CYCLE_LIMIT );
 
     deepLimitFlow =
-      cortex.flow ( Integer.class ).limit ( CYCLE_LIMIT * 10 );
+      cortex.fiber ( Integer.class ).limit ( CYCLE_LIMIT * 10 );
 
   }
 

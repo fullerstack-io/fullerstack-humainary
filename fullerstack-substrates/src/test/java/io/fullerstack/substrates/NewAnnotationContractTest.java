@@ -147,21 +147,21 @@ class NewAnnotationContractTest {
   }
 
   @Nested
-  @DisplayName ( "Pipe @New" )
+  @DisplayName ( "Fiber @New" )
   class PipeNew {
 
     @Test
-    @DisplayName ( "pipe.pipe(flow) returns distinct instances" )
+    @DisplayName ( "fiber.pipe(pipe) returns distinct instances" )
     void pipeFlow_alwaysNew () {
       Cortex cortex = cortex ();
       var circuit = cortex.circuit ();
       try {
         var conduit = circuit.conduit ( Integer.class );
         var base = conduit.get ( cortex.name ( "p" ) );
-        var flow = cortex.flow ( Integer.class ).guard ( v -> v > 0 );
-        var a = base.pipe ( flow );
-        var b = base.pipe ( flow );
-        assertNotSame ( a, b, "@New: pipe.pipe(flow) must return new instances" );
+        var fiber = cortex.fiber ( Integer.class ).guard ( v -> v > 0 );
+        var a = fiber.pipe ( base );
+        var b = fiber.pipe ( base );
+        assertNotSame ( a, b, "@New: fiber.pipe(pipe) must return new instances" );
       } finally {
         circuit.close ();
       }
