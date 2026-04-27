@@ -90,8 +90,8 @@ public final class FsCircuit implements Circuit {
   // Queue infrastructure
   // ─────────────────────────────────────────────────────────────────────────────
 
-  private final IngressQueue ingress = new IngressQueue ();
-  private final TransitQueue transit = new TransitQueue ();
+  private final IngressQueue     ingress = new IngressQueue ();
+  private final TransitQueueRing transit = new TransitQueueRing ();
 
   // ─────────────────────────────────────────────────────────────────────────────
   // Synchronization state

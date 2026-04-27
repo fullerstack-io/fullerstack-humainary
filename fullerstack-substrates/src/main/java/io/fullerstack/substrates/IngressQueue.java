@@ -137,7 +137,7 @@ public final class IngressQueue {
       } else {
         r.accept ( v );                                    // hot: monomorphic receptor
         if ( circuit.transitHasWork () ) {                 // guard: plain field read
-          do { } while ( circuit.drainTransit () );        // depth-first cascade drain
+          circuit.drainTransit ();                         // drain all transit (drain() loops internally)
         }
       }
 
