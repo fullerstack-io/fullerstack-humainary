@@ -101,11 +101,15 @@ public final class FsFiber < E > implements Fiber < E > {
   /// Returns a pipe that processes emissions through this fiber before reaching `target`.
   ///
   /// Each call materialises a fresh consumer chain with independent stateful state.
-  /// The fiber chain runs on the circuit thread (after dequeue), so when target
-  /// is a same-circuit FsPipe we go directly to {@code circuit.submitTransit}
-  /// with target's receiver — same queue payload as {@code target.emit(v)}, but
-  /// without the redundant null/closed/thread checks inside emit. The transit
-  /// queue boundary is preserved (cascade safety, spec §5.3).
+  /// The fiber chain runs on the circuit thread (after dequeue). When target is
+  /// a same-circuit FsPipe wrapping an FsChannel, the terminal submits
+  /// {@code channel.dispatch} (the pre-built dispatch consumer) to transit —
+  /// bypassing the channel's version check on the cascade hot path. Per spec
+  /// §5.4.1 + §7.6.2, subscriber changes can't interleave with cascade drains,
+  /// so the dispatch is guaranteed stable mid-cascade. STEM propagation is
+  /// folded into dispatch during rebuild, so dispatch alone is correct.
+  ///
+  /// For non-channel receivers, submit the receiver directly.
   @New
   @NotNull
   @Override
@@ -114,11 +118,22 @@ public final class FsFiber < E > implements Fiber < E > {
     Objects.requireNonNull ( target, "target must not be null" );
     final Consumer < E > chain;
     if ( target instanceof FsPipe < ? > fp ) {
-      // Same-circuit terminal: submitTransit directly, skip target.emit's checks.
-      // Queue payload is still (target.receiver, v) — cascade safety preserved.
       final FsCircuit c = fp.circuit ();
       final Consumer < Object > targetReceiver = fp.receiver ();
-      chain = materialise ( v -> c.submitTransit ( targetReceiver, v ) );
+      if ( targetReceiver instanceof FsChannel < ? > channel ) {
+        // Channel receiver: submit channel.cascadeDispatch to transit. This
+        // skips channel.receive's version check on the cascade hot path.
+        // cascadeDispatch already includes STEM behavior if channel is STEM.
+        // Falls back to the channel itself before first rebuild (cascadeDispatch
+        // is null until rebuild runs during the first ingress emission).
+        chain = materialise ( v -> {
+          Consumer < Object > d = channel.cascadeDispatch;
+          c.submitTransit ( d != null ? d : channel, v );
+        } );
+      } else {
+        // Non-channel receiver (e.g., ReceptorAdapter for circuit.pipe(receptor))
+        chain = materialise ( v -> c.submitTransit ( targetReceiver, v ) );
+      }
       return new FsPipe <> ( (Consumer < Object >) (Consumer < ? >) chain, c );
     }
     // Foreign Pipe: no access to its internals, use emit().

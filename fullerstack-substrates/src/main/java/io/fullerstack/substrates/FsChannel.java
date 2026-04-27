@@ -22,8 +22,11 @@ import java.util.function.Consumer;
 /// - **Ingress receiver**: implements Consumer<Object>. Stored in the
 ///   ingress queue. On dequeue, checks version and dispatches.
 /// - **Dispatch builder**: after rebuild, sets the dispatch Consumer
-///   which is used directly on the transit hot path — no channel,
-///   no version check, no wrappers.
+///   which is used directly on the transit hot path. The dispatch
+///   already includes STEM propagation if applicable, so transit
+///   cascades can call dispatch directly without going through the
+///   channel — bypassing the version check (which the spec guarantees
+///   is stable mid-cascade per §5.4.1 + §7.6.2).
 ///
 /// The dispatch is Consumer<Object> throughout — same type as the
 /// transit queue, the flow chain, and the registrar's stored receivers.
@@ -39,12 +42,17 @@ final class FsChannel < E > implements Receptor < E >, Consumer < Object > {
   /// The upstream pipe — what conduit.get(name) returns.
   final FsPipe < E > pipe;
 
-  /// Downstream dispatch — Consumer<Object> for zero-wrapper hot path.
-  /// For one subscriber: the flow receiver directly.
-  /// For multiple: a composed consumer that loops.
-  /// This IS what transit stores for cascade re-entry. No transitDispatch
-  /// wrapper needed — dispatch IS transit-compatible.
+  /// Downstream dispatch — receptors only, no STEM. Used by ingress receive()
+  /// (which adds version check + STEM externally) and by dispatchStem when
+  /// walking ancestors (must NOT trigger ancestor's STEM walk too).
   Consumer < Object > dispatch;
+
+  /// Transit-side cascade dispatch — receptors + STEM (if applicable).
+  /// Submitted directly to transit by fiber/flow terminals to bypass the
+  /// version check on the cascade hot path. For non-STEM channels this is
+  /// the same reference as `dispatch`. For STEM channels it's a wrapper
+  /// that fires receptors then walks STEM.
+  Consumer < Object > cascadeDispatch;
 
   /// Version this channel was last built at.
   int builtVersion = -1;
@@ -80,6 +88,12 @@ final class FsChannel < E > implements Receptor < E >, Consumer < Object > {
   }
 
   // ─── Dispatch (ingress path — version check) ───
+  //
+  // Called only from the ingress drain. The version check fires here because
+  // an ingress emission may follow a subscriber change (which is itself
+  // queued in ingress order). Per §5.4.1 relation 3 + §7.6.2, no subscriber
+  // change can interleave during a cascade, so transit-side dispatch goes
+  // straight to `dispatch` and skips this method entirely.
 
   @Override
   @jdk.internal.vm.annotation.ForceInline
@@ -90,7 +104,8 @@ final class FsChannel < E > implements Receptor < E >, Consumer < Object > {
     if ( stem ) dispatchStem ( emission );
   }
 
-  /// STEM — propagate to ancestor channels.
+  /// STEM — propagate to ancestor channels' dispatch (no version checks here;
+  /// rebuild is driven from receive() before any transit can run).
   private void dispatchStem ( E emission ) {
     Name n = subject.name ();
     while ( n.enclosure ().isPresent () ) {
@@ -129,7 +144,8 @@ final class FsChannel < E > implements Receptor < E >, Consumer < Object > {
       }
     }
 
-    // Build dispatch — Consumer<Object> throughout, no wrappers
+    // Build receptor-only dispatch — used by ingress receive() and by
+    // dispatchStem when walking ancestors.
     List < Consumer < Object > > all = new ArrayList <> ();
     for ( List < Consumer < Object > > list : subscriberReceptors.values () ) {
       all.addAll ( list );
@@ -144,6 +160,20 @@ final class FsChannel < E > implements Receptor < E >, Consumer < Object > {
       dispatch = v -> {
         for ( int i = 0, len = arr.length; i < len; i++ ) arr[i].accept ( v );
       };
+    }
+
+    // Build cascadeDispatch — what transit cascade terminals submit.
+    // Same as dispatch for non-STEM channels; wraps in STEM walk for STEM channels.
+    if ( stem ) {
+      final Consumer < Object > base = dispatch;
+      cascadeDispatch = v -> {
+        if ( base != null ) base.accept ( v );
+        @SuppressWarnings ( "unchecked" )
+        E e = (E) v;
+        dispatchStem ( e );
+      };
+    } else {
+      cascadeDispatch = dispatch;
     }
 
     builtVersion = hub.subscriberVersion;

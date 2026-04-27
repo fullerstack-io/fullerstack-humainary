@@ -308,10 +308,11 @@ public final class FsFlow < I, O > implements Flow < I, O > {
     return new FsFlow <> ( merged, count + nextFlow.count );
   }
 
-  /// When target is a same-circuit FsPipe, the flow's terminal calls
-  /// {@code circuit.submitTransit(target.receiver, v)} directly — same queue
-  /// payload as {@code target.emit(v)}, but without the redundant null/closed/
-  /// thread checks. Queue boundary preserved for cascade safety (spec §5.3).
+  /// When target is a same-circuit FsPipe, the flow's terminal submits to
+  /// transit directly — bypassing target.emit's checks. If target's receiver
+  /// is an FsChannel, submit channel.dispatch instead of channel itself,
+  /// skipping the channel's version check on the cascade hot path (spec
+  /// §5.4.1 + §7.6.2 — subscriber state cannot change mid-cascade).
   @New
   @NotNull
   @Override
@@ -320,10 +321,18 @@ public final class FsFlow < I, O > implements Flow < I, O > {
     Objects.requireNonNull ( target );
     final Consumer < I > chain;
     if ( target instanceof FsPipe < ? > fp ) {
-      // Same-circuit terminal: bypass target.emit, queue directly.
       final FsCircuit c = fp.circuit ();
       final Consumer < Object > targetReceiver = fp.receiver ();
-      chain = materialise ( (Consumer < O >) v -> c.submitTransit ( targetReceiver, v ) );
+      if ( targetReceiver instanceof FsChannel < ? > channel ) {
+        // Submit channel.cascadeDispatch directly — receptors + STEM, no
+        // version check. Falls back to channel before first rebuild.
+        chain = materialise ( (Consumer < O >) v -> {
+          Consumer < Object > d = channel.cascadeDispatch;
+          c.submitTransit ( d != null ? d : channel, v );
+        } );
+      } else {
+        chain = materialise ( (Consumer < O >) v -> c.submitTransit ( targetReceiver, v ) );
+      }
       return new FsPipe <> ( (Consumer < Object >) (Consumer < ? >) chain, c );
     }
     // Foreign Pipe — fall through to wrapped emit
