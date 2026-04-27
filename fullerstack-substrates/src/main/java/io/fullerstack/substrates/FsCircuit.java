@@ -116,10 +116,14 @@ public final class FsCircuit implements Circuit {
   private final Consumer < Object > closeMarkerReceiver;
 
   // ─────────────────────────────────────────────────────────────────────────────
-  // ReceptorAdapter - Concrete class for JIT devirtualization/inlining
+  // ReceptorAdapter — wraps a user Receptor in a Consumer<Object>.
+  //
+  // Hot path: ingress/transit drain → r.accept(v) → receptor.receive(v).
+  // Used ONLY for user receptors (circuit.pipe(receptor) and friends).
+  // Markers and circuit jobs use distinct concrete classes below so the
+  // bci=5 receptor.receive call site here stays monomorphic per circuit.
   // ─────────────────────────────────────────────────────────────────────────────
 
-  /// General-purpose receptor adapter — wraps a Receptor in a Consumer<Object>.
   @SuppressWarnings ( "unchecked" )
   static final class ReceptorAdapter < E > implements Consumer < Object >, Receptor < E > {
     final Receptor < ? super E > receptor;
@@ -140,6 +144,37 @@ public final class FsCircuit implements Circuit {
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
+  // Marker classes — concrete per-purpose so each compiles independently
+  // and doesn't pollute ReceptorAdapter.accept's type profile.
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  /// Await marker — delivered through the ingress queue and routed to
+  /// {@link FsCircuit#onAwaitMarker(Object)} via isMarker() identity check.
+  static final class AwaitMarker implements Consumer < Object > {
+    final FsCircuit circuit;
+    AwaitMarker ( FsCircuit circuit ) { this.circuit = circuit; }
+    @Override public void accept ( Object o ) { circuit.onAwaitMarker ( o ); }
+  }
+
+  /// Close marker — delivered through the ingress queue and routed to
+  /// {@link FsCircuit#onCloseMarker(Object)} via isMarker() identity check.
+  static final class CloseMarker implements Consumer < Object > {
+    final FsCircuit circuit;
+    CloseMarker ( FsCircuit circuit ) { this.circuit = circuit; }
+    @Override public void accept ( Object o ) { circuit.onCloseMarker ( o ); }
+  }
+
+  /// Generic one-shot circuit job — wraps a Runnable for ingress dispatch.
+  /// Used by FsConduit subscribe/unsubscribe and similar circuit-thread-only work.
+  /// Distinct compiled body keeps the action.run() call site separate from
+  /// ReceptorAdapter.accept's receptor.receive() call site.
+  static final class CircuitJob implements Consumer < Object > {
+    final Runnable action;
+    CircuitJob ( Runnable action ) { this.action = action; }
+    @Override public void accept ( Object o ) { action.run (); }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────────
   // Construction
   // ─────────────────────────────────────────────────────────────────────────────
 
@@ -147,14 +182,11 @@ public final class FsCircuit implements Circuit {
     this.subject = subject;
     this.subscribers = new ArrayList <> ();
 
-    // Pre-allocate marker receivers as ReceptorAdapter instances.
-    // Drain loop uses isMarker() identity check to route markers to
-    // fireMarker() (cold path, separate type profile). Hot-path
-    // r.accept(v) → receptor.receive() stays fully monomorphic.
-    Receptor < Object > awaitReceptor = this::onAwaitMarker;
-    this.awaitMarkerReceiver = new ReceptorAdapter <> ( awaitReceptor );
-    Receptor < Object > closeReceptor = this::onCloseMarker;
-    this.closeMarkerReceiver = new ReceptorAdapter <> ( closeReceptor );
+    // Pre-allocate marker receivers as concrete classes — distinct types
+    // from ReceptorAdapter so the hot-path r.accept(v) → receptor.receive()
+    // call site stays monomorphic when only user receptors flow through it.
+    this.awaitMarkerReceiver = new AwaitMarker ( this );
+    this.closeMarkerReceiver = new CloseMarker ( this );
 
     // Create and start worker thread
     this.worker = Thread.ofVirtual ()

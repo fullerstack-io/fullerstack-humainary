@@ -175,13 +175,15 @@ public final class FsConduit < E > extends FsSubstrate < Conduit < E > > impleme
 
     fs.trackSubscription ( subscription );
 
-    circuit.submitIngress ( new FsCircuit.ReceptorAdapter < Object > ( _ -> hub.addSubscriber ( fs ) ), null );
+    // Use CircuitJob (distinct class) so subscribe/unsubscribe lambdas don't
+    // pollute ReceptorAdapter.accept's type profile on the hot path.
+    circuit.submitIngress ( new FsCircuit.CircuitJob ( () -> hub.addSubscriber ( fs ) ), null );
 
     return subscription;
   }
 
   private void enqueueUnsubscribe ( FsSubscriber < E > subscriber ) {
-    circuit.submitIngress ( new FsCircuit.ReceptorAdapter < Object > ( _ -> hub.removeSubscriber ( subscriber ) ), null );
+    circuit.submitIngress ( new FsCircuit.CircuitJob ( () -> hub.removeSubscriber ( subscriber ) ), null );
   }
 
   @New
