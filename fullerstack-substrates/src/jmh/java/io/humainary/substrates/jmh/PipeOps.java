@@ -53,6 +53,9 @@ public class PipeOps
   // Pre-created pipes for hot path measurement
   private Pipe < Integer > asyncPipe;
   private Pipe < Integer > asyncPipeWithFlow;
+  private Pipe < Integer > asyncPipeEmptyFiber;
+  private Pipe < Integer > asyncPipeGuardOnly;
+  private Pipe < Integer > asyncPipeDiffOnly;
   private Pipe < Integer > chainedPipe;
   private Pipe < Integer > fanOutPipe;
 
@@ -246,6 +249,44 @@ public class PipeOps
   }
 
   ///
+  /// Incremental flow cost analysis — isolates each operator's contribution.
+  /// Same setup as async_emit_with_flow_await but with progressive operators.
+  ///
+
+  @Benchmark
+  @OperationsPerInvocation ( BATCH_SIZE )
+  public void async_emit_empty_fiber_await () {
+
+    for ( int i = 0; i < BATCH_SIZE; i++ ) {
+      asyncPipeEmptyFiber.emit ( VALUE + i );
+    }
+    circuit.await ();
+
+  }
+
+  @Benchmark
+  @OperationsPerInvocation ( BATCH_SIZE )
+  public void async_emit_guard_only_await () {
+
+    for ( int i = 0; i < BATCH_SIZE; i++ ) {
+      asyncPipeGuardOnly.emit ( VALUE + i );
+    }
+    circuit.await ();
+
+  }
+
+  @Benchmark
+  @OperationsPerInvocation ( BATCH_SIZE )
+  public void async_emit_diff_only_await () {
+
+    for ( int i = 0; i < BATCH_SIZE; i++ ) {
+      asyncPipeDiffOnly.emit ( VALUE + i );
+    }
+    circuit.await ();
+
+  }
+
+  ///
   /// Counter baseline - measures AtomicInteger.incrementAndGet() cost.
   /// Represents minimal "real work" in a receptor.
   ///
@@ -332,6 +373,28 @@ public class PipeOps
     // Async pipe with flow operations
     asyncPipeWithFlow =
       cortex.fiber ( Integer.class ).guard ( v -> v > 0 ).diff ().pipe (
+        circuit.pipe (
+          Receptor.of ( Integer.class )
+        )
+      );
+
+    // Incremental analysis pipes — isolate each operator's contribution
+    asyncPipeEmptyFiber =
+      cortex.fiber ( Integer.class ).pipe (
+        circuit.pipe (
+          Receptor.of ( Integer.class )
+        )
+      );
+
+    asyncPipeGuardOnly =
+      cortex.fiber ( Integer.class ).guard ( v -> v > 0 ).pipe (
+        circuit.pipe (
+          Receptor.of ( Integer.class )
+        )
+      );
+
+    asyncPipeDiffOnly =
+      cortex.fiber ( Integer.class ).diff ().pipe (
         circuit.pipe (
           Receptor.of ( Integer.class )
         )

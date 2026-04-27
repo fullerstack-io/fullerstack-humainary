@@ -53,8 +53,31 @@ final class TransitQueue {
   }
 
   @jdk.internal.vm.annotation.ForceInline
+  @SuppressWarnings ( "unchecked" )
   boolean drain () {
-    if ( readIndex == writeIndex && writeChunk == homeChunk ) return false;
+    int ri = readIndex;
+    int wi = writeIndex;
+    // Empty: nothing to do.
+    if ( ri == wi && writeChunk == homeChunk ) return false;
+    // Cascade fast path: single entry on the home chunk (write-one/read-one
+    // lockstep — the dominant pattern). Avoids the general drainSlots loop's
+    // bookkeeping (ring-reset branch, loop-exit, function-call overhead).
+    if ( writeChunk == homeChunk && wi == ri + 1 ) {
+      int base = ri << 1;
+      Object[] slots = homeChunk.slots;
+      Consumer < Object > receiver = (Consumer < Object >) slots[base];
+      Object value = slots[base + 1];
+      slots[base] = null;
+      slots[base + 1] = null;
+      // Reset BEFORE dispatch — accept() may enqueue more, and we want
+      // those new entries to land at index 0 (ring reuse).
+      readIndex = 0;
+      writeIndex = 0;
+      receiver.accept ( value );
+      // accept() may have enqueued more — drain the rest with the slow path.
+      if ( writeIndex != 0 || writeChunk != homeChunk ) drainSlots ();
+      return true;
+    }
     drainSlots ();
     return true;
   }
