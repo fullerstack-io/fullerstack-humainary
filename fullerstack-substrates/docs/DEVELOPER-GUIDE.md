@@ -12,14 +12,14 @@ For Serventis semiotic observability patterns, read the [official Serventis docu
 
 ```java
 // GOOD — lookup once, emit many
-var pipe = conduit.percept(cortex().name("kafka.broker.1.bytes-in"));
+var pipe = conduit.get(cortex().name("kafka.broker.1.bytes-in"));
 for (int i = 0; i < 1_000_000; i++) {
     pipe.emit(new MetricValue(bytesIn));
 }
 
 // BAD — map lookup on every emit
 for (int i = 0; i < 1_000_000; i++) {
-    conduit.percept(cortex().name("kafka.broker.1.bytes-in"))
+    conduit.get(cortex().name("kafka.broker.1.bytes-in"))
         .emit(new MetricValue(bytesIn));
 }
 ```
@@ -54,30 +54,46 @@ Each circuit has one virtual thread. Separate circuits give independent ordering
 
 ```java
 // GOOD — type-safe, clear separation
-var counters = circuit.conduit(cortex().name("counters"), Counters::composer);
-var statuses = circuit.conduit(cortex().name("statuses"), Statuses::composer);
+var counters = circuit.conduit(cortex().name("counters"), Long.class);
+var statuses = circuit.conduit(cortex().name("statuses"), Statuses.Signal.class);
 
 // BAD — untyped grab bag
-var everything = circuit.conduit(cortex().name("all"), Composer.pipe());
+var everything = circuit.conduit(cortex().name("all"), Object.class);
 ```
 
-### Configure flows at conduit creation
+### Apply per-emission operators with a Fiber
+
+In Substrates 2.3 per-emission operators (`guard`, `diff`, `limit`, `peek`, `replace`, `every`, `hysteresis`, ...) live on `Fiber<E>`, not on `Flow`. Build a fiber once, then attach it where the data enters the system:
 
 ```java
-var conduit = circuit.conduit(
-    cortex().name("metrics"),
-    Composer.pipe(),
-    flow -> flow
-        .guard(v -> v > 0)     // filter negatives
-        .sample(10)            // every 10th
-        .diff()                // suppress unchanged
-);
+// Fiber is reusable and immutable — operators return new fibers
+var sampler = cortex().fiber(MetricValue.class)
+    .guard(v -> v.value() > 0)   // filter non-positive
+    .every(10)                   // every 10th
+    .diff();                     // suppress unchanged
+
+// Option A: derive a pool whose pipes pre-process emissions
+Pool<Pipe<MetricValue>> filteredPool = conduit.pool(sampler);
+var pipe = filteredPool.get(cortex().name("kafka.broker.1.bytes-in"));
+pipe.emit(metric);   // runs through guard → every → diff before reaching the channel
+
+// Option B: wrap an existing pipe with the fiber
+var basePipe     = conduit.get(cortex().name("kafka.broker.1.bytes-in"));
+var filteredPipe = sampler.pipe(basePipe);
 ```
 
 **Order matters:**
 ```java
-flow.guard(v -> v > 100).sample(10)  // 1000 → ~500 pass → ~50 sampled
-flow.sample(10).guard(v -> v > 100)  // 1000 → ~100 sampled → ~50 pass
+fiber.guard(v -> v > 100).every(10)  // 1000 → ~500 pass → ~50 sampled
+fiber.every(10).guard(v -> v > 100)  // 1000 → ~100 sampled → ~50 pass
+```
+
+For type changes (e.g. extracting a field), reach for `Flow<I,O>`:
+
+```java
+Flow<MetricValue, Long> flow = cortex().flow(MetricValue.class)
+    .map(MetricValue::value)
+    .fiber(cortex().fiber(Long.class).diff());
 ```
 
 ### Close resources
@@ -138,11 +154,11 @@ for (var metric : metrics) {
     cortex().circuit(cortex().name(metric));
 }
 
-// GOOD — one circuit per domain, many conduits/percepts
-var circuit = cortex().circuit(cortex().name("kafka"));
-var counters = circuit.conduit(cortex().name("counters"), Counters::composer);
+// GOOD — one circuit per domain, many conduits/pipes
+var circuit  = cortex().circuit(cortex().name("kafka"));
+var counters = circuit.conduit(cortex().name("counters"), Long.class);
 for (var metric : metrics) {
-    counters.percept(cortex().name(metric)).increment();
+    counters.get(cortex().name(metric)).emit(1L);
 }
 ```
 
@@ -150,14 +166,13 @@ for (var metric : metrics) {
 
 ```java
 // BAD — type safety lost
-Conduit<Pipe<Object>, Object> mixed = circuit.conduit(
-    cortex().name("mixed"), Composer.pipe());
-mixed.percept(name).emit("string");
-mixed.percept(name).emit(42);  // What type is this?
+Conduit<Object> mixed = circuit.conduit(cortex().name("mixed"), Object.class);
+mixed.get(name).emit("string");
+mixed.get(name).emit(42);  // What type is this?
 
-// GOOD — Serventis composer enforces types
-var statuses = circuit.conduit(cortex().name("health"), Statuses::composer);
-statuses.percept(name).stable(Statuses.Dimension.CONFIRMED);
+// GOOD — typed Serventis signal
+var statuses = circuit.conduit(cortex().name("health"), Statuses.Signal.class);
+statuses.get(name).emit(Statuses.signal(Statuses.Sign.STABLE, Statuses.Dimension.CONFIRMED));
 ```
 
 ### 4. Forgetting that subscriber discovery is lazy

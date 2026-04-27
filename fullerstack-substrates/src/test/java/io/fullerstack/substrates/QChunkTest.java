@@ -130,17 +130,17 @@ class QChunkTest {
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
-  // TransitQueue Tests
+  // TransitQueueRing Tests
   // ─────────────────────────────────────────────────────────────────────────────
 
   @Nested
-  @DisplayName ( "TransitQueue" )
+  @DisplayName ( "TransitQueueRing" )
   class TransitTests {
 
     @Test
     @DisplayName ( "single-threaded enqueue+drain — 10 items, verify order" )
     void singleThreadedOrder () {
-      TransitQueue q = new TransitQueue ();
+      TransitQueueRing q = new TransitQueueRing ();
       List < Object > results = new ArrayList <> ();
       Consumer < Object > recorder = results::add;
 
@@ -158,14 +158,14 @@ class QChunkTest {
     @Test
     @DisplayName ( "drain returns false when empty" )
     void drainEmpty () {
-      TransitQueue q = new TransitQueue ();
+      TransitQueueRing q = new TransitQueueRing ();
       assertFalse ( q.drain () );
     }
 
     @Test
     @DisplayName ( "full chunk — 64 items, verify drain resets for reuse" )
     void fullChunkDrainAndReuse () {
-      TransitQueue q = new TransitQueue ();
+      TransitQueueRing q = new TransitQueueRing ();
       List < Object > results = new ArrayList <> ();
       Consumer < Object > recorder = results::add;
 
@@ -191,7 +191,7 @@ class QChunkTest {
     @Test
     @DisplayName ( "overflow — >64 items trigger overflow chunk" )
     void overflowChunk () {
-      TransitQueue q = new TransitQueue ();
+      TransitQueueRing q = new TransitQueueRing ();
       List < Object > results = new ArrayList <> ();
       Consumer < Object > recorder = results::add;
 
@@ -210,7 +210,7 @@ class QChunkTest {
     @Test
     @DisplayName ( "repeated drain cycles — verify zero alloc pattern" )
     void repeatedDrainCycles () {
-      TransitQueue q = new TransitQueue ();
+      TransitQueueRing q = new TransitQueueRing ();
       AtomicInteger count = new AtomicInteger ();
       Consumer < Object > counter = _ -> count.incrementAndGet ();
 
@@ -230,7 +230,7 @@ class QChunkTest {
     @Test
     @DisplayName ( "null value handling in transit" )
     void nullValueTransit () {
-      TransitQueue q = new TransitQueue ();
+      TransitQueueRing q = new TransitQueueRing ();
       AtomicInteger count = new AtomicInteger ();
       Consumer < Object > counter = _ -> count.incrementAndGet ();
 

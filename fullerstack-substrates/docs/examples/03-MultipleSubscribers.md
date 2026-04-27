@@ -13,13 +13,9 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 public class FanOutExample {
     public static void main(String[] args) throws InterruptedException {
-        // Cortex accessed via static cortex() method
         Circuit circuit = cortex().circuit(cortex().name("fanout-circuit"));
 
-        Conduit<Pipe<String>, String> conduit = circuit.conduit(
-            cortex().name("events"),
-            Composer.pipe()
-        );
+        Conduit<String> conduit = circuit.conduit(cortex().name("events"), String.class);
 
         // Subscriber 1: Console logger
         conduit.subscribe(
@@ -62,7 +58,7 @@ public class FanOutExample {
         );
 
         // Emit messages
-        Pipe<String> pipe = conduit.percept(cortex().name("producer"));
+        Pipe<String> pipe = conduit.get(cortex().name("producer"));
         pipe.emit("INFO: System started");
         pipe.emit("ERROR: Connection failed");
         pipe.emit("WARN: High memory usage");

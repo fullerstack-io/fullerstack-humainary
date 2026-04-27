@@ -4,7 +4,8 @@ import java.util.function.Consumer;
 
 /// Single-threaded transit queue using a growable power-of-2 ring.
 ///
-/// Same role as {@link TransitQueue} but a leaner data structure for the
+/// Single-threaded transit queue — leaner data structure than the original
+/// chunked design for the
 /// cascade pattern. Each emission is held as a (receiver, value) pair across
 /// two parallel arrays indexed by `head & mask` / `tail & mask`. Capacity is
 /// unbounded — when the ring fills, it doubles in size with a one-shot copy.

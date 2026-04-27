@@ -31,14 +31,12 @@ public class ResourceManagementExample {
         System.out.println("=== Manual Lifecycle ===");
 
         Circuit circuit = cortex().circuit(cortex().name("manual"));
-        Conduit<Pipe<String>, String> conduit = circuit.conduit(
-            cortex().name("messages"),
-            Composer.pipe()
-        );
+        Conduit<String> conduit =
+            circuit.conduit(cortex().name("messages"), String.class);
 
         // Use resources...
         System.out.println("Using resources...");
-        Pipe<String> pipe = conduit.percept(cortex().name("producer"));
+        Pipe<String> pipe = conduit.get(cortex().name("producer"));
         pipe.emit("test");
 
         // Manual cleanup
@@ -57,13 +55,13 @@ public class ResourceManagementExample {
             cortex().circuit(cortex().name("scoped"))
         );
 
-        Conduit<Pipe<String>, String> conduit = scope.register(
-            circuit.conduit(cortex().name("messages"), Composer.pipe())
+        Conduit<String> conduit = scope.register(
+            circuit.conduit(cortex().name("messages"), String.class)
         );
 
         // Use resources...
         System.out.println("Using scoped resources...");
-        Pipe<String> pipe = conduit.percept(cortex().name("producer"));
+        Pipe<String> pipe = conduit.get(cortex().name("producer"));
         pipe.emit("scoped message");
 
         // Close scope → closes all registered resources
@@ -82,12 +80,10 @@ public class ResourceManagementExample {
         scope.closure(circuit).consume(c -> {
             System.out.println("Using circuit in closure...");
 
-            Conduit<Pipe<String>, String> conduit = c.conduit(
-                cortex().name("temp"),
-                Composer.pipe()
-            );
+            Conduit<String> conduit =
+                c.conduit(cortex().name("temp"), String.class);
 
-            Pipe<String> pipe = conduit.percept(cortex().name("p"));
+            Pipe<String> pipe = conduit.get(cortex().name("p"));
             pipe.emit("Temporary message");
 
             // Circuit automatically closed when this block exits
@@ -107,12 +103,10 @@ public class ResourceManagementExample {
 
             System.out.println("Using resources in try block...");
 
-            Conduit<Pipe<Integer>, Integer> conduit = circuit.conduit(
-                cortex().name("numbers"),
-                Composer.pipe()
-            );
+            Conduit<Integer> conduit =
+                circuit.conduit(cortex().name("numbers"), Integer.class);
 
-            Pipe<Integer> pipe = conduit.percept(cortex().name("counter"));
+            Pipe<Integer> pipe = conduit.get(cortex().name("counter"));
             pipe.emit(42);
 
         } // Scope auto-closes, cleaning up circuit
@@ -163,8 +157,8 @@ try {
 ```java
 Scope scope = cortex().scope();
 Circuit circuit = scope.register(cortex().circuit());
-Conduit<Pipe<String>, String> conduit = scope.register(
-    circuit.conduit(cortex().name("messages"), Composer.pipe())
+Conduit<String> conduit = scope.register(
+    circuit.conduit(cortex().name("messages"), String.class)
 );
 // ...
 scope.close();  // Closes all

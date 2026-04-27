@@ -2,6 +2,8 @@
 
 Substrates is async-first — `pipe.emit(value)` enqueues and returns immediately. Processing happens later on the circuit's virtual thread. This is the opposite of RxJava (synchronous by default).
 
+Spec §14 (Async Pipe Dispatch) formalises this for cyclic topologies via `circuit.pipe(target)` — a pipe that re-enters the circuit's queue rather than calling the target directly. This is what makes deeply recurrent networks stack-safe.
+
 This document covers the practical consequences: how to test, how to synchronize, and what not to do.
 
 For why Substrates chose determinism over throughput, read the [Design Rationale](https://github.com/humainary-io/substrates-api-spec/blob/main/RATIONALE.md). For how the queues work internally, see [Circuit Design](CIRCUIT-DESIGN.md).
@@ -25,7 +27,7 @@ assertEquals("hello", received.get());  // Works immediately
 
 ```java
 var circuit = cortex().circuit(cortex().name("test"));
-var conduit = circuit.conduit(cortex().name("test"), Composer.pipe());
+var conduit = circuit.conduit(cortex().name("test"), String.class);
 
 AtomicReference<String> received = new AtomicReference<>();
 conduit.subscribe(circuit.subscriber(
@@ -33,7 +35,7 @@ conduit.subscribe(circuit.subscriber(
     (subject, registrar) -> registrar.register(received::set)
 ));
 
-conduit.percept(cortex().name("ch")).emit("hello");
+conduit.get(cortex().name("ch")).emit("hello");
 
 assertNull(received.get());   // Still null — async hasn't run
 circuit.await();               // Block until queue drained
@@ -54,7 +56,7 @@ This is the most important pattern in Substrates testing.
 @Test
 void testEmission () {
     var circuit = cortex().circuit(cortex().name("test"));
-    var conduit = circuit.conduit(cortex().name("c"), Composer.pipe());
+    var conduit = circuit.conduit(cortex().name("c"), String.class);
 
     AtomicReference<String> received = new AtomicReference<>();
     conduit.subscribe(circuit.subscriber(
@@ -62,7 +64,7 @@ void testEmission () {
         (subject, registrar) -> registrar.register(received::set)
     ));
 
-    conduit.percept(cortex().name("ch")).emit("hello");
+    conduit.get(cortex().name("ch")).emit("hello");
 
     circuit.await();  // Wait for all pending emissions to process
     assertEquals("hello", received.get());

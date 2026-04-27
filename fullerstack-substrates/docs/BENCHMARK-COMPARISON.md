@@ -1,6 +1,11 @@
 # Benchmark Comparison: Fullerstack vs Humainary Substrates
 
-**Date:** 2026-04-11
+**Last full sweep:** 2026-04-11 (Substrates/Serventis 2.0 era).
+**Status:** *Due for re-measurement on a quiet host against the 2.3 API.*
+
+The numbers below were collected before the 2.3 migration (Fiber split, transit ring buffer, channel `cascadeDispatch` split, QChunk capacity tuned to 128, marker class split). They under-state current performance on cyclic / cascade-heavy paths and over-state it on flow paths whose operators have moved.
+
+The most recent ad-hoc figure for `cyclic_emit_deep_await_batch` on a Codespaces 2 vCPU host with a 10-iteration warmup is **~12.9 ns/cycle**, against a Humainary baseline of ~4.5 ns/cycle on a different (Apple M4) host. The remaining gap is mostly cache lines per cycle (5+) — a structural property of how the JVM lays out separate objects.
 
 ## Hardware
 

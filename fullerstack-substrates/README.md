@@ -4,10 +4,10 @@ SPI provider implementation of the [Humainary Substrates API](https://github.com
 
 | | |
 |---|---|
-| **Version** | 1.0.0-RC5 |
-| **API** | Substrates 1.0.0 + Serventis 1.0.0 |
+| **Version** | 1.0.0-RC6 |
+| **API** | Substrates 2.3.0 + Serventis 2.3.0 |
 | **Java** | 26 (Virtual Threads + Preview) |
-| **Tests** | 722 (274 contract + 448 TCK) |
+| **Tests** | 477 (75 contract + 363 TCK + 39 Serventis) |
 | **Benchmarks** | 14 JMH groups, 185 benchmarks |
 
 ## Prerequisites
@@ -30,7 +30,7 @@ SPI provider implementation of the [Humainary Substrates API](https://github.com
 ## Build & Test
 
 ```bash
-mvn clean install        # Build + run all 722 tests
+mvn clean install        # Build + run all 477 tests
 mvn test                 # Tests only
 ```
 
@@ -54,7 +54,7 @@ The artifact is published to [GitHub Packages](https://github.com/fullerstack-io
   <dependency>
     <groupId>io.fullerstack</groupId>
     <artifactId>fullerstack-substrates</artifactId>
-    <version>1.0.0-RC5</version>
+    <version>1.0.0-RC6</version>
   </dependency>
 </dependencies>
 ```
@@ -83,17 +83,14 @@ import static io.humainary.substrates.api.Substrates.*;
 var cortex  = cortex();
 var circuit = cortex.circuit(cortex.name("example"));
 
-var conduit = circuit.conduit(
-    cortex.name("events"),
-    Composer.pipe()
-);
+var conduit = circuit.conduit(cortex.name("events"), String.class);
 
 conduit.subscribe(circuit.subscriber(
     cortex.name("logger"),
     (subject, registrar) -> registrar.register(System.out::println)
 ));
 
-conduit.percept(cortex.name("source")).emit("hello");
+conduit.get(cortex.name("source")).emit("hello");
 circuit.await();
 circuit.close();
 ```
@@ -102,8 +99,8 @@ circuit.close();
 
 Each circuit runs on a single virtual thread with two internal queues:
 
-- **IngressQueue** — wait-free MPSC for external emissions (~13ns per emit)
-- **TransitQueue** — single-threaded FIFO for cascading emissions (priority over ingress)
+- **IngressQueue** — wait-free MPSC for external emissions, backed by a 128-slot `QChunk` (~13ns per emit)
+- **TransitQueueRing** — single-threaded power-of-2 ring for cascading emissions (priority over ingress)
 
 Transit queue priority ensures **causal completion** — all cascading effects resolve atomically before the next external emission is processed. This eliminates race conditions without locks.
 
@@ -119,16 +116,11 @@ For the conceptual model, read [Kitchen Model](docs/KITCHEN-MODEL.md) — the du
 ./scripts/benchmark.sh -l           # List available
 ```
 
-Selected results (ns/op, JDK 26, GitHub Codespaces 2 vCPU, 2026-04-11):
+Selected results (ns/op, JDK 26, GitHub Codespaces 2 vCPU). Cross-platform numbers in [Benchmark Comparison](docs/BENCHMARK-COMPARISON.md) are due for re-measurement on a quiet host; the figure below is from a recent run with a 10-iteration warmup:
 
 | Benchmark | ns/op | What it measures |
 |-----------|------:|------------------|
-| `hot_pipe_async` | 12.7 | Emission through pre-warmed pipe |
-| `conduit.get_by_name` | 2.3 | Percept lookup by name |
-| `name_from_string` | 2.3 | Name creation + interning |
-| `scope_create_and_close` | 0.75 | Scope lifecycle |
-| `cyclic_emit` | 3.2 | Cyclic pipe network emission |
-| `flow_guard_await` | 37.0 | Emission through guard flow operator |
+| `cyclic_emit_deep_await_batch` | ~12.9 | Per-cycle cost of a deep cascade through cyclic pipe networks |
 
 ## Documentation
 
@@ -141,7 +133,8 @@ Selected results (ns/op, JDK 26, GitHub Codespaces 2 vCPU, 2026-04-11):
 | [Circuit Design](docs/CIRCUIT-DESIGN.md) | Queue internals, VarHandle, performance optimizations |
 | [Async Architecture](docs/ASYNC-ARCHITECTURE.md) | Why everything is async, testing patterns, await() |
 | [Developer Guide](docs/DEVELOPER-GUIDE.md) | Usage patterns, best practices, Serventis integration |
-| [Use Cases](docs/USE-CASES.md) | Problem domains and when to use Substrates |
+| [Benchmark Comparison](docs/BENCHMARK-COMPARISON.md) | Cross-platform JMH results vs Humainary baseline |
+| [Examples](docs/examples/README.md) | Hands-on producer/consumer code samples |
 
 ### External References
 

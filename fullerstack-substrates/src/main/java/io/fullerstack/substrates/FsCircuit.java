@@ -227,7 +227,7 @@ public final class FsCircuit implements Circuit {
   }
 
   /**
-   * Drain all queued cascade emissions. Delegates to TransitQueue.
+   * Drain all queued cascade emissions. Delegates to TransitQueueRing.
    */
   @jdk.internal.vm.annotation.ForceInline
   boolean drainTransit () {
