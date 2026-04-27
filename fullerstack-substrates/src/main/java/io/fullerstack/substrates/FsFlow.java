@@ -308,17 +308,26 @@ public final class FsFlow < I, O > implements Flow < I, O > {
     return new FsFlow <> ( merged, count + nextFlow.count );
   }
 
+  /// When target is a same-circuit FsPipe, the flow's terminal calls
+  /// {@code circuit.submitTransit(target.receiver, v)} directly — same queue
+  /// payload as {@code target.emit(v)}, but without the redundant null/closed/
+  /// thread checks. Queue boundary preserved for cascade safety (spec §5.3).
   @New
   @NotNull
   @Override
   @SuppressWarnings ( "unchecked" )
   public Pipe < I > pipe ( @NotNull Pipe < O > target ) {
     Objects.requireNonNull ( target );
-    final Consumer < I > chain = materialise ( target::emit );
+    final Consumer < I > chain;
     if ( target instanceof FsPipe < ? > fp ) {
-      return new FsPipe <> ( (Consumer < Object >) (Consumer < ? >) chain, fp.circuit () );
+      // Same-circuit terminal: bypass target.emit, queue directly.
+      final FsCircuit c = fp.circuit ();
+      final Consumer < Object > targetReceiver = fp.receiver ();
+      chain = materialise ( (Consumer < O >) v -> c.submitTransit ( targetReceiver, v ) );
+      return new FsPipe <> ( (Consumer < Object >) (Consumer < ? >) chain, c );
     }
-    // Foreign Pipe — wrap synchronously
+    // Foreign Pipe — fall through to wrapped emit
+    chain = materialise ( target::emit );
     return new Pipe <> () {
       @Override
       public void emit ( @NotNull I emission ) {

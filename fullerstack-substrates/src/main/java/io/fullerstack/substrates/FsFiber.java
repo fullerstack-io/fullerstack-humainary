@@ -101,18 +101,28 @@ public final class FsFiber < E > implements Fiber < E > {
   /// Returns a pipe that processes emissions through this fiber before reaching `target`.
   ///
   /// Each call materialises a fresh consumer chain with independent stateful state.
-  /// The target pipe's `emit` receives only emissions that survive the chain.
+  /// The fiber chain runs on the circuit thread (after dequeue), so when target
+  /// is a same-circuit FsPipe we go directly to {@code circuit.submitTransit}
+  /// with target's receiver — same queue payload as {@code target.emit(v)}, but
+  /// without the redundant null/closed/thread checks inside emit. The transit
+  /// queue boundary is preserved (cascade safety, spec §5.3).
   @New
   @NotNull
   @Override
   @SuppressWarnings ( "unchecked" )
   public Pipe < E > pipe ( @NotNull Pipe < E > target ) {
     Objects.requireNonNull ( target, "target must not be null" );
-    final Consumer < E > chain = materialise ( target::emit );
+    final Consumer < E > chain;
     if ( target instanceof FsPipe < ? > fp ) {
-      return new FsPipe <> ( (Consumer < Object >) (Consumer < ? >) chain, fp.circuit () );
+      // Same-circuit terminal: submitTransit directly, skip target.emit's checks.
+      // Queue payload is still (target.receiver, v) — cascade safety preserved.
+      final FsCircuit c = fp.circuit ();
+      final Consumer < Object > targetReceiver = fp.receiver ();
+      chain = materialise ( v -> c.submitTransit ( targetReceiver, v ) );
+      return new FsPipe <> ( (Consumer < Object >) (Consumer < ? >) chain, c );
     }
-    // Fallback — target may be a foreign Pipe; create a synthetic FsPipe-like wrapper
+    // Foreign Pipe: no access to its internals, use emit().
+    chain = materialise ( target::emit );
     return new Pipe <> () {
       @Override
       public void emit ( @NotNull E emission ) {
