@@ -20,8 +20,8 @@ import java.lang.invoke.VarHandle;
  */
 final class QChunk {
 
-  static final int CAPACITY  = 64;
-  static final int ARRAY_LEN = CAPACITY << 1;  // 128
+  static final int CAPACITY  = 128;
+  static final int ARRAY_LEN = CAPACITY << 1;  // 256
 
   final    Object[] slots = new Object[ARRAY_LEN];   // interleaved [r0,v0,r1,v1,...]
   volatile QChunk   next;                            // link to next chunk (consumer reads)
