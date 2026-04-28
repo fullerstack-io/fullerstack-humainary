@@ -32,11 +32,12 @@ import static java.util.Objects.requireNonNull;
 /// Pool side: maps names to channels. conduit.get(name) returns channel.pipe.
 /// Source side: delegates to Hub for subscriber management.
 @Provided
-public final class FsConduit < E > extends FsSubstrate < Conduit < E > > implements Conduit < E > {
+public final class FsConduit < E > implements Conduit < E > {
 
-  private final FsCircuit  circuit;
-  private final Routing    routing;
-  final FsHub < E >        hub;
+  private final FsCircuit                circuit;
+  private final Routing                  routing;
+  final FsHub < E >                      hub;
+  private final Subject < Conduit < E > > subject;
 
   /// Channels by name — copy-on-write for thread-safe reads.
   private volatile Map < Name, FsChannel < E > > channels;
@@ -53,21 +54,17 @@ public final class FsConduit < E > extends FsSubstrate < Conduit < E > > impleme
     this ( parent, name, circuit, Routing.PIPE );
   }
 
+  @SuppressWarnings ( "unchecked" )
   public FsConduit ( FsSubject < ? > parent, Name name, FsCircuit circuit, Routing routing ) {
-    super ( parent, name );
     this.circuit = circuit;
     this.routing = routing;
-    this.hub = new FsHub <> ();
-  }
-
-  @Override
-  protected Class < ? > type () {
-    return Conduit.class;
+    this.hub     = new FsHub <> ();
+    this.subject = (Subject < Conduit < E > >) (Subject < ? >) new FsSubject <> ( name, parent, Conduit.class );
   }
 
   @Override
   public Subject < Conduit < E > > subject () {
-    return lazySubject ();
+    return subject;
   }
 
   /// Returns the channel for the given name, or null if not yet created.
@@ -142,7 +139,7 @@ public final class FsConduit < E > extends FsSubstrate < Conduit < E > > impleme
         return cached;
       }
 
-      FsSubject < Pipe < E > > pipeSubject = new FsSubject <> ( name, (FsSubject < ? >) lazySubject (), Pipe.class );
+      FsSubject < Pipe < E > > pipeSubject = new FsSubject <> ( name, (FsSubject < ? >) subject, Pipe.class );
 
       FsChannel < E > channel = new FsChannel <> ( pipeSubject, circuit, hub, this, routing );
 
@@ -176,7 +173,7 @@ public final class FsConduit < E > extends FsSubstrate < Conduit < E > > impleme
     FsSubscriber < E > fs = (FsSubscriber < E >) subscriber;
 
     Subscription subscription = new FsSubscription ( subscriber.subject ().name (),
-      (FsSubject < ? >) lazySubject (), () -> enqueueUnsubscribe ( fs ), onClose );
+      (FsSubject < ? >) subject, () -> enqueueUnsubscribe ( fs ), onClose );
 
     fs.trackSubscription ( subscription );
 
@@ -221,7 +218,7 @@ public final class FsConduit < E > extends FsSubstrate < Conduit < E > > impleme
   @Override
   public Reservoir < E > reservoir () {
     FsSubject < Reservoir < E > > resSubject = new FsSubject <> ( cortex ().name ( "reservoir" ),
-      (FsSubject < ? >) lazySubject (), Reservoir.class );
+      (FsSubject < ? >) subject, Reservoir.class );
     FsReservoir < E > reservoir = new FsReservoir <> ( resSubject );
 
     FsSubscriber < E > sub = new FsSubscriber <> (
@@ -237,7 +234,7 @@ public final class FsConduit < E > extends FsSubstrate < Conduit < E > > impleme
   @Override
   public < T > Tap < T > tap ( @NotNull Function < Pipe < T >, Pipe < E > > fn ) {
     requireNonNull ( fn, "fn must not be null" );
-    return new FsTap <> ( (FsSubject < ? >) lazySubject (), cortex ().name ( "tap" ), this, circuit, fn );
+    return new FsTap <> ( (FsSubject < ? >) subject, cortex ().name ( "tap" ), this, circuit, fn );
   }
 
   /// 2.3: tap with flow transformation (E → T).

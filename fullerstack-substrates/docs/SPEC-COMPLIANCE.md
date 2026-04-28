@@ -9,7 +9,7 @@ choices, and any deviations or missing functionality.
 
 | # | Interface | Status | Severity |
 |---|---|---|---|
-| 1 | Substrate | done | 🔴 fixed |
+| 1 | Substrate | done | 🔴 fixed + 🟢 cleanup |
 | 2 | Resource | done | 🟡 fixed |
 | 3 | Source | done | 🔴 fixed |
 | 4 | Extent | done | ✓ none |
@@ -75,6 +75,8 @@ Initial reading missed a real race. After the eval agent's correction:
 - 482/482 tests pass after fix.
 
 The `FsSubstrate` abstract base is still under-used (only `FsConduit` extends it). Worth revisiting later — either every Substrate impl uses it, or it goes. Not blocking.
+
+**Follow-up (post-audit):** `FsSubstrate.java` deleted. `FsConduit` converted to eager-final `Subject` field built in constructor — same pattern as the other 10 impls. Three rationale points: (1) Subject creation is ~50 ns and barely worth the lazy machinery, (2) the lazy DCL pattern was the source of the two bugs we just fixed in `FsScope`/`FsSubscription`, and (3) every Substrate impl now uses the same eager-final pattern, so adding new substrate-shaped classes has one obvious template. 482/482 tests pass.
 
 ---
 
