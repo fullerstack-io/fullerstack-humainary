@@ -1,11 +1,61 @@
 # Benchmark Comparison: Fullerstack vs Humainary Substrates
 
-**Last full sweep:** 2026-04-11 (Substrates/Serventis 2.0 era).
-**Status:** *Due for re-measurement on a quiet host against the 2.3 API.*
+**Substrates/Serventis 2.3.0** · `io.fullerstack:fullerstack-substrates:1.0.0-RC7`
 
-The numbers below were collected before the 2.3 migration (Fiber split, transit ring buffer, channel `cascadeDispatch` split, QChunk capacity tuned to 128, marker class split). They under-state current performance on cyclic / cascade-heavy paths and over-state it on flow paths whose operators have moved.
+The full cross-impl sweep below was collected pre-2.3 and is kept as a historical reference. The **Current state** section below summarises measured numbers from after the 2.3 migration, the cyclic/await optimisations, the operator extraction refactor, and the spec-compliance audit.
 
-The most recent ad-hoc figure for `cyclic_emit_deep_await_batch` on a Codespaces 2 vCPU host with a 10-iteration warmup is **~12.9 ns/cycle**, against a Humainary baseline of ~4.5 ns/cycle on a different (Apple M4) host. The remaining gap is mostly cache lines per cycle (5+) — a structural property of how the JVM lays out separate objects.
+## Current state (Substrates 2.3, post-audit)
+
+Cumulative gains from the 2.3 migration through to the recent perf + audit work, on Codespaces 2-vCPU (a noisy host — error bars are wide; ratios are more meaningful than absolute scores):
+
+| Benchmark | Pre-2.3 baseline | Now | Δ |
+|---|---:|---:|---:|
+| `PipeOps.async_emit_single_await` | 2502 ns/op | **99 ns/op** | **-96%** |
+| `CyclicOps.cyclic_emit_await_batch` | 50.74 ns/op | **21 ns/op** | **-58%** |
+| `CyclicOps.cyclic_emit_deep_await` | 30.37 ns/op | **16 ns/op** | **-49%** |
+| `CyclicOps.cyclic_emit_deep_await_batch` | 27.38 ns/op | **15.7 ns/op** | **-43%** |
+| `PipeOps.async_emit_diff_only_await` | 47.4 ns/op | **44 ns/op** | -7% |
+| `PipeOps.async_emit_empty_fiber_await` | 56.6 ns/op | **22 ns/op** | -61% (empty-fiber elision) |
+
+**Cyclic floor on Codespaces:** ~14 ns/cycle (`CyclicOps.cyclic_emit_deep_await` after warmup). Against Humainary's published ~4.5 ns/cycle on Apple M4, the residual ~10 ns is mostly **cache-line structural** — 5+ cache-line touches per cycle is a JVM object-layout property, not a software gap. Cross-host comparisons are approximate (different chip, different memory subsystem, different scheduler).
+
+**Diagnostic counters confirm:**
+- Cyclic cascades alternate single-emission enqueue/dequeue on one thread; transit ring `currentSize` ≈ 1 even at 10,000-deep cascade, `grows = 0` (8-slot initial capacity is plenty).
+- Single-emit + await: 99 ns/op of which most is now bench-frame overhead, not park/unpark — virtual-thread sync cost dropped 25× via spin-before-park in `FsCircuit.awaitImpl`.
+- Empty fiber returns target unchanged (no transit hop), so `cortex.fiber(Class).pipe(target)` is observably equivalent to `target` per the spec.
+
+### Key levers
+
+| Lever | Where it landed | Headline impact |
+|---|---|---|
+| Transit ring (replaces chunked TransitQueue) | `TransitQueueRing.java` | Single-emission alternating cascade; `INITIAL_CAP=8` |
+| Channel `dispatch` / `cascadeDispatch` split | `FsChannel.java` | Skip version check on cascade path; STEM folded into rebuild |
+| Marker class split | `FsCircuit.java` | Eliminates bimorphic trap on `r.accept(v)` in drain loop |
+| Empty fiber/flow elision | `FsFiber.pipe`, `FsFlow.pipe` | `count == 0` returns target — no transit hop |
+| Spin-before-park in `awaitImpl` | `FsCircuit.AWAIT_SPIN_COUNT = 1000` | Catches marker fire in tight ping-pong, falls back to park |
+| Operator extraction | `FsOperators.java` | Uniform `Wrap[]` storage in Flow + Fiber; no `instanceof` in materialise; 39% / 49% line reduction in respective files |
+| QChunk capacity | `QChunk.CAPACITY = 128` | Tuned 64→128 from a sweep; fewer chunk transitions on bursty load |
+
+### Latest CacheOps sample (Serventis on Substrates 2.3)
+
+Single 5-iter run on Codespaces — wide error bars typical for the host. Single-emit Sign emissions land in the 17-40 ns range plus Sign/Slot allocation overhead:
+
+```
+emit_evict       19.9 ns/op
+emit_expire      17.2 ns/op
+emit_hit         20.0 ns/op
+emit_store       19.8 ns/op
+emit_sign        19.9 ns/op
+cache_from_conduit  56.6 ns/op  (full conduit lookup + name resolution)
+```
+
+These are illustrative, not authoritative — bench host is virtualised and JIT-recompile transient is visible at this iteration count. Absolute numbers should be re-measured on a quiet host before being used as a Fullerstack vs Humainary headline.
+
+---
+
+## Historical reference (Substrates/Serventis 2.0)
+
+Numbers below were collected on **2026-04-11**, before the 2.3 migration (Fiber split, transit ring buffer, channel `cascadeDispatch` split, QChunk capacity tuned to 128, marker class split, operator extraction, spin-before-park). They under-state current performance on cyclic / cascade-heavy paths and over-state it on flow paths whose operators have moved.
 
 ## Hardware
 

@@ -242,11 +242,18 @@ For non-STEM channels, `cascadeDispatch == dispatch`. For STEM channels, `cascad
 
 | Constant | Value | Description |
 |---|---|---|
-| `QChunk.CAPACITY` | 128 | Slots per ingress chunk (receiver+value pairs) |
+| `QChunk.CAPACITY` | 128 | Slots per ingress chunk (receiver+value pairs); tuned 64→128 from a sweep |
 | `QChunk.ARRAY_LEN` | 256 | Array length (128 × 2 for interleaving) |
-| `TransitQueueRing.INITIAL_CAP` | 64 | Initial transit ring capacity (grows by doubling) |
-| `SPIN_COUNT` | 1000 | Spin iterations before parking (~100us) |
-| `PARK_NANOS` | 1,000 | Timed park interval (1us — virtual-thread-friendly) |
+| `TransitQueueRing.INITIAL_CAP` | 8 | Initial transit ring capacity (grows by doubling). Cyclic cascades alternate enqueue/dequeue on one thread, so steady-state max simultaneous entries ≈ 1; an 8-slot start covers any realistic multi-submit fiber without growth |
+| `FsCircuit.SPIN_COUNT` | 1000 | Worker spin iterations before parking (~5µs with `Thread.onSpinWait`) |
+| `FsCircuit.AWAIT_SPIN_COUNT` | 1000 | Awaiter spin-before-park budget (~2µs window). Catches the marker fire in tight ping-pong (sync-bridge / shallow cyclic) without paying the virtual-thread park/unpark round-trip; falls back to `LockSupport.park()` for longer waits. Tuned via sweep — 500 falls below the cliff, 5000+ wastes spin on deep cascades. |
+| `FsCircuit.PARK_NANOS` | 1,000 | Timed park interval (1µs — virtual-thread-friendly) |
+
+## Part 5: Diagnostics
+
+`FsCircuit.stats()` returns a `CircuitStats` snapshot of internal counters. **Fullerstack-internal**, not part of the Substrates API or any stability contract — used by our own JMH `@TearDown` to surface ingress drain count, transit drain count, transit enqueue count, entries processed, transit ring capacity, transit grow count, and rebuild count alongside benchmark scores. Counters are written by the worker thread with volatile semantics; readers from any thread observe values via the volatile read.
+
+The `FsCircuitMarkerInvariantTest` structural tests assert that `AwaitMarker`, `CloseMarker`, `CircuitJob`, and `ReceptorAdapter` remain distinct concrete classes — collapsing any of these into a shared base reintroduces a bimorphic call-site profile on `r.accept(v)` in the drain loop and regresses `PipeOps.async_emit_batch_await` from ~22 ns to ~30+ ns.
 
 ---
 

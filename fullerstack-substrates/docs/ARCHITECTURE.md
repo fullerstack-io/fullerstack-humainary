@@ -25,7 +25,7 @@ The spec is language-independent. These are our Java 26 projection choices:
 
 ## Class Map
 
-27 classes in `io.fullerstack.substrates`:
+28 classes in `io.fullerstack.substrates`:
 
 ```
 FsCortexProvider (SPI entry point)
@@ -39,15 +39,17 @@ FsCortexProvider (SPI entry point)
               │     ├── FsChannel (per-name dispatch — split: dispatch vs cascadeDispatch)
               │     │     └── FsPipe (async emission carrier — emit only)
               │     └── FsDerivedPool (derived view: pool(Function), pool(Flow), pool(Fiber))
-              ├── FsFlow (type transformation: map / fiber / flow / pipe; hosts shared operator classes)
-              ├── FsFiber (per-emission operators: ~35 — guard, diff, limit, peek, ...,
+              ├── FsFlow (type-changing composition: map / fiber / flow / pipe — uniform Wrap[] storage)
+              ├── FsFiber (per-emission operators: ~32 — guard, diff, limit, peek, ...,
               │           plus 2.3 ops chance, change, deadband, delay, edge, every,
               │           hysteresis, inhibit, pulse, rolling, steady, tumble)
+              ├── FsOperators (shared operator implementations consumed by FsFiber and FsFlow)
               ├── FsSubscriber (emission observer with lazy callback)
               │     └── FsSubscription (subscriber lifecycle handle)
               │           └── FsRegistrar (Consumer<Object> registration during callback)
               ├── FsTap (source emission transformation; tap(Function|Flow|Fiber))
-              └── FsReservoir (buffered emission capture)
+              ├── FsReservoir (buffered emission capture)
+              └── CircuitStats (Fullerstack-internal diagnostic snapshot returned by FsCircuit.stats())
 
 FsName (hierarchical dot-notation names with interning)
 FsSubject (identity: Id + Name + State + Type)
@@ -56,9 +58,10 @@ FsState (slot-based state container)
 FsScope (structured resource lifecycle)
   └── FsClosure (block-scoped resource management)
 FsCurrent (circuit execution context)
-FsSubstrate (base substrate implementation)
 FsFault (provider error handling)
 ```
+
+Every Substrate impl uses an **eager-final `Subject` field built in the constructor** — there is no shared abstract base or lazy DCL pattern. (An earlier `FsSubstrate` helper was removed once the `subject()` race in two impls was uncovered during the spec audit.)
 
 ## Queue Architecture
 
