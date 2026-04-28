@@ -46,8 +46,10 @@ final class FsScope implements Scope {
   /// Parent scope (for hierarchy).
   private final FsScope parent;
 
-  /// Lazily-initialized subject (benign race - multiple creates are harmless).
-  private volatile Subject < Scope > subject;
+  /// Eagerly created subject — avoids the unsynchronised lazy race (FsSubject
+  /// constructor calls ID_COUNTER.getAndIncrement() so concurrent racing
+  /// creators would assign distinct ids and one would orphan).
+  private final Subject < Scope > subject;
 
   /// Registered resources (closed in reverse order). Lazily initialized.
   private List < Resource > resources;
@@ -65,12 +67,14 @@ final class FsScope implements Scope {
   FsScope ( Name name ) {
     this.name = name;
     this.parent = null;
+    this.subject = new FsSubject <> ( effectiveName (), null, Scope.class );
   }
 
   /// Creates a new child scope with the given name and parent.
   FsScope ( Name name, FsScope parent ) {
     this.name = name;
     this.parent = parent;
+    this.subject = new FsSubject <> ( effectiveName (), (FsSubject < ? >) parent.subject (), Scope.class );
   }
 
   boolean isClosed () {
@@ -87,13 +91,7 @@ final class FsScope implements Scope {
 
   @Override
   public Subject < Scope > subject () {
-    Subject < Scope > s = subject;
-    if ( s == null ) {
-      FsSubject < ? > parentSubject = parent != null ? (FsSubject < ? >) parent.subject () : null;
-      s = new FsSubject <> ( effectiveName (), parentSubject, Scope.class );
-      subject = s;
-    }
-    return s;
+    return subject;
   }
 
   /// Returns the effective name for this scope.
@@ -211,22 +209,25 @@ final class FsScope implements Scope {
     }
     closed = true;
 
-    // Close children first (if any)
-    if ( children != null ) {
-      for ( FsScope child : children ) {
+    // Spec order (Substrates 4598-4630):
+    //   1. Closes all registered resources (reverse registration order)
+    //   2. Closes all child scopes (if not already closed)
+    // Exceptions are suppressed; remaining cleanup proceeds.
+
+    if ( resources != null ) {
+      for ( int i = resources.size () - 1; i >= 0; i-- ) {
         try {
-          child.close ();
+          resources.get ( i ).close ();
         } catch ( Exception e ) {
           // Suppress and continue
         }
       }
     }
 
-    // Close resources in reverse order (LIFO) (if any)
-    if ( resources != null ) {
-      for ( int i = resources.size () - 1; i >= 0; i-- ) {
+    if ( children != null ) {
+      for ( FsScope child : children ) {
         try {
-          resources.get ( i ).close ();
+          child.close ();
         } catch ( Exception e ) {
           // Suppress and continue
         }

@@ -26,8 +26,6 @@ import io.humainary.substrates.api.Substrates.Tap;
 
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.VarHandle;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.concurrent.locks.LockSupport;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
@@ -89,9 +87,8 @@ public final class FsCircuit implements Circuit {
   // Circuit state (read-only after construction)
   // ─────────────────────────────────────────────────────────────────────────────
 
-  private final Subject < Circuit >           subject;
-  private final List < Subscriber < State > > subscribers;
-  private final Thread                        worker;
+  private final Subject < Circuit > subject;
+  private final Thread              worker;
 
   /// Internal conduit for State emissions — lazy, created on first Source<State> operation.
   /// Backs circuit.subscribe(State), circuit.tap(), and circuit.reservoir().
@@ -211,7 +208,6 @@ public final class FsCircuit implements Circuit {
 
   public FsCircuit ( Subject < Circuit > subject ) {
     this.subject = subject;
-    this.subscribers = new ArrayList <> ();
 
     // Pre-allocate marker receivers as concrete classes — distinct types
     // from ReceptorAdapter so the hot-path r.accept(v) → receptor.receive()
@@ -619,26 +615,8 @@ public final class FsCircuit implements Circuit {
       new FsSubject <> ( name, (FsSubject < ? >) subject, Subscriber.class ), callback );
   }
 
-  // ===================================================================================
-  // Factory Methods - Subscribe & Reservoir
-  // ===================================================================================
-
-  @New
-  @NotNull
-  @Queued
-  @Override
-  @SuppressWarnings ( "unchecked" )
-  public Subscription subscribe ( @NotNull Subscriber < State > subscriber ) {
-    requireNonNull ( subscriber );
-    if ( subscriber.subject () instanceof FsSubject < ? > subSubject ) {
-      FsSubject < ? > subscriberCircuit = subSubject.findCircuitAncestor ();
-      if ( subscriberCircuit != null && subscriberCircuit != subject ) {
-        throw new FsFault ( "Subscriber belongs to a different circuit" );
-      }
-    }
-    subscribers.add ( subscriber );
-    return new FsSubscription (
-      subject.name (), (FsSubject < ? >) subject, () -> subscribers.remove ( subscriber ) );
-  }
+  // 1-arg `subscribe(Subscriber<State>)` is inherited from Source's default impl,
+  // which delegates to the 2-arg subscribe. We don't override it — the previous
+  // override added to a `subscribers` list that nothing read, dropping callbacks.
 
 }

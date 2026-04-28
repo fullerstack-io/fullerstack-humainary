@@ -62,13 +62,21 @@ public final class FsSubscription implements Subscription {
     this.onCloseCallback = onCloseCallback;
   }
 
-  /// Returns the subject identity of this subscription (lazy creation).
+  /// Returns the subject identity of this subscription. Lazy creation with
+  /// double-checked locking — FsSubject's constructor calls
+  /// ID_COUNTER.getAndIncrement(), so an unsynchronised race would mint
+  /// distinct ids and orphan one of them.
   @Override
   public Subject < Subscription > subject () {
     Subject < Subscription > s = subject;
     if ( s == null ) {
-      s = new FsSubject <> ( name, parent, Subscription.class );
-      subject = s;
+      synchronized ( this ) {
+        s = subject;
+        if ( s == null ) {
+          s = new FsSubject <> ( name, parent, Subscription.class );
+          subject = s;
+        }
+      }
     }
     return s;
   }

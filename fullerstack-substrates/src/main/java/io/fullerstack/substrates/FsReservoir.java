@@ -34,6 +34,10 @@ public final class FsReservoir < E > implements Reservoir < E > {
   /// Internal buffer storing captured emissions.
   private final List < Cap < E > > buffer = new ArrayList <> ();
 
+  /// Closed flag. Spec §9.1 requires `close()` be idempotent — explicit gate
+  /// here keeps the contract intact if cleanup grows beyond `buffer.clear()`.
+  private volatile boolean closed;
+
   /// Creates a new reservoir with the given subject identity.
   ///
   /// @param subject the subject identity for this reservoir
@@ -70,6 +74,8 @@ public final class FsReservoir < E > implements Reservoir < E > {
   @Idempotent
   @Override
   public void close () {
+    if ( closed ) return;
+    closed = true;
     buffer.clear ();
   }
 

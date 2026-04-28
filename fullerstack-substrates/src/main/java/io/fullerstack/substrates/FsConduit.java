@@ -3,6 +3,7 @@ package io.fullerstack.substrates;
 import io.humainary.substrates.api.Substrates.Conduit;
 import io.humainary.substrates.api.Substrates.Fiber;
 import io.humainary.substrates.api.Substrates.Flow;
+import io.humainary.substrates.api.Substrates.Idempotent;
 import io.humainary.substrates.api.Substrates.Name;
 import io.humainary.substrates.api.Substrates.New;
 import io.humainary.substrates.api.Substrates.NotNull;
@@ -43,6 +44,10 @@ public final class FsConduit < E > extends FsSubstrate < Conduit < E > > impleme
   /// Last lookup cache.
   private Name              lastLookupName;
   private FsChannel < E >   lastLookupChannel;
+
+  /// Closed flag — set by `close()`. Subscribe jobs check this on the
+  /// circuit thread and silently drop (per Resource §9.1 queued-drop semantics).
+  private volatile boolean closed;
 
   public FsConduit ( FsSubject < ? > parent, Name name, FsCircuit circuit ) {
     this ( parent, name, circuit, Routing.PIPE );
@@ -177,9 +182,34 @@ public final class FsConduit < E > extends FsSubstrate < Conduit < E > > impleme
 
     // Use CircuitJob (distinct class) so subscribe/unsubscribe lambdas don't
     // pollute ReceptorAdapter.accept's type profile on the hot path.
-    circuit.submitIngress ( new FsCircuit.CircuitJob ( () -> hub.addSubscriber ( fs ) ), null );
+    // If the conduit is closed by the time this runs on the circuit thread,
+    // silently drop per Resource §9.1 queued-operation semantics.
+    circuit.submitIngress (
+      new FsCircuit.CircuitJob ( () -> { if ( !closed ) hub.addSubscriber ( fs ); } ),
+      null
+    );
 
     return subscription;
+  }
+
+  /// Closes the conduit. Sets the closed flag so any pending or future
+  /// subscribe jobs are silently dropped on the circuit thread, and queues
+  /// a job to release the subscriber list. Idempotent (Resource §9.1).
+  @Idempotent
+  @Queued
+  @Override
+  public void close () {
+    if ( closed ) return;
+    closed = true;
+    circuit.submitIngress (
+      new FsCircuit.CircuitJob ( () -> {
+        if ( hub.subscribersList != null ) {
+          hub.subscribersList.clear ();
+          hub.subscriberVersion++;
+        }
+      } ),
+      null
+    );
   }
 
   private void enqueueUnsubscribe ( FsSubscriber < E > subscriber ) {

@@ -184,6 +184,18 @@ final class FsTap < T > implements Tap < T > {
     @NotNull Subscriber < T > subscriber,
     @NotNull @Queued Consumer < ? super Subscription > onClose ) {
     requireNonNull ( subscriber );
+    requireNonNull ( onClose );
+
+    // SPEC §7.2 — cross-circuit subscriber detected synchronously on the
+    // caller thread, signalled before any side effects. No registration,
+    // no subscription handle, no callback invocation on rejection.
+    if ( subscriber.subject () instanceof FsSubject < ? > subSubject ) {
+      FsSubject < ? > subscriberCircuit = subSubject.findCircuitAncestor ();
+      if ( subscriberCircuit != null && subscriberCircuit != circuit.subject () ) {
+        throw new FsFault ( "Subscriber belongs to a different circuit" );
+      }
+    }
+
     if ( closed ) throw new IllegalStateException ( "Tap is closed" );
 
     FsSubscriber < T > fs = (FsSubscriber < T >) subscriber;
