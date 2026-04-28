@@ -64,16 +64,17 @@ public final class FsPipe < E > implements Pipe < E > {
 
   // ─── Emit ───
 
+  /// Always submits to ingress. The cascade hot path (fiber/flow chain
+  /// terminals) calls `circuit.submitTransit` directly, not through this
+  /// method, so a thread check here would only affect user-driven emits
+  /// from worker threads — an uncommon pattern. Keeping the path branch-free
+  /// reclaims the per-emit overhead the pre-unification design had.
   @Override
   @jdk.internal.vm.annotation.ForceInline
   public void emit ( @NotNull E emission ) {
     requireNonNull ( emission, "emission must not be null" );
     if ( circuit.closed ) return;
-    if ( Thread.currentThread () == circuit.worker () ) {
-      circuit.submitTransit ( receiver, emission );
-    } else {
-      circuit.submitIngress ( receiver, emission );
-    }
+    circuit.submitIngress ( receiver, emission );
   }
 
 }
