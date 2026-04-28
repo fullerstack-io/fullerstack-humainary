@@ -73,6 +73,17 @@ public final class FsCircuit implements Circuit {
   // 1μs: on virtual threads this is just an FJP reschedule, no carrier blocking.
   private static final long PARK_NANOS = 1_000L;
 
+  // Spin iterations the awaiter performs before falling back to park().
+  // The marker fires within ~2µs in the common case (worker self-wakes every
+  // PARK_NANOS, drains, fires marker). Spinning catches the signal without
+  // paying the ~5-15µs virtual-thread park/unpark round-trip.
+  //
+  // Tuned via sweep — 500 falls below the cliff (shallow cyclic_emit_await
+  // regresses 10ns/op), 1000 catches the marker, 5000+ wastes ~3ns/op on
+  // deep-cascade awaits (140µs cascades the spin can never catch). For real
+  // awaits (rare — tests, shutdown, bridges), the spin cost is negligible.
+  private static final int AWAIT_SPIN_COUNT = 1_000;
+
 
   // ─────────────────────────────────────────────────────────────────────────────
   // Circuit state (read-only after construction)
@@ -107,6 +118,9 @@ public final class FsCircuit implements Circuit {
 
   // Set when close() is called to reject new emissions
   volatile boolean closed;
+
+  // Observability — incremented from FsChannel.rebuild (worker thread).
+  volatile long rebuildCount;
 
   // Pre-allocated marker receivers — ReceptorAdapter wrapping marker lambdas.
   // Drain loop splits the call site: isMarker() identity check routes markers
@@ -144,8 +158,25 @@ public final class FsCircuit implements Circuit {
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
-  // Marker classes — concrete per-purpose so each compiles independently
-  // and doesn't pollute ReceptorAdapter.accept's type profile.
+  // Marker classes — DO NOT COLLAPSE.
+  //
+  // AwaitMarker, CloseMarker, CircuitJob, and ReceptorAdapter (above) are
+  // deliberately separate concrete classes, each with a distinct .accept()
+  // body. Each call site in the dispatch chain only ever sees ONE of these
+  // class types, which keeps every site monomorphic in the JIT type profile:
+  //
+  //   ReceptorAdapter.accept → receptor.receive   (user emissions, hot path)
+  //   AwaitMarker.accept     → circuit.onAwaitMarker
+  //   CloseMarker.accept     → circuit.onCloseMarker
+  //   CircuitJob.accept      → action.run         (subscribe / unsubscribe etc.)
+  //
+  // Collapsing any of these into a shared base reintroduces a bimorphic (or
+  // worse) call-site profile on r.accept(v) in the drain loop. HotSpot then
+  // emits a class_check trap that deoptimizes the inlined receptor chain,
+  // regressing PipeOps.async_emit_batch_await from ~22 ns to ~30+ ns.
+  //
+  // Canary benchmark: io.humainary.substrates.jmh.PipeOps.async_emit_batch_await
+  // Structural test:  FsCircuitMarkerInvariantTest
   // ─────────────────────────────────────────────────────────────────────────────
 
   /// Await marker — delivered through the ingress queue and routed to
@@ -259,6 +290,33 @@ public final class FsCircuit implements Circuit {
     return worker;
   }
 
+  /**
+   * Worker-thread callback from {@link FsChannel#rebuild()} so the circuit
+   * can count subscriber-graph rebuilds for {@link #stats()}.
+   */
+  void recordRebuild () {
+    rebuildCount++;
+  }
+
+  /**
+   * <b>Fullerstack-internal diagnostic.</b> Not part of any stability contract.
+   * Returns a snapshot of internal queue and dispatch counters for use by our
+   * own test harness, JMH benchmarks, and tuning work — not as a public
+   * observability API. See {@link CircuitStats}.
+   */
+  public CircuitStats stats () {
+    return new CircuitStats (
+      ingress.drainBatchCount,
+      transit.drainCount,
+      transit.enqueueCount,
+      transit.entriesProcessed,
+      transit.growCount,
+      transit.currentSize (),
+      transit.currentCapacity (),
+      rebuildCount
+    );
+  }
+
   // ─────────────────────────────────────────────────────────────────────────────
   // Worker Loop - FIFO depth-first processing with spin-before-park
   // ─────────────────────────────────────────────────────────────────────────────
@@ -358,6 +416,13 @@ public final class FsCircuit implements Circuit {
 
     // Unpark worker to process marker promptly (cold path)
     LockSupport.unpark ( worker );
+
+    // Spin briefly before parking. Marker fires in single-digit µs in the
+    // common case, faster than a park/unpark round-trip on virtual threads.
+    for ( int i = 0; i < AWAIT_SPIN_COUNT; i++ ) {
+      if ( AWAITER.getOpaque ( this ) != current ) return;
+      Thread.onSpinWait ();
+    }
 
     // Park until marker wakes us (spurious wakeup safe via loop)
     while ( AWAITER.getOpaque ( this ) == current ) {

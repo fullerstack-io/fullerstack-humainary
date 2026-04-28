@@ -177,5 +177,6 @@ final class FsChannel < E > implements Receptor < E >, Consumer < Object > {
     }
 
     builtVersion = hub.subscriberVersion;
+    circuit.recordRebuild ();
   }
 }

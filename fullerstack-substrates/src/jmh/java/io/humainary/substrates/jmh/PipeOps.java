@@ -2,6 +2,8 @@
 
 package io.humainary.substrates.jmh;
 
+import io.fullerstack.substrates.CircuitStats;
+import io.fullerstack.substrates.FsCircuit;
 import io.humainary.substrates.api.Substrates;
 import org.openjdk.jmh.annotations.*;
 import org.openjdk.jmh.infra.Blackhole;
@@ -56,6 +58,7 @@ public class PipeOps
   private Pipe < Integer > asyncPipeEmptyFiber;
   private Pipe < Integer > asyncPipeGuardOnly;
   private Pipe < Integer > asyncPipeDiffOnly;
+  private Pipe < Integer > asyncPipeFlowMap;
   private Pipe < Integer > chainedPipe;
   private Pipe < Integer > fanOutPipe;
 
@@ -117,8 +120,15 @@ public class PipeOps
   }
 
   ///
-  /// Batch async emissions with await - full throughput measurement.
+  /// Batch async emissions with await — full throughput measurement.
   /// This is the key benchmark for validating sub-3ns emission target.
+  ///
+  /// **CANARY** for the marker-class invariant in
+  /// {@code FsCircuit.java}. If this benchmark regresses from ~22 ns to
+  /// ~30+ ns, check that {@code AwaitMarker}, {@code CloseMarker},
+  /// {@code CircuitJob}, and {@code ReceptorAdapter} remain distinct
+  /// concrete classes with no shared base type — collapsing them
+  /// reintroduces a bimorphic profile on the dispatch hot path.
   ///
 
   @Benchmark
@@ -286,6 +296,17 @@ public class PipeOps
 
   }
 
+  @Benchmark
+  @OperationsPerInvocation ( BATCH_SIZE )
+  public void async_emit_flow_map_await () {
+
+    for ( int i = 0; i < BATCH_SIZE; i++ ) {
+      asyncPipeFlowMap.emit ( VALUE + i );
+    }
+    circuit.await ();
+
+  }
+
   ///
   /// Counter baseline - measures AtomicInteger.incrementAndGet() cost.
   /// Represents minimal "real work" in a receptor.
@@ -400,6 +421,14 @@ public class PipeOps
         )
       );
 
+    // Flow.map identity — direct comparison to Fiber.guard(...) for same shape
+    asyncPipeFlowMap =
+      cortex.flow ( Integer.class ).map ( v -> v ).pipe (
+        circuit.pipe (
+          Receptor.of ( Integer.class )
+        )
+      );
+
     // Chained pipe - pipe to pipe forwarding
     final var intermediate =
       circuit.pipe (
@@ -453,6 +482,16 @@ public class PipeOps
 
   @TearDown ( Iteration )
   public void tearDownIteration () {
+
+    if ( circuit instanceof FsCircuit fs ) {
+      CircuitStats s = fs.stats ();
+      System.err.printf (
+        "  [stats] ingressDrains=%d transitEnq=%d transitDrains=%d entriesProcessed=%d ringCap=%d grows=%d rebuilds=%d%n",
+        s.ingressDrainBatchCount (),
+        s.transitEnqueueCount (), s.transitDrainCount (), s.transitEntriesProcessed (),
+        s.transitCurrentCapacity (), s.transitGrowCount (), s.rebuildCount ()
+      );
+    }
 
     circuit.close ();
 
