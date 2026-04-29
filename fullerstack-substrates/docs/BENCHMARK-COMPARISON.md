@@ -2,951 +2,257 @@
 
 **Substrates/Serventis 2.3.0** · `io.fullerstack:fullerstack-substrates:1.0.0-RC7`
 
-The full cross-impl sweep below was collected pre-2.3 and is kept as a historical reference. The **Current state** section below summarises measured numbers from after the 2.3 migration, the cyclic/await optimisations, the operator extraction refactor, and the spec-compliance audit.
+Full pre-2.3 → post-audit comparison for every JMH benchmark. Measured on the same Codespaces 2-vCPU host with the same JMH config (`-wi 3 -i 5 -w 1s -r 1s`) used for the 2026-04-11 baseline. Numbers vary ±10-30% iteration-to-iteration on this host — group-level patterns and large deltas are more meaningful than any single number.
 
-## Current state (Substrates 2.3, post-audit)
-
-Cumulative gains from the 2.3 migration through to the recent perf + audit work, on Codespaces 2-vCPU (a noisy host — error bars are wide; ratios are more meaningful than absolute scores):
+## Headline gains (cumulative across the session)
 
 | Benchmark | Pre-2.3 baseline | Now | Δ |
 |---|---:|---:|---:|
-| `PipeOps.async_emit_single_await` | 2502 ns/op | **99 ns/op** | **-96%** |
-| `CyclicOps.cyclic_emit_await_batch` | 50.74 ns/op | **21 ns/op** | **-58%** |
-| `CyclicOps.cyclic_emit_deep_await` | 30.37 ns/op | **16 ns/op** | **-49%** |
-| `CyclicOps.cyclic_emit_deep_await_batch` | 27.38 ns/op | **15.7 ns/op** | **-43%** |
-| `PipeOps.async_emit_diff_only_await` | 47.4 ns/op | **44 ns/op** | -7% |
-| `PipeOps.async_emit_empty_fiber_await` | 56.6 ns/op | **22 ns/op** | -61% (empty-fiber elision) |
+| `PipeOps.async_emit_single_await` | 2502 ns | **109 ns** | **-96%** |
+| `CyclicOps.cyclic_emit_await_batch` | 50.74 ns | **21 ns** | **-58%** |
+| `CyclicOps.cyclic_emit_deep_await` | 30.37 ns | **16.7 ns** | **-45%** |
+| `PipeOps.async_emit_empty_fiber_await` | 56.6 ns | **14 ns** | **-75%** (empty-fiber elision) |
+| `PipeOps.async_emit_chained_await` | 22.6 ns | **14.5 ns** | **-36%** |
+| `PipeOps.async_emit_batch_await` | 19.6 ns | **13.7 ns** | **-30%** |
+| `CircuitOps.hot_pipe_async_with_flow` | 27.6 ns | **7.4 ns** | **-73%** |
 
-**Cyclic floor on Codespaces:** ~14 ns/cycle (`CyclicOps.cyclic_emit_deep_await` after warmup). Against Humainary's published ~4.5 ns/cycle on Apple M4, the residual ~10 ns is mostly **cache-line structural** — 5+ cache-line touches per cycle is a JVM object-layout property, not a software gap. Cross-host comparisons are approximate (different chip, different memory subsystem, different scheduler).
+Cyclic floor on Codespaces: ~14 ns/cycle (`CyclicOps.cyclic_emit_deep_await` after warmup). Against Humainary's ~4.5 ns/cycle on Apple M4, the residual ~10 ns is mostly **cache-line structural** (5+ cache-line touches per cycle, JVM object-layout). Cross-host comparisons are approximate.
 
-**Diagnostic counters confirm:**
-- Cyclic cascades alternate single-emission enqueue/dequeue on one thread; transit ring `currentSize` ≈ 1 even at 10,000-deep cascade, `grows = 0` (8-slot initial capacity is plenty).
-- Single-emit + await: 99 ns/op of which most is now bench-frame overhead, not park/unpark — virtual-thread sync cost dropped 25× via spin-before-park in `FsCircuit.awaitImpl`.
-- Empty fiber returns target unchanged (no transit hop), so `cortex.fiber(Class).pipe(target)` is observably equivalent to `target` per the spec.
+## Key levers
 
-### Key levers
-
-| Lever | Where it landed | Headline impact |
+| Lever | Where | Headline impact |
 |---|---|---|
-| Transit ring (replaces chunked TransitQueue) | `TransitQueueRing.java` | Single-emission alternating cascade; `INITIAL_CAP=8` |
-| Channel `dispatch` / `cascadeDispatch` split | `FsChannel.java` | Skip version check on cascade path; STEM folded into rebuild |
-| Marker class split | `FsCircuit.java` | Eliminates bimorphic trap on `r.accept(v)` in drain loop |
-| Empty fiber/flow elision | `FsFiber.pipe`, `FsFlow.pipe` | `count == 0` returns target — no transit hop |
-| Spin-before-park in `awaitImpl` | `FsCircuit.AWAIT_SPIN_COUNT = 1000` | Catches marker fire in tight ping-pong, falls back to park |
-| Operator extraction | `FsOperators.java` | Uniform `Wrap[]` storage in Flow + Fiber; no `instanceof` in materialise; 39% / 49% line reduction in respective files |
-| QChunk capacity | `QChunk.CAPACITY = 128` | Tuned 64→128 from a sweep; fewer chunk transitions on bursty load |
-
-### Latest CacheOps sample (Serventis on Substrates 2.3)
-
-Single 5-iter run on Codespaces — wide error bars typical for the host. Single-emit Sign emissions land in the 17-40 ns range plus Sign/Slot allocation overhead:
-
-```
-emit_evict       19.9 ns/op
-emit_expire      17.2 ns/op
-emit_hit         20.0 ns/op
-emit_store       19.8 ns/op
-emit_sign        19.9 ns/op
-cache_from_conduit  56.6 ns/op  (full conduit lookup + name resolution)
-```
-
-These are illustrative, not authoritative — bench host is virtualised and JIT-recompile transient is visible at this iteration count. Absolute numbers should be re-measured on a quiet host before being used as a Fullerstack vs Humainary headline.
-
----
-
-## Historical reference (Substrates/Serventis 2.0)
-
-Numbers below were collected on **2026-04-11**, before the 2.3 migration (Fiber split, transit ring buffer, channel `cascadeDispatch` split, QChunk capacity tuned to 128, marker class split, operator extraction, spin-before-park). They under-state current performance on cyclic / cascade-heavy paths and over-state it on flow paths whose operators have moved.
+| Remove thread check from `FsPipe.emit` | `FsPipe.java` | -10 ns/emit on every emit path |
+| Spin-before-park in `awaitImpl` | `FsCircuit.AWAIT_SPIN_COUNT=1000` | -2400 ns on `async_emit_single_await` |
+| Empty fiber/flow elision | `FsFiber.pipe`, `FsFlow.pipe` | `count==0` returns target — no transit hop |
+| Channel `dispatch`/`cascadeDispatch` split | `FsChannel.java` | Skip version check on cascade path |
+| Marker class split | `FsCircuit.java` | Eliminates bimorphic trap on drain loop |
+| Operator extraction | `FsOperators.java` | Uniform `Wrap[]` storage; no `instanceof` in materialise |
+| Transit ring (replaces chunked queue) | `TransitQueueRing.java` | Single-emission alternating cascade; `INITIAL_CAP=8` |
+| QChunk capacity tuning | `QChunk.CAPACITY=128` | Sweep result: -3 ns on async_emit_batch_await |
 
 ## Hardware
 
-| | Humainary (Alpha) | Fullerstack |
+| | Humainary (Alpha baseline) | Fullerstack |
 |---|---|---|
 | **Platform** | Apple Mac mini (Mac16,10) | Azure VM (GitHub Codespaces) |
 | **Chip** | Apple M4 (10 cores: 4P + 6E) | AMD EPYC 7763 (2 vCPU) |
 | **Memory** | 16 GB | 8 GB |
-| **JVM** | Java 25.0.1 (HotSpot) | Java 25.0.1 (OpenJDK) |
+| **JVM (baseline)** | Java 25.0.1 (HotSpot) | Java 25.0.1 (OpenJDK) |
+| **JVM (current)** | n/a | Java 26-ea+35 (preview) |
 | **SPI** | Alpha Provider | FsCortexProvider |
 
 ## JMH Configuration
 
-| Parameter | Humainary | Fullerstack |
-|---|---|---|
-| Forks | 1 | 1 |
-| Warmup iterations | 3 | 3 |
-| Measurement iterations | 5 | 5 |
-| Mode | avgt (ns/op) | avgt (ns/op) |
+| Parameter | Value |
+|---|---|
+| Forks | 1 |
+| Warmup iterations | 3 |
+| Measurement iterations | 5 |
+| Warmup / measurement time | 1 s each |
+| Mode | avgt (ns/op) |
 
-## Note on Hardware Differences
+The Humainary baselines were measured on dedicated Apple silicon while Fullerstack results are on a shared Azure VM. Absolute cross-platform timings are approximate; relative deltas are more meaningful.
 
-The Humainary baselines were collected on dedicated Apple M4 silicon, while the Fullerstack results were collected on a shared Azure VM (GitHub Codespaces). These are fundamentally different hardware platforms with different CPU architectures, memory subsystems, and levels of resource contention. Absolute timing comparisons are approximate. The delta percentages reflect the combined effect of implementation differences AND hardware differences. Relative patterns within each benchmark group are more meaningful than absolute cross-platform comparisons.
+## Substrates results (Pre-2.3 → Now)
 
-## Results
+All times in ns/op. **Δ vs pre-2.3** = ((now - pre-2.3) / pre-2.3 × 100), so negative is improvement. Benchmarks added or removed in 2.3 show `—` in one column.
 
-All times in nanoseconds per operation (ns/op). Lower is faster. Delta = ((Fullerstack - Humainary) / Humainary * 100).
 
-| Benchmark | Humainary (ns/op) | Fullerstack (ns/op) | Delta |
-|---|---:|---:|---:|
-| io.humainary.serventis.jmh.opt.data.CacheOps.cache_from_conduit | 1.353 | 3.399 | +151.2% |
-| io.humainary.serventis.jmh.opt.data.CacheOps.cache_from_conduit_batch | 1.171 | 3.490 | +198.0% |
-| io.humainary.serventis.jmh.opt.data.CacheOps.emit_evict | 9.046 | 13.054 | +44.3% |
-| io.humainary.serventis.jmh.opt.data.CacheOps.emit_evict_batch | 7.004 | 12.341 | +76.2% |
-| io.humainary.serventis.jmh.opt.data.CacheOps.emit_expire | 8.151 | 12.530 | +53.7% |
-| io.humainary.serventis.jmh.opt.data.CacheOps.emit_expire_batch | 7.385 | 15.511 | +110.0% |
-| io.humainary.serventis.jmh.opt.data.CacheOps.emit_hit | 6.738 | 12.906 | +91.5% |
-| io.humainary.serventis.jmh.opt.data.CacheOps.emit_hit_batch | 7.358 | 12.761 | +73.4% |
-| io.humainary.serventis.jmh.opt.data.CacheOps.emit_lookup | 8.853 | 12.663 | +43.0% |
-| io.humainary.serventis.jmh.opt.data.CacheOps.emit_lookup_batch | 6.926 | 11.094 | +60.2% |
-| io.humainary.serventis.jmh.opt.data.CacheOps.emit_miss | 7.506 | 11.637 | +55.0% |
-| io.humainary.serventis.jmh.opt.data.CacheOps.emit_miss_batch | 7.132 | 11.917 | +67.1% |
-| io.humainary.serventis.jmh.opt.data.CacheOps.emit_remove | 7.919 | 12.128 | +53.2% |
-| io.humainary.serventis.jmh.opt.data.CacheOps.emit_remove_batch | 7.343 | 11.541 | +57.2% |
-| io.humainary.serventis.jmh.opt.data.CacheOps.emit_sign | 6.856 | 12.094 | +76.4% |
-| io.humainary.serventis.jmh.opt.data.CacheOps.emit_sign_batch | 7.344 | 11.963 | +62.9% |
-| io.humainary.serventis.jmh.opt.data.CacheOps.emit_store | 6.201 | 11.626 | +87.5% |
-| io.humainary.serventis.jmh.opt.data.CacheOps.emit_store_batch | 6.855 | 16.971 | +147.6% |
-| io.humainary.serventis.jmh.opt.data.PipelineOps.emit_aggregate | 7.413 | 11.720 | +58.1% |
-| io.humainary.serventis.jmh.opt.data.PipelineOps.emit_aggregate_batch | 7.072 | 11.696 | +65.4% |
-| io.humainary.serventis.jmh.opt.data.PipelineOps.emit_backpressure | 7.321 | 12.160 | +66.1% |
-| io.humainary.serventis.jmh.opt.data.PipelineOps.emit_backpressure_batch | 7.583 | 21.969 | +189.7% |
-| io.humainary.serventis.jmh.opt.data.PipelineOps.emit_buffer | 7.576 | 18.108 | +139.0% |
-| io.humainary.serventis.jmh.opt.data.PipelineOps.emit_buffer_batch | 6.996 | 11.214 | +60.3% |
-| io.humainary.serventis.jmh.opt.data.PipelineOps.emit_checkpoint | 7.066 | 11.957 | +69.2% |
-| io.humainary.serventis.jmh.opt.data.PipelineOps.emit_checkpoint_batch | 6.222 | 11.297 | +81.6% |
-| io.humainary.serventis.jmh.opt.data.PipelineOps.emit_filter | 7.747 | 11.331 | +46.3% |
-| io.humainary.serventis.jmh.opt.data.PipelineOps.emit_filter_batch | 6.996 | 11.445 | +63.6% |
-| io.humainary.serventis.jmh.opt.data.PipelineOps.emit_input | 7.581 | 11.620 | +53.3% |
-| io.humainary.serventis.jmh.opt.data.PipelineOps.emit_input_batch | 6.857 | 11.556 | +68.5% |
-| io.humainary.serventis.jmh.opt.data.PipelineOps.emit_lag | 6.750 | 11.191 | +65.8% |
-| io.humainary.serventis.jmh.opt.data.PipelineOps.emit_lag_batch | 6.372 | 18.795 | +195.0% |
-| io.humainary.serventis.jmh.opt.data.PipelineOps.emit_output | 6.333 | 12.298 | +94.2% |
-| io.humainary.serventis.jmh.opt.data.PipelineOps.emit_output_batch | 10.399 | 11.226 | +8.0% |
-| io.humainary.serventis.jmh.opt.data.PipelineOps.emit_overflow | 6.644 | 17.987 | +170.7% |
-| io.humainary.serventis.jmh.opt.data.PipelineOps.emit_overflow_batch | 6.532 | 13.104 | +100.6% |
-| io.humainary.serventis.jmh.opt.data.PipelineOps.emit_sign | 7.708 | 11.789 | +52.9% |
-| io.humainary.serventis.jmh.opt.data.PipelineOps.emit_sign_batch | 7.383 | 11.395 | +54.3% |
-| io.humainary.serventis.jmh.opt.data.PipelineOps.emit_skip | 7.657 | 11.930 | +55.8% |
-| io.humainary.serventis.jmh.opt.data.PipelineOps.emit_skip_batch | 7.195 | 19.035 | +164.6% |
-| io.humainary.serventis.jmh.opt.data.PipelineOps.emit_transform | 9.077 | 12.093 | +33.2% |
-| io.humainary.serventis.jmh.opt.data.PipelineOps.emit_transform_batch | 6.804 | 11.058 | +62.5% |
-| io.humainary.serventis.jmh.opt.data.PipelineOps.emit_watermark | 7.634 | 12.072 | +58.1% |
-| io.humainary.serventis.jmh.opt.data.PipelineOps.emit_watermark_batch | 8.745 | 11.251 | +28.7% |
-| io.humainary.serventis.jmh.opt.data.PipelineOps.pipeline_flow_etl | 40.895 | 59.131 | +44.6% |
-| io.humainary.serventis.jmh.opt.data.PipelineOps.pipeline_flow_stream | 40.758 | 63.483 | +55.8% |
-| io.humainary.serventis.jmh.opt.data.PipelineOps.pipeline_flow_windowed | 40.524 | 60.270 | +48.7% |
-| io.humainary.serventis.jmh.opt.data.PipelineOps.pipeline_from_conduit | 1.348 | 2.681 | +98.9% |
-| io.humainary.serventis.jmh.opt.data.PipelineOps.pipeline_from_conduit_batch | 1.136 | 2.592 | +128.2% |
-| io.humainary.serventis.jmh.opt.data.QueueOps.emit_dequeue | 6.863 | 11.839 | +72.5% |
-| io.humainary.serventis.jmh.opt.data.QueueOps.emit_dequeue_batch | 6.879 | 11.599 | +68.6% |
-| io.humainary.serventis.jmh.opt.data.QueueOps.emit_enqueue | 7.608 | 11.993 | +57.6% |
-| io.humainary.serventis.jmh.opt.data.QueueOps.emit_enqueue_batch | 8.659 | 11.492 | +32.7% |
-| io.humainary.serventis.jmh.opt.data.QueueOps.emit_overflow | 6.507 | 11.642 | +78.9% |
-| io.humainary.serventis.jmh.opt.data.QueueOps.emit_overflow_batch | 6.781 | 12.029 | +77.4% |
-| io.humainary.serventis.jmh.opt.data.QueueOps.emit_sign | 7.695 | 11.611 | +50.9% |
-| io.humainary.serventis.jmh.opt.data.QueueOps.emit_sign_batch | 9.059 | 11.626 | +28.3% |
-| io.humainary.serventis.jmh.opt.data.QueueOps.emit_underflow | 7.554 | 12.014 | +59.0% |
-| io.humainary.serventis.jmh.opt.data.QueueOps.emit_underflow_batch | 7.490 | 11.268 | +50.4% |
-| io.humainary.serventis.jmh.opt.data.QueueOps.queue_from_conduit | 1.391 | 2.623 | +88.6% |
-| io.humainary.serventis.jmh.opt.data.QueueOps.queue_from_conduit_batch | 1.152 | 2.565 | +122.7% |
-| io.humainary.serventis.jmh.opt.data.StackOps.emit_overflow | 7.362 | 11.795 | +60.2% |
-| io.humainary.serventis.jmh.opt.data.StackOps.emit_overflow_batch | 7.407 | 11.347 | +53.2% |
-| io.humainary.serventis.jmh.opt.data.StackOps.emit_pop | 7.294 | 11.659 | +59.8% |
-| io.humainary.serventis.jmh.opt.data.StackOps.emit_pop_batch | 8.526 | 11.738 | +37.7% |
-| io.humainary.serventis.jmh.opt.data.StackOps.emit_push | 7.705 | 11.689 | +51.7% |
-| io.humainary.serventis.jmh.opt.data.StackOps.emit_push_batch | 7.452 | 12.235 | +64.2% |
-| io.humainary.serventis.jmh.opt.data.StackOps.emit_sign | 8.680 | 11.860 | +36.6% |
-| io.humainary.serventis.jmh.opt.data.StackOps.emit_sign_batch | 6.751 | 12.033 | +78.2% |
-| io.humainary.serventis.jmh.opt.data.StackOps.emit_underflow | 9.841 | 11.778 | +19.7% |
-| io.humainary.serventis.jmh.opt.data.StackOps.emit_underflow_batch | 9.139 | 12.032 | +31.7% |
-| io.humainary.serventis.jmh.opt.data.StackOps.stack_from_conduit | 1.382 | 2.599 | +88.1% |
-| io.humainary.serventis.jmh.opt.data.StackOps.stack_from_conduit_batch | 1.145 | 2.574 | +124.8% |
-| io.humainary.serventis.jmh.opt.exec.ProcessOps.emit_crash | 7.490 | 11.999 | +60.2% |
-| io.humainary.serventis.jmh.opt.exec.ProcessOps.emit_crash_batch | 7.251 | 11.485 | +58.4% |
-| io.humainary.serventis.jmh.opt.exec.ProcessOps.emit_fail | 7.824 | 18.570 | +137.3% |
-| io.humainary.serventis.jmh.opt.exec.ProcessOps.emit_fail_batch | 8.285 | 11.921 | +43.9% |
-| io.humainary.serventis.jmh.opt.exec.ProcessOps.emit_kill | 9.326 | 11.371 | +21.9% |
-| io.humainary.serventis.jmh.opt.exec.ProcessOps.emit_kill_batch | 6.952 | 11.024 | +58.6% |
-| io.humainary.serventis.jmh.opt.exec.ProcessOps.emit_restart | 6.641 | 11.608 | +74.8% |
-| io.humainary.serventis.jmh.opt.exec.ProcessOps.emit_restart_batch | 6.761 | 17.293 | +155.8% |
-| io.humainary.serventis.jmh.opt.exec.ProcessOps.emit_resume | 7.690 | 11.949 | +55.4% |
-| io.humainary.serventis.jmh.opt.exec.ProcessOps.emit_resume_batch | 7.539 | 11.719 | +55.4% |
-| io.humainary.serventis.jmh.opt.exec.ProcessOps.emit_sign | 7.749 | 12.134 | +56.6% |
-| io.humainary.serventis.jmh.opt.exec.ProcessOps.emit_sign_batch | 7.681 | 12.139 | +58.0% |
-| io.humainary.serventis.jmh.opt.exec.ProcessOps.emit_spawn | 7.453 | 13.453 | +80.5% |
-| io.humainary.serventis.jmh.opt.exec.ProcessOps.emit_spawn_batch | 7.499 | 11.695 | +56.0% |
-| io.humainary.serventis.jmh.opt.exec.ProcessOps.emit_start | 7.621 | 11.646 | +52.8% |
-| io.humainary.serventis.jmh.opt.exec.ProcessOps.emit_start_batch | 7.038 | 11.496 | +63.3% |
-| io.humainary.serventis.jmh.opt.exec.ProcessOps.emit_stop | 7.972 | 11.264 | +41.3% |
-| io.humainary.serventis.jmh.opt.exec.ProcessOps.emit_stop_batch | 6.736 | 11.294 | +67.7% |
-| io.humainary.serventis.jmh.opt.exec.ProcessOps.emit_suspend | 6.506 | 12.244 | +88.2% |
-| io.humainary.serventis.jmh.opt.exec.ProcessOps.emit_suspend_batch | 7.847 | 11.896 | +51.6% |
-| io.humainary.serventis.jmh.opt.exec.ProcessOps.process_from_conduit | 1.357 | 2.632 | +94.0% |
-| io.humainary.serventis.jmh.opt.exec.ProcessOps.process_from_conduit_batch | 1.141 | 2.599 | +127.8% |
-| io.humainary.serventis.jmh.opt.exec.ServiceOps.emit_call | 7.879 | 12.907 | +63.8% |
-| io.humainary.serventis.jmh.opt.exec.ServiceOps.emit_call_batch | 6.215 | 11.604 | +86.7% |
-| io.humainary.serventis.jmh.opt.exec.ServiceOps.emit_called | 7.630 | 13.400 | +75.6% |
-| io.humainary.serventis.jmh.opt.exec.ServiceOps.emit_called_batch | 6.829 | 11.913 | +74.4% |
-| io.humainary.serventis.jmh.opt.exec.ServiceOps.emit_delay | 6.835 | 12.592 | +84.2% |
-| io.humainary.serventis.jmh.opt.exec.ServiceOps.emit_delay_batch | 9.385 | 11.583 | +23.4% |
-| io.humainary.serventis.jmh.opt.exec.ServiceOps.emit_delayed | 8.516 | 13.416 | +57.5% |
-| io.humainary.serventis.jmh.opt.exec.ServiceOps.emit_delayed_batch | 8.814 | 12.218 | +38.6% |
-| io.humainary.serventis.jmh.opt.exec.ServiceOps.emit_discard | 6.132 | 12.558 | +104.8% |
-| io.humainary.serventis.jmh.opt.exec.ServiceOps.emit_discard_batch | 16.966 | 12.765 | -24.8% |
-| io.humainary.serventis.jmh.opt.exec.ServiceOps.emit_discarded | 6.767 | 13.292 | +96.4% |
-| io.humainary.serventis.jmh.opt.exec.ServiceOps.emit_discarded_batch | 6.782 | 11.718 | +72.8% |
-| io.humainary.serventis.jmh.opt.exec.ServiceOps.emit_disconnect | 6.547 | 13.499 | +106.2% |
-| io.humainary.serventis.jmh.opt.exec.ServiceOps.emit_disconnect_batch | 8.487 | 12.313 | +45.1% |
-| io.humainary.serventis.jmh.opt.exec.ServiceOps.emit_disconnected | 7.141 | 12.951 | +81.4% |
-| io.humainary.serventis.jmh.opt.exec.ServiceOps.emit_disconnected_batch | 8.594 | 11.690 | +36.0% |
-| io.humainary.serventis.jmh.opt.exec.ServiceOps.emit_expire | 6.931 | 12.944 | +86.8% |
-| io.humainary.serventis.jmh.opt.exec.ServiceOps.emit_expire_batch | 7.448 | 11.690 | +57.0% |
-| io.humainary.serventis.jmh.opt.exec.ServiceOps.emit_expired | 6.568 | 13.235 | +101.5% |
-| io.humainary.serventis.jmh.opt.exec.ServiceOps.emit_expired_batch | 8.835 | 11.630 | +31.6% |
-| io.humainary.serventis.jmh.opt.exec.ServiceOps.emit_fail | 6.729 | 13.124 | +95.0% |
-| io.humainary.serventis.jmh.opt.exec.ServiceOps.emit_fail_batch | 6.811 | 11.783 | +73.0% |
-| io.humainary.serventis.jmh.opt.exec.ServiceOps.emit_failed | 7.471 | 13.732 | +83.8% |
-| io.humainary.serventis.jmh.opt.exec.ServiceOps.emit_failed_batch | 8.683 | 11.686 | +34.6% |
-| io.humainary.serventis.jmh.opt.exec.ServiceOps.emit_recourse | 6.934 | 13.170 | +89.9% |
-| io.humainary.serventis.jmh.opt.exec.ServiceOps.emit_recourse_batch | 6.356 | 11.923 | +87.6% |
-| io.humainary.serventis.jmh.opt.exec.ServiceOps.emit_recoursed | 7.562 | 13.429 | +77.6% |
-| io.humainary.serventis.jmh.opt.exec.ServiceOps.emit_recoursed_batch | 6.468 | 12.146 | +87.8% |
-| io.humainary.serventis.jmh.opt.exec.ServiceOps.emit_redirect | 7.138 | 12.955 | +81.5% |
-| io.humainary.serventis.jmh.opt.exec.ServiceOps.emit_redirect_batch | 5.954 | 12.052 | +102.4% |
-| io.humainary.serventis.jmh.opt.exec.ServiceOps.emit_redirected | 7.340 | 13.137 | +79.0% |
-| io.humainary.serventis.jmh.opt.exec.ServiceOps.emit_redirected_batch | 8.488 | 11.993 | +41.3% |
-| io.humainary.serventis.jmh.opt.exec.ServiceOps.emit_reject | 9.564 | 13.248 | +38.5% |
-| io.humainary.serventis.jmh.opt.exec.ServiceOps.emit_reject_batch | 6.935 | 12.187 | +75.7% |
-| io.humainary.serventis.jmh.opt.exec.ServiceOps.emit_rejected | 8.050 | 13.618 | +69.2% |
-| io.humainary.serventis.jmh.opt.exec.ServiceOps.emit_rejected_batch | 7.675 | 12.566 | +63.7% |
-| io.humainary.serventis.jmh.opt.exec.ServiceOps.emit_resume | 6.705 | 13.069 | +94.9% |
-| io.humainary.serventis.jmh.opt.exec.ServiceOps.emit_resume_batch | 9.478 | 11.922 | +25.8% |
-| io.humainary.serventis.jmh.opt.exec.ServiceOps.emit_resumed | 6.463 | 13.537 | +109.5% |
-| io.humainary.serventis.jmh.opt.exec.ServiceOps.emit_resumed_batch | 10.307 | 11.680 | +13.3% |
-| io.humainary.serventis.jmh.opt.exec.ServiceOps.emit_retried | 7.773 | 13.242 | +70.4% |
-| io.humainary.serventis.jmh.opt.exec.ServiceOps.emit_retried_batch | 7.250 | 11.775 | +62.4% |
-| io.humainary.serventis.jmh.opt.exec.ServiceOps.emit_retry | 6.938 | 12.869 | +85.5% |
-| io.humainary.serventis.jmh.opt.exec.ServiceOps.emit_retry_batch | 8.400 | 12.167 | +44.8% |
-| io.humainary.serventis.jmh.opt.exec.ServiceOps.emit_schedule | 7.533 | 12.429 | +65.0% |
-| io.humainary.serventis.jmh.opt.exec.ServiceOps.emit_schedule_batch | 6.653 | 12.140 | +82.5% |
-| io.humainary.serventis.jmh.opt.exec.ServiceOps.emit_scheduled | 7.109 | 13.228 | +86.1% |
-| io.humainary.serventis.jmh.opt.exec.ServiceOps.emit_scheduled_batch | 5.994 | 12.116 | +102.1% |
-| io.humainary.serventis.jmh.opt.exec.ServiceOps.emit_signal | 7.050 | 12.527 | +77.7% |
-| io.humainary.serventis.jmh.opt.exec.ServiceOps.emit_signal_batch | 9.171 | 11.521 | +25.6% |
-| io.humainary.serventis.jmh.opt.exec.ServiceOps.emit_start | 7.534 | 13.156 | +74.6% |
-| io.humainary.serventis.jmh.opt.exec.ServiceOps.emit_start_batch | 8.414 | 12.184 | +44.8% |
-| io.humainary.serventis.jmh.opt.exec.ServiceOps.emit_started | 7.767 | 12.675 | +63.2% |
-| io.humainary.serventis.jmh.opt.exec.ServiceOps.emit_started_batch | 6.316 | 12.127 | +92.0% |
-| io.humainary.serventis.jmh.opt.exec.ServiceOps.emit_stop | 7.281 | 13.082 | +79.7% |
-| io.humainary.serventis.jmh.opt.exec.ServiceOps.emit_stop_batch | 8.750 | 11.844 | +35.4% |
-| io.humainary.serventis.jmh.opt.exec.ServiceOps.emit_stopped | 6.505 | 13.364 | +105.4% |
-| io.humainary.serventis.jmh.opt.exec.ServiceOps.emit_stopped_batch | 8.306 | 11.471 | +38.1% |
-| io.humainary.serventis.jmh.opt.exec.ServiceOps.emit_succeeded | 7.808 | 13.417 | +71.8% |
-| io.humainary.serventis.jmh.opt.exec.ServiceOps.emit_succeeded_batch | 8.303 | 11.979 | +44.3% |
-| io.humainary.serventis.jmh.opt.exec.ServiceOps.emit_success | 6.718 | 13.156 | +95.8% |
-| io.humainary.serventis.jmh.opt.exec.ServiceOps.emit_success_batch | 7.239 | 12.547 | +73.3% |
-| io.humainary.serventis.jmh.opt.exec.ServiceOps.emit_suspend | 7.683 | 12.724 | +65.6% |
-| io.humainary.serventis.jmh.opt.exec.ServiceOps.emit_suspend_batch | 6.523 | 11.888 | +82.2% |
-| io.humainary.serventis.jmh.opt.exec.ServiceOps.emit_suspended | 6.493 | 13.288 | +104.7% |
-| io.humainary.serventis.jmh.opt.exec.ServiceOps.emit_suspended_batch | 8.005 | 11.706 | +46.2% |
-| io.humainary.serventis.jmh.opt.exec.ServiceOps.service_from_conduit | 1.344 | 2.572 | +91.4% |
-| io.humainary.serventis.jmh.opt.exec.ServiceOps.service_from_conduit_batch | 1.155 | 2.613 | +126.2% |
-| io.humainary.serventis.jmh.opt.exec.TaskOps.emit_cancel | 7.556 | 11.488 | +52.0% |
-| io.humainary.serventis.jmh.opt.exec.TaskOps.emit_cancel_batch | 7.043 | 11.490 | +63.1% |
-| io.humainary.serventis.jmh.opt.exec.TaskOps.emit_complete | 7.224 | 11.879 | +64.4% |
-| io.humainary.serventis.jmh.opt.exec.TaskOps.emit_complete_batch | 5.403 | 11.522 | +113.3% |
-| io.humainary.serventis.jmh.opt.exec.TaskOps.emit_fail | 6.525 | 11.709 | +79.4% |
-| io.humainary.serventis.jmh.opt.exec.TaskOps.emit_fail_batch | 7.172 | 11.337 | +58.1% |
-| io.humainary.serventis.jmh.opt.exec.TaskOps.emit_progress | 7.912 | 11.478 | +45.1% |
-| io.humainary.serventis.jmh.opt.exec.TaskOps.emit_progress_batch | 7.008 | 11.897 | +69.8% |
-| io.humainary.serventis.jmh.opt.exec.TaskOps.emit_reject | 7.221 | 12.031 | +66.6% |
-| io.humainary.serventis.jmh.opt.exec.TaskOps.emit_reject_batch | 7.142 | 11.897 | +66.6% |
-| io.humainary.serventis.jmh.opt.exec.TaskOps.emit_resume | 8.975 | 11.781 | +31.3% |
-| io.humainary.serventis.jmh.opt.exec.TaskOps.emit_resume_batch | 7.098 | 11.257 | +58.6% |
-| io.humainary.serventis.jmh.opt.exec.TaskOps.emit_schedule | 7.783 | 12.353 | +58.7% |
-| io.humainary.serventis.jmh.opt.exec.TaskOps.emit_schedule_batch | 7.009 | 21.075 | +200.7% |
-| io.humainary.serventis.jmh.opt.exec.TaskOps.emit_sign | 7.682 | 11.924 | +55.2% |
-| io.humainary.serventis.jmh.opt.exec.TaskOps.emit_sign_batch | 9.333 | 11.251 | +20.6% |
-| io.humainary.serventis.jmh.opt.exec.TaskOps.emit_start | 7.678 | 12.346 | +60.8% |
-| io.humainary.serventis.jmh.opt.exec.TaskOps.emit_start_batch | 9.241 | 13.282 | +43.7% |
-| io.humainary.serventis.jmh.opt.exec.TaskOps.emit_submit | 7.601 | 11.601 | +52.6% |
-| io.humainary.serventis.jmh.opt.exec.TaskOps.emit_submit_batch | 7.662 | 11.648 | +52.0% |
-| io.humainary.serventis.jmh.opt.exec.TaskOps.emit_suspend | 7.984 | 11.488 | +43.9% |
-| io.humainary.serventis.jmh.opt.exec.TaskOps.emit_suspend_batch | 6.845 | 19.099 | +179.0% |
-| io.humainary.serventis.jmh.opt.exec.TaskOps.emit_timeout | 7.807 | 19.896 | +154.8% |
-| io.humainary.serventis.jmh.opt.exec.TaskOps.emit_timeout_batch | 6.958 | 11.247 | +61.6% |
-| io.humainary.serventis.jmh.opt.exec.TaskOps.task_from_conduit | 1.344 | 2.600 | +93.5% |
-| io.humainary.serventis.jmh.opt.exec.TaskOps.task_from_conduit_batch | 1.153 | 2.644 | +129.3% |
-| io.humainary.serventis.jmh.opt.exec.TimerOps.emit_meet_deadline | 7.362 | 12.800 | +73.9% |
-| io.humainary.serventis.jmh.opt.exec.TimerOps.emit_meet_deadline_batch | 7.005 | 11.191 | +59.8% |
-| io.humainary.serventis.jmh.opt.exec.TimerOps.emit_meet_threshold | 7.124 | 12.634 | +77.3% |
-| io.humainary.serventis.jmh.opt.exec.TimerOps.emit_miss_deadline | 6.263 | 13.386 | +113.7% |
-| io.humainary.serventis.jmh.opt.exec.TimerOps.emit_miss_threshold | 7.294 | 14.384 | +97.2% |
-| io.humainary.serventis.jmh.opt.exec.TimerOps.emit_signal | 7.370 | 12.377 | +67.9% |
-| io.humainary.serventis.jmh.opt.exec.TimerOps.emit_signal_batch | 8.339 | 12.170 | +45.9% |
-| io.humainary.serventis.jmh.opt.exec.TimerOps.timer_from_conduit | 1.354 | 2.583 | +90.8% |
-| io.humainary.serventis.jmh.opt.exec.TimerOps.timer_from_conduit_batch | 1.141 | 2.631 | +130.6% |
-| io.humainary.serventis.jmh.opt.exec.TransactionOps.emit_abort_coordinator | 7.221 | 12.885 | +78.4% |
-| io.humainary.serventis.jmh.opt.exec.TransactionOps.emit_abort_coordinator_batch | 7.097 | 12.284 | +73.1% |
-| io.humainary.serventis.jmh.opt.exec.TransactionOps.emit_abort_participant | 7.002 | 13.959 | +99.4% |
-| io.humainary.serventis.jmh.opt.exec.TransactionOps.emit_abort_participant_batch | 9.031 | 12.324 | +36.5% |
-| io.humainary.serventis.jmh.opt.exec.TransactionOps.emit_commit_coordinator | 8.836 | 12.648 | +43.1% |
-| io.humainary.serventis.jmh.opt.exec.TransactionOps.emit_commit_coordinator_batch | 6.615 | 17.300 | +161.5% |
-| io.humainary.serventis.jmh.opt.exec.TransactionOps.emit_commit_participant | 8.660 | 13.328 | +53.9% |
-| io.humainary.serventis.jmh.opt.exec.TransactionOps.emit_commit_participant_batch | 6.345 | 11.518 | +81.5% |
-| io.humainary.serventis.jmh.opt.exec.TransactionOps.emit_compensate_coordinator | 7.262 | 12.844 | +76.9% |
-| io.humainary.serventis.jmh.opt.exec.TransactionOps.emit_compensate_coordinator_batch | 8.405 | 11.921 | +41.8% |
-| io.humainary.serventis.jmh.opt.exec.TransactionOps.emit_compensate_participant | 6.847 | 13.239 | +93.4% |
-| io.humainary.serventis.jmh.opt.exec.TransactionOps.emit_compensate_participant_batch | 6.600 | 12.009 | +82.0% |
-| io.humainary.serventis.jmh.opt.exec.TransactionOps.emit_conflict_coordinator | 7.489 | 13.266 | +77.1% |
-| io.humainary.serventis.jmh.opt.exec.TransactionOps.emit_conflict_coordinator_batch | 7.132 | 13.124 | +84.0% |
-| io.humainary.serventis.jmh.opt.exec.TransactionOps.emit_conflict_participant | 10.811 | 13.565 | +25.5% |
-| io.humainary.serventis.jmh.opt.exec.TransactionOps.emit_conflict_participant_batch | 6.604 | 11.913 | +80.4% |
-| io.humainary.serventis.jmh.opt.exec.TransactionOps.emit_expire_coordinator | 7.350 | 13.005 | +76.9% |
-| io.humainary.serventis.jmh.opt.exec.TransactionOps.emit_expire_coordinator_batch | 8.636 | 12.081 | +39.9% |
-| io.humainary.serventis.jmh.opt.exec.TransactionOps.emit_expire_participant | 8.278 | 13.285 | +60.5% |
-| io.humainary.serventis.jmh.opt.exec.TransactionOps.emit_expire_participant_batch | 6.538 | 11.833 | +81.0% |
-| io.humainary.serventis.jmh.opt.exec.TransactionOps.emit_prepare_coordinator | 6.756 | 13.155 | +94.7% |
-| io.humainary.serventis.jmh.opt.exec.TransactionOps.emit_prepare_coordinator_batch | 7.753 | 11.928 | +53.9% |
-| io.humainary.serventis.jmh.opt.exec.TransactionOps.emit_prepare_participant | 7.358 | 13.390 | +82.0% |
-| io.humainary.serventis.jmh.opt.exec.TransactionOps.emit_prepare_participant_batch | 6.765 | 11.997 | +77.3% |
-| io.humainary.serventis.jmh.opt.exec.TransactionOps.emit_rollback_coordinator | 7.906 | 12.517 | +58.3% |
-| io.humainary.serventis.jmh.opt.exec.TransactionOps.emit_rollback_coordinator_batch | 6.678 | 11.473 | +71.8% |
-| io.humainary.serventis.jmh.opt.exec.TransactionOps.emit_rollback_participant | 7.307 | 13.487 | +84.6% |
-| io.humainary.serventis.jmh.opt.exec.TransactionOps.emit_rollback_participant_batch | 8.569 | 11.689 | +36.4% |
-| io.humainary.serventis.jmh.opt.exec.TransactionOps.emit_signal | 5.919 | 12.666 | +114.0% |
-| io.humainary.serventis.jmh.opt.exec.TransactionOps.emit_signal_batch | 8.092 | 11.731 | +45.0% |
-| io.humainary.serventis.jmh.opt.exec.TransactionOps.emit_start_coordinator | 6.998 | 12.862 | +83.8% |
-| io.humainary.serventis.jmh.opt.exec.TransactionOps.emit_start_coordinator_batch | 9.257 | 11.769 | +27.1% |
-| io.humainary.serventis.jmh.opt.exec.TransactionOps.emit_start_participant | 7.606 | 12.835 | +68.7% |
-| io.humainary.serventis.jmh.opt.exec.TransactionOps.emit_start_participant_batch | 7.003 | 11.334 | +61.8% |
-| io.humainary.serventis.jmh.opt.exec.TransactionOps.transaction_from_conduit | 1.364 | 2.615 | +91.7% |
-| io.humainary.serventis.jmh.opt.exec.TransactionOps.transaction_from_conduit_batch | 1.147 | 2.639 | +130.1% |
-| io.humainary.serventis.jmh.opt.flow.BreakerOps.breaker_from_conduit | 1.348 | 2.613 | +93.8% |
-| io.humainary.serventis.jmh.opt.flow.BreakerOps.breaker_from_conduit_batch | 1.149 | 2.616 | +127.7% |
-| io.humainary.serventis.jmh.opt.flow.BreakerOps.emit_close | 7.780 | 11.668 | +50.0% |
-| io.humainary.serventis.jmh.opt.flow.BreakerOps.emit_close_batch | 7.777 | 11.575 | +48.8% |
-| io.humainary.serventis.jmh.opt.flow.BreakerOps.emit_half_open | 9.152 | 12.018 | +31.3% |
-| io.humainary.serventis.jmh.opt.flow.BreakerOps.emit_half_open_batch | 7.402 | 11.757 | +58.8% |
-| io.humainary.serventis.jmh.opt.flow.BreakerOps.emit_open | 6.942 | 11.688 | +68.4% |
-| io.humainary.serventis.jmh.opt.flow.BreakerOps.emit_open_batch | 7.667 | 11.975 | +56.2% |
-| io.humainary.serventis.jmh.opt.flow.BreakerOps.emit_probe | 8.744 | 11.904 | +36.1% |
-| io.humainary.serventis.jmh.opt.flow.BreakerOps.emit_probe_batch | 7.195 | 11.286 | +56.9% |
-| io.humainary.serventis.jmh.opt.flow.BreakerOps.emit_reset | 7.197 | 11.862 | +64.8% |
-| io.humainary.serventis.jmh.opt.flow.BreakerOps.emit_reset_batch | 7.049 | 11.351 | +61.0% |
-| io.humainary.serventis.jmh.opt.flow.BreakerOps.emit_sign | 7.790 | 11.408 | +46.4% |
-| io.humainary.serventis.jmh.opt.flow.BreakerOps.emit_sign_batch | 8.331 | 11.769 | +41.3% |
-| io.humainary.serventis.jmh.opt.flow.BreakerOps.emit_trip | 7.879 | 12.207 | +54.9% |
-| io.humainary.serventis.jmh.opt.flow.BreakerOps.emit_trip_batch | 7.314 | 11.210 | +53.3% |
-| io.humainary.serventis.jmh.opt.flow.FlowOps.emit_fail_egress | 7.781 | 13.417 | +72.4% |
-| io.humainary.serventis.jmh.opt.flow.FlowOps.emit_fail_ingress | 8.058 | 12.649 | +57.0% |
-| io.humainary.serventis.jmh.opt.flow.FlowOps.emit_fail_transit | 6.924 | 13.031 | +88.2% |
-| io.humainary.serventis.jmh.opt.flow.FlowOps.emit_signal | 7.157 | 12.754 | +78.2% |
-| io.humainary.serventis.jmh.opt.flow.FlowOps.emit_signal_batch | 8.547 | 11.584 | +35.5% |
-| io.humainary.serventis.jmh.opt.flow.FlowOps.emit_success_egress | 7.225 | 13.170 | +82.3% |
-| io.humainary.serventis.jmh.opt.flow.FlowOps.emit_success_ingress | 8.325 | 12.967 | +55.8% |
-| io.humainary.serventis.jmh.opt.flow.FlowOps.emit_success_ingress_batch | 6.571 | 11.278 | +71.6% |
-| io.humainary.serventis.jmh.opt.flow.FlowOps.emit_success_transit | 8.025 | 13.267 | +65.3% |
-| io.humainary.serventis.jmh.opt.flow.FlowOps.flow_from_conduit | 1.355 | 2.595 | +91.5% |
-| io.humainary.serventis.jmh.opt.flow.FlowOps.flow_from_conduit_batch | 1.148 | 2.604 | +126.8% |
-| io.humainary.serventis.jmh.opt.flow.RouterOps.emit_corrupt | 7.049 | 12.403 | +76.0% |
-| io.humainary.serventis.jmh.opt.flow.RouterOps.emit_corrupt_batch | 8.520 | 11.509 | +35.1% |
-| io.humainary.serventis.jmh.opt.flow.RouterOps.emit_drop | 9.104 | 11.394 | +25.2% |
-| io.humainary.serventis.jmh.opt.flow.RouterOps.emit_drop_batch | 7.302 | 11.930 | +63.4% |
-| io.humainary.serventis.jmh.opt.flow.RouterOps.emit_forward | 7.280 | 12.164 | +67.1% |
-| io.humainary.serventis.jmh.opt.flow.RouterOps.emit_forward_batch | 6.910 | 11.660 | +68.7% |
-| io.humainary.serventis.jmh.opt.flow.RouterOps.emit_fragment | 7.040 | 11.978 | +70.1% |
-| io.humainary.serventis.jmh.opt.flow.RouterOps.emit_fragment_batch | 6.543 | 11.808 | +80.5% |
-| io.humainary.serventis.jmh.opt.flow.RouterOps.emit_reassemble | 7.018 | 11.496 | +63.8% |
-| io.humainary.serventis.jmh.opt.flow.RouterOps.emit_reassemble_batch | 7.884 | 11.380 | +44.3% |
-| io.humainary.serventis.jmh.opt.flow.RouterOps.emit_receive | 7.471 | 11.874 | +58.9% |
-| io.humainary.serventis.jmh.opt.flow.RouterOps.emit_receive_batch | 6.910 | 11.241 | +62.7% |
-| io.humainary.serventis.jmh.opt.flow.RouterOps.emit_reorder | 7.343 | 11.621 | +58.3% |
-| io.humainary.serventis.jmh.opt.flow.RouterOps.emit_reorder_batch | 6.995 | 11.921 | +70.4% |
-| io.humainary.serventis.jmh.opt.flow.RouterOps.emit_route | 7.399 | 12.279 | +66.0% |
-| io.humainary.serventis.jmh.opt.flow.RouterOps.emit_route_batch | 6.992 | 11.913 | +70.4% |
-| io.humainary.serventis.jmh.opt.flow.RouterOps.emit_send | 7.134 | 11.406 | +59.9% |
-| io.humainary.serventis.jmh.opt.flow.RouterOps.emit_send_batch | 7.638 | 11.278 | +47.7% |
-| io.humainary.serventis.jmh.opt.flow.RouterOps.emit_sign | 7.350 | 11.923 | +62.2% |
-| io.humainary.serventis.jmh.opt.flow.RouterOps.emit_sign_batch | 7.467 | 11.833 | +58.5% |
-| io.humainary.serventis.jmh.opt.flow.RouterOps.router_from_conduit | 1.377 | 2.606 | +89.3% |
-| io.humainary.serventis.jmh.opt.flow.RouterOps.router_from_conduit_batch | 1.170 | 2.564 | +119.1% |
-| io.humainary.serventis.jmh.opt.flow.ValveOps.emit_contract | 6.541 | 12.182 | +86.2% |
-| io.humainary.serventis.jmh.opt.flow.ValveOps.emit_contract_batch | 7.421 | 12.970 | +74.8% |
-| io.humainary.serventis.jmh.opt.flow.ValveOps.emit_deny | 7.702 | 11.438 | +48.5% |
-| io.humainary.serventis.jmh.opt.flow.ValveOps.emit_deny_batch | 7.118 | 11.328 | +59.1% |
-| io.humainary.serventis.jmh.opt.flow.ValveOps.emit_drain | 7.859 | 12.265 | +56.1% |
-| io.humainary.serventis.jmh.opt.flow.ValveOps.emit_drain_batch | 7.153 | 17.779 | +148.6% |
-| io.humainary.serventis.jmh.opt.flow.ValveOps.emit_drop | 6.755 | 11.913 | +76.4% |
-| io.humainary.serventis.jmh.opt.flow.ValveOps.emit_drop_batch | 8.994 | 12.409 | +38.0% |
-| io.humainary.serventis.jmh.opt.flow.ValveOps.emit_expand | 7.188 | 11.815 | +64.4% |
-| io.humainary.serventis.jmh.opt.flow.ValveOps.emit_expand_batch | 6.608 | 12.500 | +89.2% |
-| io.humainary.serventis.jmh.opt.flow.ValveOps.emit_pass | 7.247 | 11.990 | +65.4% |
-| io.humainary.serventis.jmh.opt.flow.ValveOps.emit_pass_batch | 7.354 | 12.893 | +75.3% |
-| io.humainary.serventis.jmh.opt.flow.ValveOps.emit_sign | 9.236 | 12.245 | +32.6% |
-| io.humainary.serventis.jmh.opt.flow.ValveOps.emit_sign_batch | 7.520 | 11.902 | +58.3% |
-| io.humainary.serventis.jmh.opt.flow.ValveOps.valve_from_conduit | 1.352 | 2.835 | +109.7% |
-| io.humainary.serventis.jmh.opt.flow.ValveOps.valve_from_conduit_batch | 1.145 | 2.737 | +139.0% |
-| io.humainary.serventis.jmh.opt.pool.ExchangeOps.emit_contract_provider | 6.465 | 12.915 | +99.8% |
-| io.humainary.serventis.jmh.opt.pool.ExchangeOps.emit_contract_provider_batch | 6.841 | 12.201 | +78.4% |
-| io.humainary.serventis.jmh.opt.pool.ExchangeOps.emit_contract_receiver | 7.100 | 13.453 | +89.5% |
-| io.humainary.serventis.jmh.opt.pool.ExchangeOps.emit_contract_receiver_batch | 8.485 | 12.273 | +44.6% |
-| io.humainary.serventis.jmh.opt.pool.ExchangeOps.emit_full_exchange | 8.763 | 13.149 | +50.1% |
-| io.humainary.serventis.jmh.opt.pool.ExchangeOps.emit_full_exchange_batch | 8.603 | 12.665 | +47.2% |
-| io.humainary.serventis.jmh.opt.pool.ExchangeOps.emit_signal | 7.163 | 12.934 | +80.6% |
-| io.humainary.serventis.jmh.opt.pool.ExchangeOps.emit_signal_batch | 6.305 | 12.527 | +98.7% |
-| io.humainary.serventis.jmh.opt.pool.ExchangeOps.emit_transfer_provider | 7.568 | 12.984 | +71.6% |
-| io.humainary.serventis.jmh.opt.pool.ExchangeOps.emit_transfer_provider_batch | 7.470 | 12.232 | +63.7% |
-| io.humainary.serventis.jmh.opt.pool.ExchangeOps.emit_transfer_receiver | 8.049 | 13.536 | +68.2% |
-| io.humainary.serventis.jmh.opt.pool.ExchangeOps.emit_transfer_receiver_batch | 7.510 | 12.873 | +71.4% |
-| io.humainary.serventis.jmh.opt.pool.ExchangeOps.exchange_from_conduit | 1.359 | 2.632 | +93.7% |
-| io.humainary.serventis.jmh.opt.pool.ExchangeOps.exchange_from_conduit_batch | 1.125 | 2.617 | +132.6% |
-| io.humainary.serventis.jmh.opt.pool.LeaseOps.emit_acquire | 9.673 | 12.716 | +31.5% |
-| io.humainary.serventis.jmh.opt.pool.LeaseOps.emit_acquire_batch | 8.173 | 11.717 | +43.4% |
-| io.humainary.serventis.jmh.opt.pool.LeaseOps.emit_acquired | 6.706 | 13.032 | +94.3% |
-| io.humainary.serventis.jmh.opt.pool.LeaseOps.emit_acquired_batch | 6.685 | 11.763 | +76.0% |
-| io.humainary.serventis.jmh.opt.pool.LeaseOps.emit_denied | 7.739 | 13.138 | +69.8% |
-| io.humainary.serventis.jmh.opt.pool.LeaseOps.emit_denied_batch | 9.201 | 11.484 | +24.8% |
-| io.humainary.serventis.jmh.opt.pool.LeaseOps.emit_deny | 7.008 | 12.587 | +79.6% |
-| io.humainary.serventis.jmh.opt.pool.LeaseOps.emit_deny_batch | 8.468 | 11.614 | +37.2% |
-| io.humainary.serventis.jmh.opt.pool.LeaseOps.emit_expire | 7.842 | 12.976 | +65.5% |
-| io.humainary.serventis.jmh.opt.pool.LeaseOps.emit_expire_batch | 8.851 | 11.749 | +32.7% |
-| io.humainary.serventis.jmh.opt.pool.LeaseOps.emit_expired | 7.290 | 13.358 | +83.2% |
-| io.humainary.serventis.jmh.opt.pool.LeaseOps.emit_expired_batch | 8.610 | 11.795 | +37.0% |
-| io.humainary.serventis.jmh.opt.pool.LeaseOps.emit_extend | 7.073 | 13.501 | +90.9% |
-| io.humainary.serventis.jmh.opt.pool.LeaseOps.emit_extend_batch | 6.219 | 11.871 | +90.9% |
-| io.humainary.serventis.jmh.opt.pool.LeaseOps.emit_extended | 7.619 | 13.580 | +78.2% |
-| io.humainary.serventis.jmh.opt.pool.LeaseOps.emit_extended_batch | 7.633 | 12.470 | +63.4% |
-| io.humainary.serventis.jmh.opt.pool.LeaseOps.emit_grant | 6.284 | 13.218 | +110.3% |
-| io.humainary.serventis.jmh.opt.pool.LeaseOps.emit_grant_batch | 8.552 | 12.053 | +40.9% |
-| io.humainary.serventis.jmh.opt.pool.LeaseOps.emit_granted | 6.538 | 13.412 | +105.1% |
-| io.humainary.serventis.jmh.opt.pool.LeaseOps.emit_granted_batch | 7.000 | 11.696 | +67.1% |
-| io.humainary.serventis.jmh.opt.pool.LeaseOps.emit_probe | 7.525 | 13.017 | +73.0% |
-| io.humainary.serventis.jmh.opt.pool.LeaseOps.emit_probe_batch | 7.439 | 11.496 | +54.5% |
-| io.humainary.serventis.jmh.opt.pool.LeaseOps.emit_probed | 7.264 | 13.484 | +85.6% |
-| io.humainary.serventis.jmh.opt.pool.LeaseOps.emit_probed_batch | 6.362 | 11.646 | +83.1% |
-| io.humainary.serventis.jmh.opt.pool.LeaseOps.emit_release | 8.706 | 13.135 | +50.9% |
-| io.humainary.serventis.jmh.opt.pool.LeaseOps.emit_release_batch | 6.035 | 12.486 | +106.9% |
-| io.humainary.serventis.jmh.opt.pool.LeaseOps.emit_released | 6.901 | 13.084 | +89.6% |
-| io.humainary.serventis.jmh.opt.pool.LeaseOps.emit_released_batch | 6.603 | 13.033 | +97.4% |
-| io.humainary.serventis.jmh.opt.pool.LeaseOps.emit_renew | 7.791 | 13.538 | +73.8% |
-| io.humainary.serventis.jmh.opt.pool.LeaseOps.emit_renew_batch | 6.419 | 12.019 | +87.2% |
-| io.humainary.serventis.jmh.opt.pool.LeaseOps.emit_renewed | 8.037 | 13.120 | +63.2% |
-| io.humainary.serventis.jmh.opt.pool.LeaseOps.emit_renewed_batch | 7.063 | 11.959 | +69.3% |
-| io.humainary.serventis.jmh.opt.pool.LeaseOps.emit_revoke | 7.082 | 12.912 | +82.3% |
-| io.humainary.serventis.jmh.opt.pool.LeaseOps.emit_revoke_batch | 6.604 | 12.145 | +83.9% |
-| io.humainary.serventis.jmh.opt.pool.LeaseOps.emit_revoked | 8.674 | 13.589 | +56.7% |
-| io.humainary.serventis.jmh.opt.pool.LeaseOps.emit_revoked_batch | 6.644 | 12.232 | +84.1% |
-| io.humainary.serventis.jmh.opt.pool.LeaseOps.emit_signal | 8.179 | 13.114 | +60.3% |
-| io.humainary.serventis.jmh.opt.pool.LeaseOps.emit_signal_batch | 7.145 | 11.669 | +63.3% |
-| io.humainary.serventis.jmh.opt.pool.LeaseOps.lease_from_conduit | 1.347 | 2.563 | +90.3% |
-| io.humainary.serventis.jmh.opt.pool.LeaseOps.lease_from_conduit_batch | 1.156 | 1.921 | +66.2% |
-| io.humainary.serventis.jmh.opt.pool.PoolOps.emit_borrow | 7.367 | 11.410 | +54.9% |
-| io.humainary.serventis.jmh.opt.pool.PoolOps.emit_borrow_batch | 7.832 | 11.263 | +43.8% |
-| io.humainary.serventis.jmh.opt.pool.PoolOps.emit_contract | 8.736 | 11.622 | +33.0% |
-| io.humainary.serventis.jmh.opt.pool.PoolOps.emit_contract_batch | 7.912 | 11.659 | +47.4% |
-| io.humainary.serventis.jmh.opt.pool.PoolOps.emit_expand | 7.779 | 11.580 | +48.9% |
-| io.humainary.serventis.jmh.opt.pool.PoolOps.emit_expand_batch | 6.867 | 11.135 | +62.2% |
-| io.humainary.serventis.jmh.opt.pool.PoolOps.emit_reclaim | 7.414 | 12.120 | +63.5% |
-| io.humainary.serventis.jmh.opt.pool.PoolOps.emit_reclaim_batch | 8.942 | 14.812 | +65.6% |
-| io.humainary.serventis.jmh.opt.pool.PoolOps.emit_sign | 7.469 | 12.092 | +61.9% |
-| io.humainary.serventis.jmh.opt.pool.PoolOps.emit_sign_batch | 7.126 | 11.937 | +67.5% |
-| io.humainary.serventis.jmh.opt.pool.PoolOps.pool_from_conduit | 1.346 | 2.806 | +108.5% |
-| io.humainary.serventis.jmh.opt.pool.PoolOps.pool_from_conduit_batch | 1.137 | 2.586 | +127.4% |
-| io.humainary.serventis.jmh.opt.pool.ResourceOps.emit_acquire | 7.375 | 13.235 | +79.5% |
-| io.humainary.serventis.jmh.opt.pool.ResourceOps.emit_acquire_batch | 7.248 | 11.370 | +56.9% |
-| io.humainary.serventis.jmh.opt.pool.ResourceOps.emit_attempt | 7.709 | 12.590 | +63.3% |
-| io.humainary.serventis.jmh.opt.pool.ResourceOps.emit_attempt_batch | 6.947 | 13.010 | +87.3% |
-| io.humainary.serventis.jmh.opt.pool.ResourceOps.emit_deny | 9.681 | 12.186 | +25.9% |
-| io.humainary.serventis.jmh.opt.pool.ResourceOps.emit_deny_batch | 7.453 | 11.849 | +59.0% |
-| io.humainary.serventis.jmh.opt.pool.ResourceOps.emit_grant | 6.987 | 12.280 | +75.8% |
-| io.humainary.serventis.jmh.opt.pool.ResourceOps.emit_grant_batch | 7.592 | 11.368 | +49.7% |
-| io.humainary.serventis.jmh.opt.pool.ResourceOps.emit_release | 7.871 | 11.690 | +48.5% |
-| io.humainary.serventis.jmh.opt.pool.ResourceOps.emit_release_batch | 6.729 | 12.411 | +84.4% |
-| io.humainary.serventis.jmh.opt.pool.ResourceOps.emit_sign | 7.441 | 12.306 | +65.4% |
-| io.humainary.serventis.jmh.opt.pool.ResourceOps.emit_sign_batch | 7.980 | 11.496 | +44.1% |
-| io.humainary.serventis.jmh.opt.pool.ResourceOps.emit_timeout | 7.801 | 11.990 | +53.7% |
-| io.humainary.serventis.jmh.opt.pool.ResourceOps.emit_timeout_batch | 7.249 | 11.468 | +58.2% |
-| io.humainary.serventis.jmh.opt.pool.ResourceOps.resource_from_conduit | 1.342 | 2.563 | +91.0% |
-| io.humainary.serventis.jmh.opt.pool.ResourceOps.resource_from_conduit_batch | 1.127 | 2.583 | +129.2% |
-| io.humainary.serventis.jmh.opt.role.ActorOps.actor_from_conduit | 1.373 | 2.654 | +93.3% |
-| io.humainary.serventis.jmh.opt.role.ActorOps.actor_from_conduit_batch | 1.153 | 2.618 | +127.1% |
-| io.humainary.serventis.jmh.opt.role.ActorOps.emit_acknowledge | 8.739 | 11.855 | +35.7% |
-| io.humainary.serventis.jmh.opt.role.ActorOps.emit_acknowledge_batch | 6.997 | 12.371 | +76.8% |
-| io.humainary.serventis.jmh.opt.role.ActorOps.emit_affirm | 7.958 | 12.222 | +53.6% |
-| io.humainary.serventis.jmh.opt.role.ActorOps.emit_affirm_batch | 6.863 | 11.248 | +63.9% |
-| io.humainary.serventis.jmh.opt.role.ActorOps.emit_ask | 7.722 | 12.073 | +56.3% |
-| io.humainary.serventis.jmh.opt.role.ActorOps.emit_ask_batch | 6.219 | 11.365 | +82.7% |
-| io.humainary.serventis.jmh.opt.role.ActorOps.emit_clarify | 7.784 | 11.715 | +50.5% |
-| io.humainary.serventis.jmh.opt.role.ActorOps.emit_clarify_batch | 6.323 | 12.072 | +90.9% |
-| io.humainary.serventis.jmh.opt.role.ActorOps.emit_command | 7.159 | 11.670 | +63.0% |
-| io.humainary.serventis.jmh.opt.role.ActorOps.emit_command_batch | 8.264 | 12.063 | +46.0% |
-| io.humainary.serventis.jmh.opt.role.ActorOps.emit_deliver | 8.734 | 11.924 | +36.5% |
-| io.humainary.serventis.jmh.opt.role.ActorOps.emit_deliver_batch | 6.963 | 11.868 | +70.4% |
-| io.humainary.serventis.jmh.opt.role.ActorOps.emit_deny | 9.091 | 11.663 | +28.3% |
-| io.humainary.serventis.jmh.opt.role.ActorOps.emit_deny_batch | 5.871 | 13.145 | +123.9% |
-| io.humainary.serventis.jmh.opt.role.ActorOps.emit_explain | 7.668 | 11.947 | +55.8% |
-| io.humainary.serventis.jmh.opt.role.ActorOps.emit_explain_batch | 7.186 | 12.126 | +68.7% |
-| io.humainary.serventis.jmh.opt.role.ActorOps.emit_promise | 7.413 | 11.667 | +57.4% |
-| io.humainary.serventis.jmh.opt.role.ActorOps.emit_promise_batch | 7.169 | 18.576 | +159.1% |
-| io.humainary.serventis.jmh.opt.role.ActorOps.emit_report | 7.806 | 12.101 | +55.0% |
-| io.humainary.serventis.jmh.opt.role.ActorOps.emit_report_batch | 6.959 | 11.263 | +61.8% |
-| io.humainary.serventis.jmh.opt.role.ActorOps.emit_request | 6.918 | 25.016 | +261.6% |
-| io.humainary.serventis.jmh.opt.role.ActorOps.emit_request_batch | 7.285 | 11.349 | +55.8% |
-| io.humainary.serventis.jmh.opt.role.ActorOps.emit_sign | 7.335 | 11.414 | +55.6% |
-| io.humainary.serventis.jmh.opt.role.ActorOps.emit_sign_batch | 6.385 | 11.417 | +78.8% |
-| io.humainary.serventis.jmh.opt.role.AgentOps.agent_from_conduit | 1.362 | 2.594 | +90.5% |
-| io.humainary.serventis.jmh.opt.role.AgentOps.agent_from_conduit_batch | 1.147 | 1.942 | +69.3% |
-| io.humainary.serventis.jmh.opt.role.AgentOps.emit_accept | 7.733 | 12.651 | +63.6% |
-| io.humainary.serventis.jmh.opt.role.AgentOps.emit_accept_batch | 8.297 | 12.008 | +44.7% |
-| io.humainary.serventis.jmh.opt.role.AgentOps.emit_accepted | 7.649 | 13.303 | +73.9% |
-| io.humainary.serventis.jmh.opt.role.AgentOps.emit_accepted_batch | 6.068 | 12.786 | +110.7% |
-| io.humainary.serventis.jmh.opt.role.AgentOps.emit_breach | 7.254 | 13.257 | +82.8% |
-| io.humainary.serventis.jmh.opt.role.AgentOps.emit_breach_batch | 6.532 | 12.391 | +89.7% |
-| io.humainary.serventis.jmh.opt.role.AgentOps.emit_breached | 6.931 | 13.422 | +93.7% |
-| io.humainary.serventis.jmh.opt.role.AgentOps.emit_breached_batch | 6.278 | 11.963 | +90.6% |
-| io.humainary.serventis.jmh.opt.role.AgentOps.emit_depend | 7.970 | 12.964 | +62.7% |
-| io.humainary.serventis.jmh.opt.role.AgentOps.emit_depend_batch | 7.280 | 12.180 | +67.3% |
-| io.humainary.serventis.jmh.opt.role.AgentOps.emit_depended | 7.083 | 16.274 | +129.8% |
-| io.humainary.serventis.jmh.opt.role.AgentOps.emit_depended_batch | 8.275 | 11.649 | +40.8% |
-| io.humainary.serventis.jmh.opt.role.AgentOps.emit_fulfill | 7.860 | 13.339 | +69.7% |
-| io.humainary.serventis.jmh.opt.role.AgentOps.emit_fulfill_batch | 6.875 | 12.959 | +88.5% |
-| io.humainary.serventis.jmh.opt.role.AgentOps.emit_fulfilled | 6.715 | 13.633 | +103.0% |
-| io.humainary.serventis.jmh.opt.role.AgentOps.emit_fulfilled_batch | 6.201 | 11.906 | +92.0% |
-| io.humainary.serventis.jmh.opt.role.AgentOps.emit_inquire | 7.292 | 12.641 | +73.4% |
-| io.humainary.serventis.jmh.opt.role.AgentOps.emit_inquire_batch | 7.781 | 12.339 | +58.6% |
-| io.humainary.serventis.jmh.opt.role.AgentOps.emit_inquired | 6.987 | 13.784 | +97.3% |
-| io.humainary.serventis.jmh.opt.role.AgentOps.emit_inquired_batch | 8.541 | 11.722 | +37.2% |
-| io.humainary.serventis.jmh.opt.role.AgentOps.emit_observe | 7.376 | 13.361 | +81.1% |
-| io.humainary.serventis.jmh.opt.role.AgentOps.emit_observe_batch | 8.519 | 12.095 | +42.0% |
-| io.humainary.serventis.jmh.opt.role.AgentOps.emit_observed | 6.607 | 13.241 | +100.4% |
-| io.humainary.serventis.jmh.opt.role.AgentOps.emit_observed_batch | 6.069 | 12.278 | +102.3% |
-| io.humainary.serventis.jmh.opt.role.AgentOps.emit_offer | 7.820 | 13.057 | +67.0% |
-| io.humainary.serventis.jmh.opt.role.AgentOps.emit_offer_batch | 6.625 | 11.404 | +72.1% |
-| io.humainary.serventis.jmh.opt.role.AgentOps.emit_offered | 7.403 | 12.832 | +73.3% |
-| io.humainary.serventis.jmh.opt.role.AgentOps.emit_offered_batch | 8.797 | 11.585 | +31.7% |
-| io.humainary.serventis.jmh.opt.role.AgentOps.emit_promise | 6.408 | 15.133 | +136.2% |
-| io.humainary.serventis.jmh.opt.role.AgentOps.emit_promise_batch | 6.534 | 12.012 | +83.8% |
-| io.humainary.serventis.jmh.opt.role.AgentOps.emit_promised | 6.464 | 13.290 | +105.6% |
-| io.humainary.serventis.jmh.opt.role.AgentOps.emit_promised_batch | 7.407 | 11.506 | +55.3% |
-| io.humainary.serventis.jmh.opt.role.AgentOps.emit_retract | 7.744 | 12.698 | +64.0% |
-| io.humainary.serventis.jmh.opt.role.AgentOps.emit_retract_batch | 7.116 | 12.085 | +69.8% |
-| io.humainary.serventis.jmh.opt.role.AgentOps.emit_retracted | 8.091 | 13.419 | +65.9% |
-| io.humainary.serventis.jmh.opt.role.AgentOps.emit_retracted_batch | 7.175 | 11.599 | +61.7% |
-| io.humainary.serventis.jmh.opt.role.AgentOps.emit_signal | 7.622 | 13.029 | +70.9% |
-| io.humainary.serventis.jmh.opt.role.AgentOps.emit_signal_batch | 6.622 | 12.238 | +84.8% |
-| io.humainary.serventis.jmh.opt.role.AgentOps.emit_validate | 7.928 | 13.297 | +67.7% |
-| io.humainary.serventis.jmh.opt.role.AgentOps.emit_validate_batch | 7.590 | 12.615 | +66.2% |
-| io.humainary.serventis.jmh.opt.role.AgentOps.emit_validated | 7.222 | 16.383 | +126.8% |
-| io.humainary.serventis.jmh.opt.role.AgentOps.emit_validated_batch | 7.477 | 11.547 | +54.4% |
-| io.humainary.serventis.jmh.opt.sync.AtomicOps.atomic_from_conduit | 1.338 | 2.603 | +94.5% |
-| io.humainary.serventis.jmh.opt.sync.AtomicOps.atomic_from_conduit_batch | 1.157 | 2.576 | +122.6% |
-| io.humainary.serventis.jmh.opt.sync.AtomicOps.emit_attempt | 7.337 | 12.429 | +69.4% |
-| io.humainary.serventis.jmh.opt.sync.AtomicOps.emit_attempt_batch | 8.069 | 11.325 | +40.4% |
-| io.humainary.serventis.jmh.opt.sync.AtomicOps.emit_backoff | 7.188 | 12.297 | +71.1% |
-| io.humainary.serventis.jmh.opt.sync.AtomicOps.emit_exhaust | 9.133 | 12.024 | +31.7% |
-| io.humainary.serventis.jmh.opt.sync.AtomicOps.emit_fail | 6.636 | 12.372 | +86.4% |
-| io.humainary.serventis.jmh.opt.sync.AtomicOps.emit_fail_batch | 7.468 | 11.630 | +55.7% |
-| io.humainary.serventis.jmh.opt.sync.AtomicOps.emit_park | 7.680 | 11.764 | +53.2% |
-| io.humainary.serventis.jmh.opt.sync.AtomicOps.emit_sign | 7.651 | 11.327 | +48.0% |
-| io.humainary.serventis.jmh.opt.sync.AtomicOps.emit_sign_batch | 8.452 | 12.124 | +43.4% |
-| io.humainary.serventis.jmh.opt.sync.AtomicOps.emit_spin | 9.846 | 11.679 | +18.6% |
-| io.humainary.serventis.jmh.opt.sync.AtomicOps.emit_spin_batch | 6.925 | 10.842 | +56.6% |
-| io.humainary.serventis.jmh.opt.sync.AtomicOps.emit_success | 7.038 | 11.424 | +62.3% |
-| io.humainary.serventis.jmh.opt.sync.AtomicOps.emit_success_batch | 7.458 | 12.034 | +61.4% |
-| io.humainary.serventis.jmh.opt.sync.LatchOps.emit_abandon | 7.662 | 12.071 | +57.5% |
-| io.humainary.serventis.jmh.opt.sync.LatchOps.emit_abandon_batch | 7.373 | 11.551 | +56.7% |
-| io.humainary.serventis.jmh.opt.sync.LatchOps.emit_arrive | 6.551 | 11.680 | +78.3% |
-| io.humainary.serventis.jmh.opt.sync.LatchOps.emit_arrive_batch | 7.510 | 12.898 | +71.7% |
-| io.humainary.serventis.jmh.opt.sync.LatchOps.emit_await | 6.588 | 12.031 | +82.6% |
-| io.humainary.serventis.jmh.opt.sync.LatchOps.emit_await_batch | 7.204 | 12.478 | +73.2% |
-| io.humainary.serventis.jmh.opt.sync.LatchOps.emit_release | 7.454 | 12.073 | +62.0% |
-| io.humainary.serventis.jmh.opt.sync.LatchOps.emit_release_batch | 6.953 | 11.862 | +70.6% |
-| io.humainary.serventis.jmh.opt.sync.LatchOps.emit_reset | 6.796 | 12.195 | +79.4% |
-| io.humainary.serventis.jmh.opt.sync.LatchOps.emit_reset_batch | 8.874 | 11.636 | +31.1% |
-| io.humainary.serventis.jmh.opt.sync.LatchOps.emit_sign | 6.909 | 17.656 | +155.6% |
-| io.humainary.serventis.jmh.opt.sync.LatchOps.emit_sign_batch | 7.597 | 11.342 | +49.3% |
-| io.humainary.serventis.jmh.opt.sync.LatchOps.emit_timeout | 8.869 | 11.760 | +32.6% |
-| io.humainary.serventis.jmh.opt.sync.LatchOps.emit_timeout_batch | 6.132 | 11.482 | +87.2% |
-| io.humainary.serventis.jmh.opt.sync.LatchOps.latch_from_conduit | 1.352 | 2.616 | +93.5% |
-| io.humainary.serventis.jmh.opt.sync.LatchOps.latch_from_conduit_batch | 1.146 | 2.611 | +127.8% |
-| io.humainary.serventis.jmh.opt.sync.LockOps.emit_abandon | 7.073 | 11.653 | +64.8% |
-| io.humainary.serventis.jmh.opt.sync.LockOps.emit_abandon_batch | 6.978 | 11.828 | +69.5% |
-| io.humainary.serventis.jmh.opt.sync.LockOps.emit_acquire | 7.335 | 13.316 | +81.5% |
-| io.humainary.serventis.jmh.opt.sync.LockOps.emit_acquire_batch | 7.907 | 11.086 | +40.2% |
-| io.humainary.serventis.jmh.opt.sync.LockOps.emit_attempt | 7.641 | 12.895 | +68.8% |
-| io.humainary.serventis.jmh.opt.sync.LockOps.emit_attempt_batch | 6.966 | 11.446 | +64.3% |
-| io.humainary.serventis.jmh.opt.sync.LockOps.emit_contest | 7.202 | 11.871 | +64.8% |
-| io.humainary.serventis.jmh.opt.sync.LockOps.emit_contest_batch | 7.252 | 11.997 | +65.4% |
-| io.humainary.serventis.jmh.opt.sync.LockOps.emit_deny | 7.257 | 12.074 | +66.4% |
-| io.humainary.serventis.jmh.opt.sync.LockOps.emit_deny_batch | 6.203 | 11.114 | +79.2% |
-| io.humainary.serventis.jmh.opt.sync.LockOps.emit_downgrade | 8.305 | 11.605 | +39.7% |
-| io.humainary.serventis.jmh.opt.sync.LockOps.emit_downgrade_batch | 7.182 | 11.919 | +66.0% |
-| io.humainary.serventis.jmh.opt.sync.LockOps.emit_grant | 7.247 | 11.612 | +60.2% |
-| io.humainary.serventis.jmh.opt.sync.LockOps.emit_grant_batch | 7.423 | 11.390 | +53.4% |
-| io.humainary.serventis.jmh.opt.sync.LockOps.emit_release | 7.550 | 12.324 | +63.2% |
-| io.humainary.serventis.jmh.opt.sync.LockOps.emit_release_batch | 7.611 | 12.020 | +57.9% |
-| io.humainary.serventis.jmh.opt.sync.LockOps.emit_sign | 7.547 | 11.362 | +50.5% |
-| io.humainary.serventis.jmh.opt.sync.LockOps.emit_sign_batch | 8.317 | 11.505 | +38.3% |
-| io.humainary.serventis.jmh.opt.sync.LockOps.emit_timeout | 7.192 | 11.401 | +58.5% |
-| io.humainary.serventis.jmh.opt.sync.LockOps.emit_timeout_batch | 6.916 | 12.345 | +78.5% |
-| io.humainary.serventis.jmh.opt.sync.LockOps.emit_upgrade | 7.242 | 12.120 | +67.4% |
-| io.humainary.serventis.jmh.opt.sync.LockOps.emit_upgrade_batch | 7.558 | 11.644 | +54.1% |
-| io.humainary.serventis.jmh.opt.sync.LockOps.lock_from_conduit | 1.368 | 2.587 | +89.1% |
-| io.humainary.serventis.jmh.opt.sync.LockOps.lock_from_conduit_batch | 1.138 | 2.584 | +127.1% |
-| io.humainary.serventis.jmh.opt.tool.CounterOps.counter_from_conduit | 1.365 | 2.675 | +96.0% |
-| io.humainary.serventis.jmh.opt.tool.CounterOps.counter_from_conduit_batch | 1.117 | 2.562 | +129.4% |
-| io.humainary.serventis.jmh.opt.tool.CounterOps.emit_increment | 7.046 | 22.301 | +216.5% |
-| io.humainary.serventis.jmh.opt.tool.CounterOps.emit_increment_batch | 6.537 | 12.006 | +83.7% |
-| io.humainary.serventis.jmh.opt.tool.CounterOps.emit_overflow | 6.952 | 11.786 | +69.5% |
-| io.humainary.serventis.jmh.opt.tool.CounterOps.emit_overflow_batch | 7.253 | 12.666 | +74.6% |
-| io.humainary.serventis.jmh.opt.tool.CounterOps.emit_reset | 7.472 | 12.025 | +60.9% |
-| io.humainary.serventis.jmh.opt.tool.CounterOps.emit_reset_batch | 7.063 | 11.956 | +69.3% |
-| io.humainary.serventis.jmh.opt.tool.CounterOps.emit_sign | 6.980 | 11.796 | +69.0% |
-| io.humainary.serventis.jmh.opt.tool.CounterOps.emit_sign_batch | 6.939 | 11.133 | +60.4% |
-| io.humainary.serventis.jmh.opt.tool.GaugeOps.emit_decrement | 7.889 | 12.194 | +54.6% |
-| io.humainary.serventis.jmh.opt.tool.GaugeOps.emit_decrement_batch | 6.537 | 11.104 | +69.9% |
-| io.humainary.serventis.jmh.opt.tool.GaugeOps.emit_increment | 7.800 | 12.758 | +63.6% |
-| io.humainary.serventis.jmh.opt.tool.GaugeOps.emit_increment_batch | 6.838 | 17.474 | +155.5% |
-| io.humainary.serventis.jmh.opt.tool.GaugeOps.emit_overflow | 6.848 | 11.798 | +72.3% |
-| io.humainary.serventis.jmh.opt.tool.GaugeOps.emit_overflow_batch | 8.874 | 11.995 | +35.2% |
-| io.humainary.serventis.jmh.opt.tool.GaugeOps.emit_reset | 8.011 | 11.967 | +49.4% |
-| io.humainary.serventis.jmh.opt.tool.GaugeOps.emit_reset_batch | 7.112 | 11.426 | +60.7% |
-| io.humainary.serventis.jmh.opt.tool.GaugeOps.emit_sign | 8.725 | 11.905 | +36.4% |
-| io.humainary.serventis.jmh.opt.tool.GaugeOps.emit_sign_batch | 6.593 | 11.302 | +71.4% |
-| io.humainary.serventis.jmh.opt.tool.GaugeOps.emit_underflow | 7.306 | 12.115 | +65.8% |
-| io.humainary.serventis.jmh.opt.tool.GaugeOps.emit_underflow_batch | 7.175 | 12.643 | +76.2% |
-| io.humainary.serventis.jmh.opt.tool.GaugeOps.gauge_from_conduit | 1.351 | 2.627 | +94.4% |
-| io.humainary.serventis.jmh.opt.tool.GaugeOps.gauge_from_conduit_batch | 1.155 | 1.964 | +70.0% |
-| io.humainary.serventis.jmh.opt.tool.LogOps.emit_debug | 6.181 | 12.081 | +95.5% |
-| io.humainary.serventis.jmh.opt.tool.LogOps.emit_debug_batch | 7.385 | 12.259 | +66.0% |
-| io.humainary.serventis.jmh.opt.tool.LogOps.emit_info | 7.352 | 11.578 | +57.5% |
-| io.humainary.serventis.jmh.opt.tool.LogOps.emit_info_batch | 8.078 | 11.340 | +40.4% |
-| io.humainary.serventis.jmh.opt.tool.LogOps.emit_severe | 6.782 | 11.984 | +76.7% |
-| io.humainary.serventis.jmh.opt.tool.LogOps.emit_severe_batch | 9.783 | 10.847 | +10.9% |
-| io.humainary.serventis.jmh.opt.tool.LogOps.emit_sign | 7.261 | 11.934 | +64.4% |
-| io.humainary.serventis.jmh.opt.tool.LogOps.emit_sign_batch | 6.756 | 12.303 | +82.1% |
-| io.humainary.serventis.jmh.opt.tool.LogOps.emit_warning | 7.512 | 12.514 | +66.6% |
-| io.humainary.serventis.jmh.opt.tool.LogOps.emit_warning_batch | 6.511 | 11.368 | +74.6% |
-| io.humainary.serventis.jmh.opt.tool.LogOps.log_from_conduit | 1.355 | 2.608 | +92.5% |
-| io.humainary.serventis.jmh.opt.tool.LogOps.log_from_conduit_batch | 1.140 | 2.618 | +129.6% |
-| io.humainary.serventis.jmh.opt.tool.ProbeOps.emit_connect | 6.544 | 15.478 | +136.5% |
-| io.humainary.serventis.jmh.opt.tool.ProbeOps.emit_connect_batch | 6.815 | 11.472 | +68.3% |
-| io.humainary.serventis.jmh.opt.tool.ProbeOps.emit_connected | 7.465 | 13.205 | +76.9% |
-| io.humainary.serventis.jmh.opt.tool.ProbeOps.emit_connected_batch | 8.277 | 11.404 | +37.8% |
-| io.humainary.serventis.jmh.opt.tool.ProbeOps.emit_disconnect | 8.250 | 12.937 | +56.8% |
-| io.humainary.serventis.jmh.opt.tool.ProbeOps.emit_disconnect_batch | 7.223 | 12.116 | +67.7% |
-| io.humainary.serventis.jmh.opt.tool.ProbeOps.emit_disconnected | 5.961 | 13.555 | +127.4% |
-| io.humainary.serventis.jmh.opt.tool.ProbeOps.emit_disconnected_batch | 8.650 | 11.907 | +37.7% |
-| io.humainary.serventis.jmh.opt.tool.ProbeOps.emit_fail | 7.272 | 12.996 | +78.7% |
-| io.humainary.serventis.jmh.opt.tool.ProbeOps.emit_fail_batch | 8.634 | 11.886 | +37.7% |
-| io.humainary.serventis.jmh.opt.tool.ProbeOps.emit_failed | 7.499 | 13.480 | +79.8% |
-| io.humainary.serventis.jmh.opt.tool.ProbeOps.emit_failed_batch | 7.223 | 11.749 | +62.7% |
-| io.humainary.serventis.jmh.opt.tool.ProbeOps.emit_process | 7.843 | 13.047 | +66.4% |
-| io.humainary.serventis.jmh.opt.tool.ProbeOps.emit_process_batch | 6.426 | 12.375 | +92.6% |
-| io.humainary.serventis.jmh.opt.tool.ProbeOps.emit_processed | 7.360 | 13.698 | +86.1% |
-| io.humainary.serventis.jmh.opt.tool.ProbeOps.emit_processed_batch | 9.972 | 12.035 | +20.7% |
-| io.humainary.serventis.jmh.opt.tool.ProbeOps.emit_receive_batch | 7.994 | 11.903 | +48.9% |
-| io.humainary.serventis.jmh.opt.tool.ProbeOps.emit_received_batch | 7.359 | 11.769 | +59.9% |
-| io.humainary.serventis.jmh.opt.tool.ProbeOps.emit_signal | 9.141 | 12.923 | +41.4% |
-| io.humainary.serventis.jmh.opt.tool.ProbeOps.emit_signal_batch | 6.192 | 11.422 | +84.5% |
-| io.humainary.serventis.jmh.opt.tool.ProbeOps.emit_succeed | 7.707 | 12.970 | +68.3% |
-| io.humainary.serventis.jmh.opt.tool.ProbeOps.emit_succeed_batch | 8.582 | 12.089 | +40.9% |
-| io.humainary.serventis.jmh.opt.tool.ProbeOps.emit_succeeded | 8.910 | 13.092 | +46.9% |
-| io.humainary.serventis.jmh.opt.tool.ProbeOps.emit_succeeded_batch | 7.332 | 11.718 | +59.8% |
-| io.humainary.serventis.jmh.opt.tool.ProbeOps.emit_transfer | 7.489 | 13.031 | +74.0% |
-| io.humainary.serventis.jmh.opt.tool.ProbeOps.emit_transfer_inbound | 6.770 | 13.455 | +98.7% |
-| io.humainary.serventis.jmh.opt.tool.ProbeOps.emit_transfer_outbound | 7.682 | 13.122 | +70.8% |
-| io.humainary.serventis.jmh.opt.tool.ProbeOps.emit_transferred | 7.571 | 13.398 | +77.0% |
-| io.humainary.serventis.jmh.opt.tool.ProbeOps.emit_transmit_batch | 6.822 | 12.527 | +83.6% |
-| io.humainary.serventis.jmh.opt.tool.ProbeOps.emit_transmitted_batch | 8.108 | 11.864 | +46.3% |
-| io.humainary.serventis.jmh.opt.tool.ProbeOps.probe_from_conduit | 1.357 | 2.573 | +89.6% |
-| io.humainary.serventis.jmh.opt.tool.ProbeOps.probe_from_conduit_batch | 1.137 | 2.595 | +128.2% |
-| io.humainary.serventis.jmh.opt.tool.SensorOps.emit_above_baseline | 7.473 | 13.198 | +76.6% |
-| io.humainary.serventis.jmh.opt.tool.SensorOps.emit_above_baseline_batch | 7.918 | 11.651 | +47.1% |
-| io.humainary.serventis.jmh.opt.tool.SensorOps.emit_above_target | 7.433 | 13.441 | +80.8% |
-| io.humainary.serventis.jmh.opt.tool.SensorOps.emit_above_target_batch | 7.046 | 12.028 | +70.7% |
-| io.humainary.serventis.jmh.opt.tool.SensorOps.emit_above_threshold | 7.652 | 13.469 | +76.0% |
-| io.humainary.serventis.jmh.opt.tool.SensorOps.emit_above_threshold_batch | 6.669 | 11.909 | +78.6% |
-| io.humainary.serventis.jmh.opt.tool.SensorOps.emit_below_baseline | 9.666 | 13.069 | +35.2% |
-| io.humainary.serventis.jmh.opt.tool.SensorOps.emit_below_baseline_batch | 6.897 | 12.030 | +74.4% |
-| io.humainary.serventis.jmh.opt.tool.SensorOps.emit_below_target | 8.105 | 13.714 | +69.2% |
-| io.humainary.serventis.jmh.opt.tool.SensorOps.emit_below_target_batch | 7.143 | 11.320 | +58.5% |
-| io.humainary.serventis.jmh.opt.tool.SensorOps.emit_below_threshold | 7.426 | 13.052 | +75.8% |
-| io.humainary.serventis.jmh.opt.tool.SensorOps.emit_below_threshold_batch | 8.930 | 11.665 | +30.6% |
-| io.humainary.serventis.jmh.opt.tool.SensorOps.emit_nominal_baseline | 6.611 | 12.712 | +92.3% |
-| io.humainary.serventis.jmh.opt.tool.SensorOps.emit_nominal_baseline_batch | 8.779 | 11.960 | +36.2% |
-| io.humainary.serventis.jmh.opt.tool.SensorOps.emit_nominal_target | 7.184 | 13.364 | +86.0% |
-| io.humainary.serventis.jmh.opt.tool.SensorOps.emit_nominal_target_batch | 8.369 | 13.242 | +58.2% |
-| io.humainary.serventis.jmh.opt.tool.SensorOps.emit_nominal_threshold | 7.987 | 13.353 | +67.2% |
-| io.humainary.serventis.jmh.opt.tool.SensorOps.emit_nominal_threshold_batch | 9.738 | 11.989 | +23.1% |
-| io.humainary.serventis.jmh.opt.tool.SensorOps.emit_signal | 6.822 | 12.657 | +85.5% |
-| io.humainary.serventis.jmh.opt.tool.SensorOps.emit_signal_batch | 7.443 | 11.898 | +59.9% |
-| io.humainary.serventis.jmh.opt.tool.SensorOps.sensor_from_conduit | 1.348 | 2.756 | +104.5% |
-| io.humainary.serventis.jmh.opt.tool.SensorOps.sensor_from_conduit_batch | 1.148 | 2.776 | +141.8% |
-| io.humainary.serventis.jmh.sdk.OperationOps.emit_begin | 7.344 | 12.486 | +70.0% |
-| io.humainary.serventis.jmh.sdk.OperationOps.emit_begin_batch | 10.262 | 11.944 | +16.4% |
-| io.humainary.serventis.jmh.sdk.OperationOps.emit_end | 7.550 | 12.350 | +63.6% |
-| io.humainary.serventis.jmh.sdk.OperationOps.emit_end_batch | 9.645 | 12.131 | +25.8% |
-| io.humainary.serventis.jmh.sdk.OperationOps.emit_sign | 7.161 | 11.717 | +63.6% |
-| io.humainary.serventis.jmh.sdk.OperationOps.emit_sign_batch | 9.041 | 11.503 | +27.2% |
-| io.humainary.serventis.jmh.sdk.OperationOps.operation_from_conduit | 1.341 | 2.669 | +99.0% |
-| io.humainary.serventis.jmh.sdk.OperationOps.operation_from_conduit_batch | 1.141 | 2.670 | +134.0% |
-| io.humainary.serventis.jmh.sdk.OutcomeOps.emit_fail | 6.960 | 11.804 | +69.6% |
-| io.humainary.serventis.jmh.sdk.OutcomeOps.emit_fail_batch | 7.183 | 11.418 | +59.0% |
-| io.humainary.serventis.jmh.sdk.OutcomeOps.emit_sign | 7.690 | 11.952 | +55.4% |
-| io.humainary.serventis.jmh.sdk.OutcomeOps.emit_sign_batch | 5.996 | 11.391 | +90.0% |
-| io.humainary.serventis.jmh.sdk.OutcomeOps.emit_success | 8.340 | 11.671 | +39.9% |
-| io.humainary.serventis.jmh.sdk.OutcomeOps.emit_success_batch | 9.174 | 11.506 | +25.4% |
-| io.humainary.serventis.jmh.sdk.OutcomeOps.outcome_from_conduit | 1.340 | 2.575 | +92.2% |
-| io.humainary.serventis.jmh.sdk.OutcomeOps.outcome_from_conduit_batch | 1.137 | 2.606 | +129.2% |
-| io.humainary.serventis.jmh.sdk.SignalSetOps.get_mixed_pattern | 0.199 | 0.321 | +61.3% |
-| io.humainary.serventis.jmh.sdk.SignalSetOps.get_single | 0.665 | 1.010 | +51.9% |
-| io.humainary.serventis.jmh.sdk.SignalSetOps.get_single_batch | 0.021 | 0.025 | +19.0% |
-| io.humainary.serventis.jmh.sdk.SignalSetOps.get_varied_batch | 1.560 | 2.063 | +32.2% |
-| io.humainary.serventis.jmh.sdk.SignalSetOps.get_worst_case | 1.056 | 1.812 | +71.6% |
-| io.humainary.serventis.jmh.sdk.SituationOps.emit_critical | 7.072 | 13.556 | +91.7% |
-| io.humainary.serventis.jmh.sdk.SituationOps.emit_critical_batch | 7.042 | 12.990 | +84.5% |
-| io.humainary.serventis.jmh.sdk.SituationOps.emit_normal | 8.247 | 13.163 | +59.6% |
-| io.humainary.serventis.jmh.sdk.SituationOps.emit_normal_batch | 10.068 | 11.551 | +14.7% |
-| io.humainary.serventis.jmh.sdk.SituationOps.emit_signal | 8.144 | 13.220 | +62.3% |
-| io.humainary.serventis.jmh.sdk.SituationOps.emit_signal_batch | 7.036 | 11.595 | +64.8% |
-| io.humainary.serventis.jmh.sdk.SituationOps.emit_warning | 6.536 | 12.898 | +97.3% |
-| io.humainary.serventis.jmh.sdk.SituationOps.emit_warning_batch | 7.419 | 12.128 | +63.5% |
-| io.humainary.serventis.jmh.sdk.SituationOps.situation_from_conduit | 1.334 | 2.603 | +95.1% |
-| io.humainary.serventis.jmh.sdk.SituationOps.situation_from_conduit_batch | 1.149 | 2.586 | +125.1% |
-| io.humainary.serventis.jmh.sdk.StatusOps.emit_converging_confirmed | 6.361 | 12.969 | +103.9% |
-| io.humainary.serventis.jmh.sdk.StatusOps.emit_converging_confirmed_batch | 6.897 | 12.425 | +80.2% |
-| io.humainary.serventis.jmh.sdk.StatusOps.emit_defective_tentative | 8.180 | 13.251 | +62.0% |
-| io.humainary.serventis.jmh.sdk.StatusOps.emit_defective_tentative_batch | 7.938 | 14.117 | +77.8% |
-| io.humainary.serventis.jmh.sdk.StatusOps.emit_degraded_measured | 6.726 | 13.000 | +93.3% |
-| io.humainary.serventis.jmh.sdk.StatusOps.emit_degraded_measured_batch | 23.006 | 12.458 | -45.8% |
-| io.humainary.serventis.jmh.sdk.StatusOps.emit_down_confirmed | 7.206 | 13.654 | +89.5% |
-| io.humainary.serventis.jmh.sdk.StatusOps.emit_down_confirmed_batch | 6.370 | 11.974 | +88.0% |
-| io.humainary.serventis.jmh.sdk.StatusOps.emit_signal | 8.008 | 13.335 | +66.5% |
-| io.humainary.serventis.jmh.sdk.StatusOps.emit_signal_batch | 8.521 | 12.049 | +41.4% |
-| io.humainary.serventis.jmh.sdk.StatusOps.emit_stable_confirmed | 6.636 | 13.520 | +103.7% |
-| io.humainary.serventis.jmh.sdk.StatusOps.emit_stable_confirmed_batch | 7.635 | 11.836 | +55.0% |
-| io.humainary.serventis.jmh.sdk.StatusOps.status_from_conduit | 1.346 | 2.619 | +94.6% |
-| io.humainary.serventis.jmh.sdk.StatusOps.status_from_conduit_batch | 1.155 | 2.627 | +127.4% |
-| io.humainary.serventis.jmh.sdk.SurveyOps.emit_signal | 8.422 | 12.872 | +52.8% |
-| io.humainary.serventis.jmh.sdk.SurveyOps.emit_signal_batch | 9.125 | 12.520 | +37.2% |
-| io.humainary.serventis.jmh.sdk.SurveyOps.survey_from_conduit | 1.337 | 2.606 | +94.9% |
-| io.humainary.serventis.jmh.sdk.SurveyOps.survey_from_conduit_batch | 1.150 | 2.598 | +125.9% |
-| io.humainary.serventis.jmh.sdk.SystemOps.emit_alarm_flow | 6.095 | 13.034 | +113.8% |
-| io.humainary.serventis.jmh.sdk.SystemOps.emit_alarm_flow_batch | 6.296 | 12.137 | +92.8% |
-| io.humainary.serventis.jmh.sdk.SystemOps.emit_fault_link | 7.679 | 13.448 | +75.1% |
-| io.humainary.serventis.jmh.sdk.SystemOps.emit_fault_link_batch | 6.924 | 12.781 | +84.6% |
-| io.humainary.serventis.jmh.sdk.SystemOps.emit_limit_time | 7.391 | 13.272 | +79.6% |
-| io.humainary.serventis.jmh.sdk.SystemOps.emit_limit_time_batch | 7.271 | 11.773 | +61.9% |
-| io.humainary.serventis.jmh.sdk.SystemOps.emit_normal_space | 7.089 | 13.004 | +83.4% |
-| io.humainary.serventis.jmh.sdk.SystemOps.emit_normal_space_batch | 6.976 | 11.645 | +66.9% |
-| io.humainary.serventis.jmh.sdk.SystemOps.emit_signal | 6.737 | 13.071 | +94.0% |
-| io.humainary.serventis.jmh.sdk.SystemOps.emit_signal_batch | 8.477 | 11.518 | +35.9% |
-| io.humainary.serventis.jmh.sdk.SystemOps.system_from_conduit | 1.344 | 2.648 | +97.0% |
-| io.humainary.serventis.jmh.sdk.SystemOps.system_from_conduit_batch | 1.142 | 2.588 | +126.6% |
-| io.humainary.serventis.jmh.sdk.TrendOps.emit_chaos | 8.537 | 13.344 | +56.3% |
-| io.humainary.serventis.jmh.sdk.TrendOps.emit_cycle | 7.485 | 13.569 | +81.3% |
-| io.humainary.serventis.jmh.sdk.TrendOps.emit_drift | 6.932 | 22.874 | +230.0% |
-| io.humainary.serventis.jmh.sdk.TrendOps.emit_drift_batch | 6.725 | 12.795 | +90.3% |
-| io.humainary.serventis.jmh.sdk.TrendOps.emit_sign | 7.491 | 14.440 | +92.8% |
-| io.humainary.serventis.jmh.sdk.TrendOps.emit_sign_batch | 7.348 | 12.855 | +74.9% |
-| io.humainary.serventis.jmh.sdk.TrendOps.emit_spike | 6.980 | 13.013 | +86.4% |
-| io.humainary.serventis.jmh.sdk.TrendOps.emit_stable | 8.564 | 12.711 | +48.4% |
-| io.humainary.serventis.jmh.sdk.TrendOps.emit_stable_batch | 8.340 | 13.343 | +60.0% |
-| io.humainary.serventis.jmh.sdk.TrendOps.trend_from_conduit | 1.347 | 2.701 | +100.5% |
-| io.humainary.serventis.jmh.sdk.TrendOps.trend_from_conduit_batch | 1.146 | 2.660 | +132.1% |
-| io.humainary.serventis.jmh.sdk.meta.CycleOps.cycle_from_conduit | 1.352 | 2.761 | +104.2% |
-| io.humainary.serventis.jmh.sdk.meta.CycleOps.cycle_from_conduit_batch | 1.128 | 2.703 | +139.7% |
-| io.humainary.serventis.jmh.sdk.meta.CycleOps.emit_repeat | 7.463 | 13.309 | +78.3% |
-| io.humainary.serventis.jmh.sdk.meta.CycleOps.emit_repeat_batch | 6.634 | 12.543 | +89.1% |
-| io.humainary.serventis.jmh.sdk.meta.CycleOps.emit_return | 6.926 | 13.372 | +93.1% |
-| io.humainary.serventis.jmh.sdk.meta.CycleOps.emit_return_batch | 6.438 | 12.358 | +91.9% |
-| io.humainary.serventis.jmh.sdk.meta.CycleOps.emit_signal | 6.054 | 13.303 | +119.7% |
-| io.humainary.serventis.jmh.sdk.meta.CycleOps.emit_signal_batch | 7.675 | 12.740 | +66.0% |
-| io.humainary.serventis.jmh.sdk.meta.CycleOps.emit_single | 7.459 | 13.630 | +82.7% |
-| io.humainary.serventis.jmh.sdk.meta.CycleOps.emit_single_batch | 7.991 | 12.022 | +50.4% |
-| io.humainary.substrates.jmh.CircuitOps.conduit_create_close | 309.983 | 871.961 | +181.3% |
-| io.humainary.substrates.jmh.CircuitOps.conduit_create_named | 316.894 | 1336.338 | +321.7% |
-| io.humainary.substrates.jmh.CircuitOps.conduit_create_with_flow | 289.073 | 997.151 | +244.9% |
-| io.humainary.substrates.jmh.CircuitOps.create_and_close | 333.957 | 712.571 | +113.4% |
-| io.humainary.substrates.jmh.CircuitOps.create_and_close_batch | 441.745 | 816.871 | +84.9% |
-| io.humainary.substrates.jmh.CircuitOps.create_multiple_and_close | 2545.594 | 6446.376 | +153.2% |
-| io.humainary.substrates.jmh.CircuitOps.create_named_and_close | 457.365 | 878.086 | +92.0% |
-| io.humainary.substrates.jmh.CircuitOps.hot_conduit_create | 16.662 | 20.520 | +23.2% |
-| io.humainary.substrates.jmh.CircuitOps.hot_conduit_create_named | 16.461 | 20.052 | +21.8% |
-| io.humainary.substrates.jmh.CircuitOps.hot_conduit_create_with_flow | 19.919 | 22.268 | +11.8% |
-| io.humainary.substrates.jmh.CircuitOps.hot_pipe_async | 8.392 | 12.686 | +51.2% |
-| io.humainary.substrates.jmh.CircuitOps.hot_pipe_async_with_flow | 10.268 | 27.580 | +168.6% |
-| io.humainary.substrates.jmh.CircuitOps.pipe_async | 341.472 | 603.912 | +76.9% |
-| io.humainary.substrates.jmh.CircuitOps.pipe_async_with_flow | 302.093 | 752.469 | +149.1% |
-| io.humainary.substrates.jmh.ConduitOps.get_by_name | 1.351 | 2.314 | +71.3% |
-| io.humainary.substrates.jmh.ConduitOps.get_by_name_batch | 0.961 | 2.069 | +115.3% |
-| io.humainary.substrates.jmh.ConduitOps.get_by_substrate | 1.705 | 3.583 | +110.1% |
-| io.humainary.substrates.jmh.ConduitOps.get_by_substrate_batch | 1.538 | 3.172 | +106.2% |
-| io.humainary.substrates.jmh.ConduitOps.get_cached | 2.319 | 5.019 | +116.4% |
-| io.humainary.substrates.jmh.ConduitOps.get_cached_batch | 2.126 | 4.729 | +122.5% |
-| io.humainary.substrates.jmh.ConduitOps.get_varied | 3.194 | 14.757 | +362.0% |
-| io.humainary.substrates.jmh.ConduitOps.get_varied_batch | 3.098 | 12.200 | +293.8% |
-| io.humainary.substrates.jmh.ConduitOps.subscribe | 446.558 | 539.141 | +20.7% |
-| io.humainary.substrates.jmh.ConduitOps.subscribe_batch | 460.854 | 609.339 | +32.2% |
-| io.humainary.substrates.jmh.ConduitOps.subscribe_with_emission_await | 7162.881 | 13979.706 | +95.2% |
-| io.humainary.substrates.jmh.CortexOps.circuit | 288.248 | 481.567 | +67.1% |
-| io.humainary.substrates.jmh.CortexOps.circuit_batch | 290.459 | 533.220 | +83.6% |
-| io.humainary.substrates.jmh.CortexOps.circuit_named | 291.152 | 488.376 | +67.7% |
-| io.humainary.substrates.jmh.CortexOps.current | 1.187 | 3.558 | +199.7% |
-| io.humainary.substrates.jmh.CortexOps.name_class | 1.647 | 3.046 | +85.0% |
-| io.humainary.substrates.jmh.CortexOps.name_enum | 1.953 | 2.490 | +27.5% |
-| io.humainary.substrates.jmh.CortexOps.name_iterable | 8.697 | 5.016 | -42.3% |
-| io.humainary.substrates.jmh.CortexOps.name_path | 2.103 | 2.430 | +15.5% |
-| io.humainary.substrates.jmh.CortexOps.name_path_batch | 1.861 | 2.184 | +17.3% |
-| io.humainary.substrates.jmh.CortexOps.name_string | 2.935 | 2.470 | -15.8% |
-| io.humainary.substrates.jmh.CortexOps.name_string_batch | 2.771 | 2.161 | -22.0% |
-| io.humainary.substrates.jmh.CortexOps.scope | 9.701 | 4.927 | -49.2% |
-| io.humainary.substrates.jmh.CortexOps.scope_batch | 8.418 | 4.744 | -43.6% |
-| io.humainary.substrates.jmh.CortexOps.scope_named | 8.917 | 5.319 | -40.3% |
-| io.humainary.substrates.jmh.CortexOps.slot_boolean | 1.935 | 2.751 | +42.2% |
-| io.humainary.substrates.jmh.CortexOps.slot_double | 1.923 | 6.212 | +223.0% |
-| io.humainary.substrates.jmh.CortexOps.slot_int | 1.932 | 2.612 | +35.2% |
-| io.humainary.substrates.jmh.CortexOps.slot_long | 1.939 | 3.010 | +55.2% |
-| io.humainary.substrates.jmh.CortexOps.slot_string | 1.939 | 2.914 | +50.3% |
-| io.humainary.substrates.jmh.CortexOps.state_empty | 0.504 | 2.508 | +397.7% |
-| io.humainary.substrates.jmh.CortexOps.state_empty_batch | 0.001 | 2.200 | +219858.5% |
-| io.humainary.substrates.jmh.CyclicOps.cyclic_emit | 1.046 | 3.213 | +207.2% |
-| io.humainary.substrates.jmh.CyclicOps.cyclic_emit_await | 10.342 | 45.766 | +342.5% |
-| io.humainary.substrates.jmh.CyclicOps.cyclic_emit_await_batch | 10.398 | 50.735 | +387.9% |
-| io.humainary.substrates.jmh.CyclicOps.cyclic_emit_batch | 1.223 | 3.615 | +195.6% |
-| io.humainary.substrates.jmh.CyclicOps.cyclic_emit_deep_await | 4.399 | 30.371 | +590.4% |
-| io.humainary.substrates.jmh.CyclicOps.cyclic_emit_deep_await_batch | 4.470 | 27.376 | +512.4% |
-| io.humainary.substrates.jmh.FlowOps.baseline_no_flow_await | 18.965 | 19.532 | +3.0% |
-| io.humainary.substrates.jmh.FlowOps.flow_combined_diff_guard_await | 26.317 | 39.929 | +51.7% |
-| io.humainary.substrates.jmh.FlowOps.flow_combined_diff_sample_await | 19.873 | 37.821 | +90.3% |
-| io.humainary.substrates.jmh.FlowOps.flow_combined_guard_limit_await | 28.306 | 39.713 | +40.3% |
-| io.humainary.substrates.jmh.FlowOps.flow_diff_await | 28.498 | 40.333 | +41.5% |
-| io.humainary.substrates.jmh.FlowOps.flow_guard_await | 28.773 | 36.991 | +28.6% |
-| io.humainary.substrates.jmh.FlowOps.flow_limit_await | 28.293 | 31.975 | +13.0% |
-| io.humainary.substrates.jmh.FlowOps.flow_sample_await | 18.800 | 18.099 | -3.7% |
-| io.humainary.substrates.jmh.FlowOps.flow_sift_await | 20.194 | 39.395 | +95.1% |
-| io.humainary.substrates.jmh.IdOps.id_from_subject | 0.578 | 2.112 | +265.4% |
-| io.humainary.substrates.jmh.IdOps.id_from_subject_batch | 0.001 | 0.001 | +26.9% |
-| io.humainary.substrates.jmh.IdOps.id_toString | 13.209 | 10.222 | -22.6% |
-| io.humainary.substrates.jmh.IdOps.id_toString_batch | 14.612 | 6.306 | -56.8% |
-| io.humainary.substrates.jmh.NameOps.name_chained_deep | 5.745 | 7.084 | +23.3% |
-| io.humainary.substrates.jmh.NameOps.name_chaining | 9.450 | 4.412 | -53.3% |
-| io.humainary.substrates.jmh.NameOps.name_chaining_batch | 9.038 | 4.140 | -54.2% |
-| io.humainary.substrates.jmh.NameOps.name_compare | 0.839 | 1.711 | +104.0% |
-| io.humainary.substrates.jmh.NameOps.name_compare_batch | 0.001 | 0.002 | +66.6% |
-| io.humainary.substrates.jmh.NameOps.name_depth | 0.577 | 0.863 | +49.6% |
-| io.humainary.substrates.jmh.NameOps.name_depth_batch | 0.001 | 0.001 | -9.6% |
-| io.humainary.substrates.jmh.NameOps.name_enclosure | 0.608 | 1.282 | +110.8% |
-| io.humainary.substrates.jmh.NameOps.name_from_enum | 2.026 | 2.272 | +12.1% |
-| io.humainary.substrates.jmh.NameOps.name_from_iterable | 9.811 | 8.420 | -14.2% |
-| io.humainary.substrates.jmh.NameOps.name_from_iterator | 9.671 | 10.129 | +4.7% |
-| io.humainary.substrates.jmh.NameOps.name_from_mapped_iterable | 10.111 | 8.926 | -11.7% |
-| io.humainary.substrates.jmh.NameOps.name_from_name | 3.988 | 3.823 | -4.1% |
-| io.humainary.substrates.jmh.NameOps.name_from_string | 3.409 | 2.284 | -33.0% |
-| io.humainary.substrates.jmh.NameOps.name_from_string_batch | 3.124 | 2.069 | -33.8% |
-| io.humainary.substrates.jmh.NameOps.name_hashCode | 0.588 | 1.298 | +120.7% |
-| io.humainary.substrates.jmh.NameOps.name_hashCode_batch | 0.001 | 1.096 | +109459.6% |
-| io.humainary.substrates.jmh.NameOps.name_interning_chained | 11.655 | 12.093 | +3.8% |
-| io.humainary.substrates.jmh.NameOps.name_interning_same_path | 3.901 | 4.163 | +6.7% |
-| io.humainary.substrates.jmh.NameOps.name_interning_segments | 9.706 | 5.918 | -39.0% |
-| io.humainary.substrates.jmh.NameOps.name_iterate_hierarchy | 1.862 | 3.313 | +77.9% |
-| io.humainary.substrates.jmh.NameOps.name_parsing | 2.096 | 2.234 | +6.6% |
-| io.humainary.substrates.jmh.NameOps.name_parsing_batch | 1.875 | 1.964 | +4.7% |
-| io.humainary.substrates.jmh.NameOps.name_path_generation | 0.606 | 0.863 | +42.4% |
-| io.humainary.substrates.jmh.NameOps.name_path_generation_batch | 0.001 | 0.001 | -14.2% |
-| io.humainary.substrates.jmh.NameOps.name_within | 1.767 | 2.993 | +69.4% |
-| io.humainary.substrates.jmh.NameOps.name_within_batch | 1.125 | 3.309 | +194.1% |
-| io.humainary.substrates.jmh.NameOps.name_within_false | 2.089 | 3.010 | +44.1% |
-| io.humainary.substrates.jmh.NameOps.name_within_false_batch | 1.409 | 2.277 | +61.6% |
-| io.humainary.substrates.jmh.PipeOps.async_emit_batch | 10.156 | 13.781 | +35.7% |
-| io.humainary.substrates.jmh.PipeOps.async_emit_batch_await | 18.370 | 19.603 | +6.7% |
-| io.humainary.substrates.jmh.PipeOps.async_emit_chained_await | 22.567 | 18.897 | -16.3% |
-| io.humainary.substrates.jmh.PipeOps.async_emit_fanout_await | 19.832 | 29.048 | +46.5% |
-| io.humainary.substrates.jmh.PipeOps.async_emit_single | 6.872 | 11.341 | +65.0% |
-| io.humainary.substrates.jmh.PipeOps.async_emit_single_await | 6217.555 | 2531.684 | -59.3% |
-| io.humainary.substrates.jmh.PipeOps.async_emit_with_flow_await | 19.262 | 39.286 | +104.0% |
-| io.humainary.substrates.jmh.PipeOps.baseline_blackhole | 0.296 | 0.790 | +166.9% |
-| io.humainary.substrates.jmh.PipeOps.baseline_counter | 1.859 | 2.888 | +55.3% |
-| io.humainary.substrates.jmh.PipeOps.baseline_receptor | 0.546 | 0.825 | +51.1% |
-| io.humainary.substrates.jmh.PipeOps.pipe_create | 8.567 | 11.891 | +38.8% |
-| io.humainary.substrates.jmh.PipeOps.pipe_create_chained | 0.931 | 1.984 | +113.1% |
-| io.humainary.substrates.jmh.PipeOps.pipe_create_with_flow | 14.337 | 13.579 | -5.3% |
-| io.humainary.substrates.jmh.ReservoirOps.baseline_emit_no_reservoir_await | 95.215 | 48.908 | -48.6% |
-| io.humainary.substrates.jmh.ReservoirOps.baseline_emit_no_reservoir_await_batch | 19.156 | 18.292 | -4.5% |
-| io.humainary.substrates.jmh.ReservoirOps.reservoir_burst_then_drain_await | 89.571 | 142.187 | +58.7% |
-| io.humainary.substrates.jmh.ReservoirOps.reservoir_burst_then_drain_await_batch | 22.238 | 46.225 | +107.9% |
-| io.humainary.substrates.jmh.ReservoirOps.reservoir_drain_await | 89.491 | 142.166 | +58.9% |
-| io.humainary.substrates.jmh.ReservoirOps.reservoir_drain_await_batch | 22.215 | 44.469 | +100.2% |
-| io.humainary.substrates.jmh.ReservoirOps.reservoir_emit_drain_cycles_await | 439.618 | 503.130 | +14.4% |
-| io.humainary.substrates.jmh.ReservoirOps.reservoir_emit_with_capture_await | 87.034 | 135.553 | +55.7% |
-| io.humainary.substrates.jmh.ReservoirOps.reservoir_emit_with_capture_await_batch | 23.094 | 44.303 | +91.8% |
-| io.humainary.substrates.jmh.ReservoirOps.reservoir_process_emissions_await | 83.096 | 145.367 | +74.9% |
-| io.humainary.substrates.jmh.ReservoirOps.reservoir_process_emissions_await_batch | 26.119 | 51.866 | +98.6% |
-| io.humainary.substrates.jmh.ReservoirOps.reservoir_process_subjects_await | 95.337 | 140.001 | +46.8% |
-| io.humainary.substrates.jmh.ScopeOps.scope_child_anonymous | 18.916 | 18.274 | -3.4% |
-| io.humainary.substrates.jmh.ScopeOps.scope_child_anonymous_batch | 18.682 | 17.866 | -4.4% |
-| io.humainary.substrates.jmh.ScopeOps.scope_child_named | 19.368 | 19.143 | -1.2% |
-| io.humainary.substrates.jmh.ScopeOps.scope_child_named_batch | 20.021 | 19.063 | -4.8% |
-| io.humainary.substrates.jmh.ScopeOps.scope_close_idempotent | 2.738 | 0.739 | -73.0% |
-| io.humainary.substrates.jmh.ScopeOps.scope_close_idempotent_batch | 0.039 | 0.319 | +716.8% |
-| io.humainary.substrates.jmh.ScopeOps.scope_closure | 294.963 | 565.995 | +91.9% |
-| io.humainary.substrates.jmh.ScopeOps.scope_closure_batch | 306.814 | 548.742 | +78.9% |
-| io.humainary.substrates.jmh.ScopeOps.scope_complex | 907.760 | 4769.817 | +425.4% |
-| io.humainary.substrates.jmh.ScopeOps.scope_create_and_close | 2.762 | 0.751 | -72.8% |
-| io.humainary.substrates.jmh.ScopeOps.scope_create_and_close_batch | 0.038 | 0.320 | +741.9% |
-| io.humainary.substrates.jmh.ScopeOps.scope_create_named | 2.820 | 0.834 | -70.4% |
-| io.humainary.substrates.jmh.ScopeOps.scope_create_named_batch | 0.038 | 0.461 | +1112.4% |
-| io.humainary.substrates.jmh.ScopeOps.scope_hierarchy | 30.365 | 34.953 | +15.1% |
-| io.humainary.substrates.jmh.ScopeOps.scope_hierarchy_batch | 31.328 | 33.915 | +8.3% |
-| io.humainary.substrates.jmh.ScopeOps.scope_parent_closes_children | 47.824 | 47.131 | -1.4% |
-| io.humainary.substrates.jmh.ScopeOps.scope_parent_closes_children_batch | 46.967 | 46.348 | -1.3% |
-| io.humainary.substrates.jmh.ScopeOps.scope_register_multiple | 1479.062 | 3335.906 | +125.5% |
-| io.humainary.substrates.jmh.ScopeOps.scope_register_multiple_batch | 1491.609 | 2622.543 | +75.8% |
-| io.humainary.substrates.jmh.ScopeOps.scope_register_single | 303.114 | 398.302 | +31.4% |
-| io.humainary.substrates.jmh.ScopeOps.scope_register_single_batch | 311.687 | 424.514 | +36.2% |
-| io.humainary.substrates.jmh.ScopeOps.scope_with_resources | 600.079 | 2698.855 | +349.7% |
-| io.humainary.substrates.jmh.StateOps.slot_name | 0.581 | 0.908 | +56.2% |
-| io.humainary.substrates.jmh.StateOps.slot_name_batch | 0.001 | 0.001 | -15.0% |
-| io.humainary.substrates.jmh.StateOps.slot_type | 0.497 | 0.893 | +79.7% |
-| io.humainary.substrates.jmh.StateOps.slot_value | 0.668 | 1.065 | +59.4% |
-| io.humainary.substrates.jmh.StateOps.slot_value_batch | 0.001 | 0.001 | +4.5% |
-| io.humainary.substrates.jmh.StateOps.state_compact | 9.538 | 30.413 | +218.9% |
-| io.humainary.substrates.jmh.StateOps.state_compact_batch | 10.351 | 29.624 | +186.2% |
-| io.humainary.substrates.jmh.StateOps.state_iterate_slots | 2.388 | 4.747 | +98.8% |
-| io.humainary.substrates.jmh.StateOps.state_slot_add_int | 3.957 | 8.061 | +103.7% |
-| io.humainary.substrates.jmh.StateOps.state_slot_add_int_batch | 4.003 | 7.703 | +92.4% |
-| io.humainary.substrates.jmh.StateOps.state_slot_add_long | 3.935 | 8.159 | +107.4% |
-| io.humainary.substrates.jmh.StateOps.state_slot_add_object | 2.047 | 7.870 | +284.5% |
-| io.humainary.substrates.jmh.StateOps.state_slot_add_object_batch | 2.035 | 8.402 | +312.9% |
-| io.humainary.substrates.jmh.StateOps.state_slot_add_string | 4.030 | 8.395 | +108.3% |
-| io.humainary.substrates.jmh.StateOps.state_value_read | 1.390 | 3.317 | +138.6% |
-| io.humainary.substrates.jmh.StateOps.state_value_read_batch | 0.001 | 0.064 | +6336.3% |
-| io.humainary.substrates.jmh.StateOps.state_values_stream | 4.104 | 24.225 | +490.3% |
-| io.humainary.substrates.jmh.SubjectOps.subject_compare | 4.281 | 2.421 | -43.5% |
-| io.humainary.substrates.jmh.SubjectOps.subject_compare_batch | 2.753 | 0.003 | -99.9% |
-| io.humainary.substrates.jmh.SubjectOps.subject_compare_same | 0.496 | 1.335 | +169.2% |
-| io.humainary.substrates.jmh.SubjectOps.subject_compare_same_batch | 0.001 | 0.002 | +72.9% |
-| io.humainary.substrates.jmh.SubjectOps.subject_compare_three_way | 12.264 | 5.289 | -56.9% |
-| io.humainary.substrates.jmh.SubscriberOps.close_five_conduits_await | 8944.447 | 7210.952 | -19.4% |
-| io.humainary.substrates.jmh.SubscriberOps.close_five_subscriptions_await | 8802.098 | 6700.906 | -23.9% |
-| io.humainary.substrates.jmh.SubscriberOps.close_idempotent_await | 8681.928 | 3689.043 | -57.5% |
-| io.humainary.substrates.jmh.SubscriberOps.close_idempotent_batch_await | 18.078 | 14.024 | -22.4% |
-| io.humainary.substrates.jmh.SubscriberOps.close_no_subscriptions_await | 8761.686 | 5114.457 | -41.6% |
-| io.humainary.substrates.jmh.SubscriberOps.close_no_subscriptions_batch_await | 15.126 | 34.796 | +130.0% |
-| io.humainary.substrates.jmh.SubscriberOps.close_one_subscription_await | 8273.231 | 8085.147 | -2.3% |
-| io.humainary.substrates.jmh.SubscriberOps.close_one_subscription_batch_await | 32.196 | 123.853 | +284.7% |
-| io.humainary.substrates.jmh.SubscriberOps.close_ten_conduits_await | 8799.784 | 4814.836 | -45.3% |
-| io.humainary.substrates.jmh.SubscriberOps.close_ten_subscriptions_await | 8453.515 | 4341.104 | -48.6% |
-| io.humainary.substrates.jmh.SubscriberOps.close_with_pending_emissions_await | 8809.789 | 8707.370 | -1.2% |
-| io.humainary.substrates.jmh.TapOps.baseline_emit_batch_await | 20.533 | 21.086 | +2.7% |
-| io.humainary.substrates.jmh.TapOps.tap_close | 8875.453 | 2703.768 | -69.5% |
-| io.humainary.substrates.jmh.TapOps.tap_create_batch | 574.582 | 1708.320 | +197.3% |
-| io.humainary.substrates.jmh.TapOps.tap_create_identity | 570.646 | 1608.744 | +181.9% |
-| io.humainary.substrates.jmh.TapOps.tap_create_string | 872.824 | 1666.624 | +90.9% |
-| io.humainary.substrates.jmh.TapOps.tap_emit_identity_batch_await | 28.876 | 43.691 | +51.3% |
-| io.humainary.substrates.jmh.TapOps.tap_emit_identity_single | 31.541 | 40.808 | +29.4% |
-| io.humainary.substrates.jmh.TapOps.tap_emit_identity_single_await | 6109.758 | 2130.367 | -65.1% |
-| io.humainary.substrates.jmh.TapOps.tap_emit_multi_batch_await | 42.337 | 52.691 | +24.5% |
-| io.humainary.substrates.jmh.TapOps.tap_emit_string_batch_await | 36.052 | 53.053 | +47.2% |
-| io.humainary.substrates.jmh.TapOps.tap_lifecycle | 17387.271 | 13838.676 | -20.4% |
-**Total benchmarks:** 863
+
+| Benchmark | Humainary baseline | Pre-2.3 FS | Now FS (post-audit) | Δ vs pre-2.3 |
+|---|---:|---:|---:|---:|
+| io.humainary.substrates.jmh.CircuitOps.conduit_create_close | 309.983 | 871.961 | 527.299 | -39.5% |
+| io.humainary.substrates.jmh.CircuitOps.conduit_create_named | 316.894 | 1336.338 | 492.581 | -63.1% |
+| io.humainary.substrates.jmh.CircuitOps.conduit_create_with_flow | 289.073 | 997.151 | 698.503 | -30.0% |
+| io.humainary.substrates.jmh.CircuitOps.create_and_close | 333.957 | 712.571 | 472.888 | -33.6% |
+| io.humainary.substrates.jmh.CircuitOps.create_and_close_batch | 441.745 | 816.871 | 770.953 | -5.6% |
+| io.humainary.substrates.jmh.CircuitOps.create_multiple_and_close | 2545.594 | 6446.376 | 2919.684 | -54.7% |
+| io.humainary.substrates.jmh.CircuitOps.create_named_and_close | 457.365 | 878.086 | 523.929 | -40.3% |
+| io.humainary.substrates.jmh.CircuitOps.hot_conduit_create | 16.662 | 20.520 | 19.377 | -5.6% |
+| io.humainary.substrates.jmh.CircuitOps.hot_conduit_create_named | 16.461 | 20.052 | 19.863 | -0.9% |
+| io.humainary.substrates.jmh.CircuitOps.hot_conduit_create_with_flow | 19.919 | 22.268 | 19.620 | -11.9% |
+| io.humainary.substrates.jmh.CircuitOps.hot_pipe_async | 8.392 | 12.686 | 7.274 | -42.7% |
+| io.humainary.substrates.jmh.CircuitOps.hot_pipe_async_with_flow | 10.268 | 27.580 | 7.352 | -73.3% |
+| io.humainary.substrates.jmh.CircuitOps.pipe_async | 341.472 | 603.912 | 745.454 | +23.4% |
+| io.humainary.substrates.jmh.CircuitOps.pipe_async_with_flow | 302.093 | 752.469 | 1028.413 | +36.7% |
+| io.humainary.substrates.jmh.ConduitOps.get_by_name | 1.351 | 2.314 | 4.122 | +78.1% |
+| io.humainary.substrates.jmh.ConduitOps.get_by_name_batch | 0.961 | 2.069 | 2.028 | -2.0% |
+| io.humainary.substrates.jmh.ConduitOps.get_by_substrate | 1.705 | 3.583 | 3.691 | +3.0% |
+| io.humainary.substrates.jmh.ConduitOps.get_by_substrate_batch | 1.538 | 3.172 | 2.813 | -11.3% |
+| io.humainary.substrates.jmh.ConduitOps.get_cached | 2.319 | 5.019 | 3.287 | -34.5% |
+| io.humainary.substrates.jmh.ConduitOps.get_cached_batch | 2.126 | 4.729 | 2.858 | -39.6% |
+| io.humainary.substrates.jmh.ConduitOps.get_varied | 3.194 | 14.757 | 12.067 | -18.2% |
+| io.humainary.substrates.jmh.ConduitOps.get_varied_batch | 3.098 | 12.200 | 11.150 | -8.6% |
+| io.humainary.substrates.jmh.ConduitOps.subscribe | 446.558 | 539.141 | 491.829 | -8.8% |
+| io.humainary.substrates.jmh.ConduitOps.subscribe_batch | 460.854 | 609.339 | 515.647 | -15.4% |
+| io.humainary.substrates.jmh.ConduitOps.subscribe_with_emission_await | 7162.881 | 13979.706 | 671.522 | -95.2% |
+| io.humainary.substrates.jmh.CortexOps.circuit | 288.248 | 481.567 | 440.386 | -8.6% |
+| io.humainary.substrates.jmh.CortexOps.circuit_batch | 290.459 | 533.220 | 465.292 | -12.7% |
+| io.humainary.substrates.jmh.CortexOps.circuit_named | 291.152 | 488.376 | 366.687 | -24.9% |
+| io.humainary.substrates.jmh.CortexOps.current | 1.187 | 3.558 | 3.123 | -12.2% |
+| io.humainary.substrates.jmh.CortexOps.name_class | 1.647 | 3.046 | 2.611 | -14.3% |
+| io.humainary.substrates.jmh.CortexOps.name_enum | 1.953 | 2.490 | 2.151 | -13.6% |
+| io.humainary.substrates.jmh.CortexOps.name_iterable | 8.697 | 5.016 | 4.691 | -6.5% |
+| io.humainary.substrates.jmh.CortexOps.name_path | 2.103 | 2.430 | 2.270 | -6.6% |
+| io.humainary.substrates.jmh.CortexOps.name_path_batch | 1.861 | 2.184 | 1.956 | -10.4% |
+| io.humainary.substrates.jmh.CortexOps.name_string | 2.935 | 2.470 | 2.194 | -11.2% |
+| io.humainary.substrates.jmh.CortexOps.name_string_batch | 2.771 | 2.161 | 2.116 | -2.1% |
+| io.humainary.substrates.jmh.CortexOps.scope | 9.701 | 4.927 | 11.495 | +133.3% |
+| io.humainary.substrates.jmh.CortexOps.scope_batch | 8.418 | 4.744 | 10.503 | +121.4% |
+| io.humainary.substrates.jmh.CortexOps.scope_named | 8.917 | 5.319 | 10.454 | +96.5% |
+| io.humainary.substrates.jmh.CortexOps.slot_boolean | 1.935 | 2.751 | 2.720 | -1.1% |
+| io.humainary.substrates.jmh.CortexOps.slot_double | 1.923 | 6.212 | 6.193 | -0.3% |
+| io.humainary.substrates.jmh.CortexOps.slot_int | 1.932 | 2.612 | 2.616 | +0.2% |
+| io.humainary.substrates.jmh.CortexOps.slot_long | 1.939 | 3.010 | 2.862 | -4.9% |
+| io.humainary.substrates.jmh.CortexOps.slot_string | 1.939 | 2.914 | 2.900 | -0.5% |
+| io.humainary.substrates.jmh.CortexOps.state_empty | 0.504 | 2.508 | 3.212 | +28.1% |
+| io.humainary.substrates.jmh.CortexOps.state_empty_batch | 0.001 | 2.200 | 2.997 | +36.2% |
+| io.humainary.substrates.jmh.CyclicOps.cyclic_emit | 1.046 | 3.213 | 1.742 | -45.8% |
+| io.humainary.substrates.jmh.CyclicOps.cyclic_emit_await | 10.342 | 45.766 | 20.068 | -56.2% |
+| io.humainary.substrates.jmh.CyclicOps.cyclic_emit_await_batch | 10.398 | 50.735 | 21.046 | -58.5% |
+| io.humainary.substrates.jmh.CyclicOps.cyclic_emit_batch | 1.223 | 3.615 | 1.800 | -50.2% |
+| io.humainary.substrates.jmh.CyclicOps.cyclic_emit_deep_await | 4.399 | 30.371 | 16.717 | -45.0% |
+| io.humainary.substrates.jmh.CyclicOps.cyclic_emit_deep_await_batch | 4.470 | 27.376 | 16.666 | -39.1% |
+| io.humainary.substrates.jmh.FlowOps.baseline_no_flow_await | 18.965 | 19.532 | 14.144 | -27.6% |
+| io.humainary.substrates.jmh.FlowOps.flow_combined_diff_guard_await | 26.317 | 39.929 | 36.968 | -7.4% |
+| io.humainary.substrates.jmh.FlowOps.flow_combined_diff_sample_await | 19.873 | 37.821 | 22.394 | -40.8% |
+| io.humainary.substrates.jmh.FlowOps.flow_combined_guard_limit_await | 28.306 | 39.713 | 37.559 | -5.4% |
+| io.humainary.substrates.jmh.FlowOps.flow_diff_await | 28.498 | 40.333 | 13.532 | -66.4% |
+| io.humainary.substrates.jmh.FlowOps.flow_guard_await | 28.773 | 36.991 | 17.808 | -51.9% |
+| io.humainary.substrates.jmh.FlowOps.flow_limit_await | 28.293 | 31.975 | 14.743 | -53.9% |
+| io.humainary.substrates.jmh.FlowOps.flow_sample_await | 18.800 | 18.099 | 14.242 | -21.3% |
+| io.humainary.substrates.jmh.FlowOps.flow_sift_await | 20.194 | 39.395 | 13.511 | -65.7% |
+| io.humainary.substrates.jmh.IdOps.id_from_subject | 0.578 | 2.112 | 1.743 | -17.5% |
+| io.humainary.substrates.jmh.IdOps.id_from_subject_batch | 0.001 | 0.001 | 0.001 | +0.0% |
+| io.humainary.substrates.jmh.IdOps.id_toString | 13.209 | 10.222 | 8.513 | -16.7% |
+| io.humainary.substrates.jmh.IdOps.id_toString_batch | 14.612 | 6.306 | 6.768 | +7.3% |
+| io.humainary.substrates.jmh.NameOps.name_chained_deep | 5.745 | 7.084 | 7.333 | +3.5% |
+| io.humainary.substrates.jmh.NameOps.name_chaining | 9.450 | 4.412 | 4.581 | +3.8% |
+| io.humainary.substrates.jmh.NameOps.name_chaining_batch | 9.038 | 4.140 | 4.262 | +2.9% |
+| io.humainary.substrates.jmh.NameOps.name_compare | 0.839 | 1.711 | 1.676 | -2.0% |
+| io.humainary.substrates.jmh.NameOps.name_compare_batch | 0.001 | 0.002 | 0.002 | +0.0% |
+| io.humainary.substrates.jmh.NameOps.name_depth | 0.577 | 0.863 | 0.889 | +3.0% |
+| io.humainary.substrates.jmh.NameOps.name_depth_batch | 0.001 | 0.001 | 0.001 | +0.0% |
+| io.humainary.substrates.jmh.NameOps.name_enclosure | 0.608 | 1.282 | 1.290 | +0.6% |
+| io.humainary.substrates.jmh.NameOps.name_from_enum | 2.026 | 2.272 | 2.386 | +5.0% |
+| io.humainary.substrates.jmh.NameOps.name_from_iterable | 9.811 | 8.420 | 8.590 | +2.0% |
+| io.humainary.substrates.jmh.NameOps.name_from_iterator | 9.671 | 10.129 | 9.709 | -4.1% |
+| io.humainary.substrates.jmh.NameOps.name_from_mapped_iterable | 10.111 | 8.926 | 8.903 | -0.3% |
+| io.humainary.substrates.jmh.NameOps.name_from_name | 3.988 | 3.823 | 3.821 | -0.1% |
+| io.humainary.substrates.jmh.NameOps.name_from_string | 3.409 | 2.284 | 2.311 | +1.2% |
+| io.humainary.substrates.jmh.NameOps.name_from_string_batch | 3.124 | 2.069 | 2.058 | -0.5% |
+| io.humainary.substrates.jmh.NameOps.name_hashCode | 0.588 | 1.298 | 1.322 | +1.8% |
+| io.humainary.substrates.jmh.NameOps.name_hashCode_batch | 0.001 | 1.096 | 1.137 | +3.7% |
+| io.humainary.substrates.jmh.NameOps.name_interning_chained | 11.655 | 12.093 | 12.953 | +7.1% |
+| io.humainary.substrates.jmh.NameOps.name_interning_same_path | 3.901 | 4.163 | 4.271 | +2.6% |
+| io.humainary.substrates.jmh.NameOps.name_interning_segments | 9.706 | 5.918 | 6.120 | +3.4% |
+| io.humainary.substrates.jmh.NameOps.name_iterate_hierarchy | 1.862 | 3.313 | 3.307 | -0.2% |
+| io.humainary.substrates.jmh.NameOps.name_parsing | 2.096 | 2.234 | 2.330 | +4.3% |
+| io.humainary.substrates.jmh.NameOps.name_parsing_batch | 1.875 | 1.964 | 2.039 | +3.8% |
+| io.humainary.substrates.jmh.NameOps.name_path_generation | 0.606 | 0.863 | 0.921 | +6.7% |
+| io.humainary.substrates.jmh.NameOps.name_path_generation_batch | 0.001 | 0.001 | 0.001 | +0.0% |
+| io.humainary.substrates.jmh.NameOps.name_within | 1.767 | 2.993 | 3.739 | +24.9% |
+| io.humainary.substrates.jmh.NameOps.name_within_batch | 1.125 | 3.309 | 2.305 | -30.3% |
+| io.humainary.substrates.jmh.NameOps.name_within_false | 2.089 | 3.010 | 3.261 | +8.3% |
+| io.humainary.substrates.jmh.NameOps.name_within_false_batch | 1.409 | 2.277 | 2.412 | +5.9% |
+| io.humainary.substrates.jmh.PipeOps.async_emit_batch | 10.156 | 13.781 | 40.528 | +194.1% |
+| io.humainary.substrates.jmh.PipeOps.async_emit_batch_await | 18.370 | 19.603 | 13.693 | -30.1% |
+| io.humainary.substrates.jmh.PipeOps.async_emit_chained_await | 22.567 | 18.897 | 14.472 | -23.4% |
+| io.humainary.substrates.jmh.PipeOps.async_emit_diff_only_await | 37.234 | — | — | — |
+| io.humainary.substrates.jmh.PipeOps.async_emit_empty_fiber_await | 14.102 | — | — | — |
+| io.humainary.substrates.jmh.PipeOps.async_emit_fanout_await | 19.832 | 29.048 | 21.009 | -27.7% |
+| io.humainary.substrates.jmh.PipeOps.async_emit_flow_map_await | 33.900 | — | — | — |
+| io.humainary.substrates.jmh.PipeOps.async_emit_guard_only_await | 33.520 | — | — | — |
+| io.humainary.substrates.jmh.PipeOps.async_emit_single | 6.872 | 11.341 | 16.681 | +47.1% |
+| io.humainary.substrates.jmh.PipeOps.async_emit_single_await | 6217.555 | 2531.684 | 109.107 | -95.7% |
+| io.humainary.substrates.jmh.PipeOps.async_emit_with_flow_await | 19.262 | 39.286 | 36.172 | -7.9% |
+| io.humainary.substrates.jmh.PipeOps.baseline_blackhole | 0.296 | 0.790 | 0.766 | -3.0% |
+| io.humainary.substrates.jmh.PipeOps.baseline_counter | 1.859 | 2.888 | 2.921 | +1.1% |
+| io.humainary.substrates.jmh.PipeOps.baseline_receptor | 0.546 | 0.825 | 0.793 | -3.9% |
+| io.humainary.substrates.jmh.PipeOps.pipe_create | 8.567 | 11.891 | 7.677 | -35.4% |
+| io.humainary.substrates.jmh.PipeOps.pipe_create_chained | 0.931 | 1.984 | 2.005 | +1.1% |
+| io.humainary.substrates.jmh.PipeOps.pipe_create_with_flow | 14.337 | 13.579 | 23.744 | +74.9% |
+| io.humainary.substrates.jmh.ReservoirOps.baseline_emit_no_reservoir_await | 95.215 | 48.908 | 18.947 | -61.3% |
+| io.humainary.substrates.jmh.ReservoirOps.baseline_emit_no_reservoir_await_batch | 19.156 | 18.292 | 16.996 | -7.1% |
+| io.humainary.substrates.jmh.ReservoirOps.reservoir_burst_then_drain_await | 89.571 | 142.187 | 41.426 | -70.9% |
+| io.humainary.substrates.jmh.ReservoirOps.reservoir_burst_then_drain_await_batch | 22.238 | 46.225 | 28.591 | -38.1% |
+| io.humainary.substrates.jmh.ReservoirOps.reservoir_drain_await | 89.491 | 142.166 | 38.689 | -72.8% |
+| io.humainary.substrates.jmh.ReservoirOps.reservoir_drain_await_batch | 22.215 | 44.469 | 30.023 | -32.5% |
+| io.humainary.substrates.jmh.ReservoirOps.reservoir_emit_drain_cycles_await | 439.618 | 503.130 | 259.459 | -48.4% |
+| io.humainary.substrates.jmh.ReservoirOps.reservoir_emit_with_capture_await | 87.034 | 135.553 | 218.665 | +61.3% |
+| io.humainary.substrates.jmh.ReservoirOps.reservoir_emit_with_capture_await_batch | 23.094 | 44.303 | 28.900 | -34.8% |
+| io.humainary.substrates.jmh.ReservoirOps.reservoir_process_emissions_await | 83.096 | 145.367 | 44.303 | -69.5% |
+| io.humainary.substrates.jmh.ReservoirOps.reservoir_process_emissions_await_batch | 26.119 | 51.866 | 34.431 | -33.6% |
+| io.humainary.substrates.jmh.ReservoirOps.reservoir_process_subjects_await | 95.337 | 140.001 | 40.721 | -70.9% |
+| io.humainary.substrates.jmh.ScopeOps.scope_child_anonymous | 18.916 | 18.274 | 33.622 | +84.0% |
+| io.humainary.substrates.jmh.ScopeOps.scope_child_anonymous_batch | 18.682 | 17.866 | 33.317 | +86.5% |
+| io.humainary.substrates.jmh.ScopeOps.scope_child_named | 19.368 | 19.143 | 32.705 | +70.8% |
+| io.humainary.substrates.jmh.ScopeOps.scope_child_named_batch | 20.021 | 19.063 | 32.514 | +70.6% |
+| io.humainary.substrates.jmh.ScopeOps.scope_close_idempotent | 2.738 | 0.739 | 2.617 | +254.1% |
+| io.humainary.substrates.jmh.ScopeOps.scope_close_idempotent_batch | 0.039 | 0.319 | 2.362 | +640.4% |
+| io.humainary.substrates.jmh.ScopeOps.scope_closure | 294.963 | 565.995 | 565.322 | -0.1% |
+| io.humainary.substrates.jmh.ScopeOps.scope_closure_batch | 306.814 | 548.742 | 626.459 | +14.2% |
+| io.humainary.substrates.jmh.ScopeOps.scope_complex | 907.760 | 4769.817 | 4115.717 | -13.7% |
+| io.humainary.substrates.jmh.ScopeOps.scope_create_and_close | 2.762 | 0.751 | 2.643 | +251.9% |
+| io.humainary.substrates.jmh.ScopeOps.scope_create_and_close_batch | 0.038 | 0.320 | 2.338 | +630.6% |
+| io.humainary.substrates.jmh.ScopeOps.scope_create_named | 2.820 | 0.834 | 2.501 | +199.9% |
+| io.humainary.substrates.jmh.ScopeOps.scope_create_named_batch | 0.038 | 0.461 | 2.411 | +423.0% |
+| io.humainary.substrates.jmh.ScopeOps.scope_hierarchy | 30.365 | 34.953 | 59.666 | +70.7% |
+| io.humainary.substrates.jmh.ScopeOps.scope_hierarchy_batch | 31.328 | 33.915 | 60.518 | +78.4% |
+| io.humainary.substrates.jmh.ScopeOps.scope_parent_closes_children | 47.824 | 47.131 | 79.996 | +69.7% |
+| io.humainary.substrates.jmh.ScopeOps.scope_parent_closes_children_batch | 46.967 | 46.348 | 78.584 | +69.6% |
+| io.humainary.substrates.jmh.ScopeOps.scope_register_multiple | 1479.062 | 3335.906 | 2523.555 | -24.4% |
+| io.humainary.substrates.jmh.ScopeOps.scope_register_multiple_batch | 1491.609 | 2622.543 | 3577.036 | +36.4% |
+| io.humainary.substrates.jmh.ScopeOps.scope_register_single | 303.114 | 398.302 | 407.681 | +2.4% |
+| io.humainary.substrates.jmh.ScopeOps.scope_register_single_batch | 311.687 | 424.514 | 409.441 | -3.6% |
+| io.humainary.substrates.jmh.ScopeOps.scope_with_resources | 600.079 | 2698.855 | 2616.630 | -3.0% |
+| io.humainary.substrates.jmh.StateOps.slot_name | 0.581 | 0.908 | 0.928 | +2.2% |
+| io.humainary.substrates.jmh.StateOps.slot_name_batch | 0.001 | 0.001 | 0.001 | +0.0% |
+| io.humainary.substrates.jmh.StateOps.slot_type | 0.497 | 0.893 | 0.954 | +6.8% |
+| io.humainary.substrates.jmh.StateOps.slot_value | 0.668 | 1.065 | 1.103 | +3.6% |
+| io.humainary.substrates.jmh.StateOps.slot_value_batch | 0.001 | 0.001 | 0.001 | +0.0% |
+| io.humainary.substrates.jmh.StateOps.state_compact | 9.538 | 30.413 | — | — |
+| io.humainary.substrates.jmh.StateOps.state_compact_batch | 10.351 | 29.624 | — | — |
+| io.humainary.substrates.jmh.StateOps.state_iterate_slots | 2.388 | 4.747 | 4.574 | -3.6% |
+| io.humainary.substrates.jmh.StateOps.state_slot_add_int | 3.957 | 8.061 | 8.540 | +5.9% |
+| io.humainary.substrates.jmh.StateOps.state_slot_add_int_batch | 4.003 | 7.703 | 8.689 | +12.8% |
+| io.humainary.substrates.jmh.StateOps.state_slot_add_long | 3.935 | 8.159 | 8.614 | +5.6% |
+| io.humainary.substrates.jmh.StateOps.state_slot_add_object | 2.047 | 7.870 | 7.900 | +0.4% |
+| io.humainary.substrates.jmh.StateOps.state_slot_add_object_batch | 2.035 | 8.402 | 8.706 | +3.6% |
+| io.humainary.substrates.jmh.StateOps.state_slot_add_string | 4.030 | 8.395 | 8.831 | +5.2% |
+| io.humainary.substrates.jmh.StateOps.state_value_read | 1.390 | 3.317 | 3.021 | -8.9% |
+| io.humainary.substrates.jmh.StateOps.state_value_read_batch | 0.001 | 0.064 | 0.003 | -95.3% |
+| io.humainary.substrates.jmh.StateOps.state_values_stream | 4.104 | 24.225 | — | — |
+| io.humainary.substrates.jmh.SubjectOps.subject_compare | 4.281 | 2.421 | 2.343 | -3.2% |
+| io.humainary.substrates.jmh.SubjectOps.subject_compare_batch | 2.753 | 0.003 | 0.003 | +0.0% |
+| io.humainary.substrates.jmh.SubjectOps.subject_compare_same | 0.496 | 1.335 | 1.193 | -10.6% |
+| io.humainary.substrates.jmh.SubjectOps.subject_compare_same_batch | 0.001 | 0.002 | 0.002 | +0.0% |
+| io.humainary.substrates.jmh.SubjectOps.subject_compare_three_way | 12.264 | 5.289 | 5.206 | -1.6% |
+| io.humainary.substrates.jmh.SubscriberOps.close_five_conduits_await | 8944.447 | 7210.952 | 1446.716 | -79.9% |
+| io.humainary.substrates.jmh.SubscriberOps.close_five_subscriptions_await | 8802.098 | 6700.906 | 1349.528 | -79.9% |
+| io.humainary.substrates.jmh.SubscriberOps.close_idempotent_await | 8681.928 | 3689.043 | 376.582 | -89.8% |
+| io.humainary.substrates.jmh.SubscriberOps.close_idempotent_batch_await | 18.078 | 14.024 | 12.271 | -12.5% |
+| io.humainary.substrates.jmh.SubscriberOps.close_no_subscriptions_await | 8761.686 | 5114.457 | 693.050 | -86.4% |
+| io.humainary.substrates.jmh.SubscriberOps.close_no_subscriptions_batch_await | 15.126 | 34.796 | 32.962 | -5.3% |
+| io.humainary.substrates.jmh.SubscriberOps.close_one_subscription_await | 8273.231 | 8085.147 | 864.551 | -89.3% |
+| io.humainary.substrates.jmh.SubscriberOps.close_one_subscription_batch_await | 32.196 | 123.853 | 111.823 | -9.7% |
+| io.humainary.substrates.jmh.SubscriberOps.close_ten_conduits_await | 8799.784 | 4814.836 | 1773.894 | -63.2% |
+| io.humainary.substrates.jmh.SubscriberOps.close_ten_subscriptions_await | 8453.515 | 4341.104 | 1738.170 | -60.0% |
+| io.humainary.substrates.jmh.SubscriberOps.close_with_pending_emissions_await | 8809.789 | 8707.370 | 1549.649 | -82.2% |
+| io.humainary.substrates.jmh.TapOps.baseline_emit_batch_await | 20.533 | 21.086 | 16.228 | -23.0% |
+| io.humainary.substrates.jmh.TapOps.tap_close | 8875.453 | 2703.768 | 323.475 | -88.0% |
+| io.humainary.substrates.jmh.TapOps.tap_create_batch | 574.582 | 1708.320 | 1601.189 | -6.3% |
+| io.humainary.substrates.jmh.TapOps.tap_create_identity | 570.646 | 1608.744 | 1489.857 | -7.4% |
+| io.humainary.substrates.jmh.TapOps.tap_create_string | 872.824 | 1666.624 | 1904.954 | +14.3% |
+| io.humainary.substrates.jmh.TapOps.tap_emit_identity_batch_await | 28.876 | 43.691 | 52.023 | +19.1% |
+| io.humainary.substrates.jmh.TapOps.tap_emit_identity_single | 31.541 | 40.808 | 28.105 | -31.1% |
+| io.humainary.substrates.jmh.TapOps.tap_emit_identity_single_await | 6109.758 | 2130.367 | 117.157 | -94.5% |
+| io.humainary.substrates.jmh.TapOps.tap_emit_multi_batch_await | 42.337 | 52.691 | 28.418 | -46.1% |
+| io.humainary.substrates.jmh.TapOps.tap_emit_string_batch_await | 36.052 | 53.053 | 35.131 | -33.8% |
+| io.humainary.substrates.jmh.TapOps.tap_lifecycle | 17387.271 | 13838.676 | 1697.130 | -87.7% |
+
+
+## Serventis results (Pre-2.3 → Now)
+
+_Sweep currently running. ~600 benchmarks across 30 instrument groups (CacheOps, PipelineOps, QueueOps, Operations, Outcomes, Statuses, etc.). Will populate when complete._
