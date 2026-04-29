@@ -2,8 +2,6 @@
 
 package io.humainary.substrates.jmh;
 
-import io.fullerstack.substrates.CircuitStats;
-import io.fullerstack.substrates.FsCircuit;
 import io.humainary.substrates.api.Substrates;
 import org.openjdk.jmh.annotations.*;
 import org.openjdk.jmh.infra.Blackhole;
@@ -482,16 +480,6 @@ public class PipeOps
 
   @TearDown ( Iteration )
   public void tearDownIteration () {
-
-    if ( circuit instanceof FsCircuit fs ) {
-      CircuitStats s = fs.stats ();
-      System.err.printf (
-        "  [stats] ingressDrains=%d transitEnq=%d transitDrains=%d entriesProcessed=%d ringCap=%d grows=%d rebuilds=%d%n",
-        s.ingressDrainBatchCount (),
-        s.transitEnqueueCount (), s.transitDrainCount (), s.transitEntriesProcessed (),
-        s.transitCurrentCapacity (), s.transitGrowCount (), s.rebuildCount ()
-      );
-    }
 
     circuit.close ();
 

@@ -4,7 +4,6 @@ import jdk.internal.vm.annotation.Contended;
 
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.VarHandle;
-import java.util.Arrays;
 import java.util.function.Consumer;
 
 /**
@@ -189,7 +188,11 @@ public final class IngressQueue {
   }
 
   private void recycleFreeChunk ( QChunk chunk ) {
-    Arrays.fill ( chunk.slots, null );
+    // No Arrays.fill needed — drainBatchLoop already clears each slot inline as it
+    // processes (slots[base] = null after dispatching). When a chunk reaches this
+    // method, every slot has either been processed and cleared or was never touched
+    // (fresh allocation has zero-init Object[]). Reset claimed/next so the chunk is
+    // ready for the next producer to fill from slot 0.
     QChunk.CLAIMED.setRelease ( chunk, 0 );
     QChunk.NEXT.setRelease ( chunk, null );
     for ( ; ; ) {

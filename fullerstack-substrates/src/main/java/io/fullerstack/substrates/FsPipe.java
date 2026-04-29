@@ -64,17 +64,23 @@ public final class FsPipe < E > implements Pipe < E > {
 
   // ─── Emit ───
 
-  /// Always submits to ingress. The cascade hot path (fiber/flow chain
-  /// terminals) calls `circuit.submitTransit` directly, not through this
-  /// method, so a thread check here would only affect user-driven emits
-  /// from worker threads — an uncommon pattern. Keeping the path branch-free
-  /// reclaims the per-emit overhead the pre-unification design had.
+  /// Routes the emission per SPEC §5.3 dual-queue model:
+  /// - External threads → ingress queue (shared, MPSC)
+  /// - Circuit/worker thread (cascade re-entry from within processing) → transit
+  ///   queue (single-thread, takes priority over ingress)
+  ///
+  /// Cascade priority is the spec's mechanism for ensuring effects of an emission
+  /// resolve before the next external input is processed.
   @Override
   @jdk.internal.vm.annotation.ForceInline
   public void emit ( @NotNull E emission ) {
     requireNonNull ( emission, "emission must not be null" );
     if ( circuit.closed ) return;
-    circuit.submitIngress ( receiver, emission );
+    if ( Thread.currentThread () == circuit.worker () ) {
+      circuit.submitTransit ( receiver, emission );
+    } else {
+      circuit.submitIngress ( receiver, emission );
+    }
   }
 
 }
