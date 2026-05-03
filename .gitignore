@@ -55,3 +55,4 @@ client-demos/
 .hive-mind/
 .swarm/
 substrates-api-spec/
+io.humainary.*-AverageTime/
