@@ -5,6 +5,7 @@ import static java.util.Objects.requireNonNull;
 
 import io.humainary.substrates.api.Substrates.Circuit;
 import io.humainary.substrates.api.Substrates.Conduit;
+import io.humainary.substrates.api.Substrates.Current;
 import io.humainary.substrates.api.Substrates.Fiber;
 import io.humainary.substrates.api.Substrates.Flow;
 import io.humainary.substrates.api.Substrates.Idempotent;
@@ -13,6 +14,7 @@ import io.humainary.substrates.api.Substrates.New;
 import io.humainary.substrates.api.Substrates.NotNull;
 import io.humainary.substrates.api.Substrates.Pipe;
 import io.humainary.substrates.api.Substrates.Provided;
+import io.humainary.substrates.api.Substrates.Pulse;
 import io.humainary.substrates.api.Substrates.Queued;
 import io.humainary.substrates.api.Substrates.Receptor;
 import io.humainary.substrates.api.Substrates.Registrar;
@@ -26,9 +28,11 @@ import io.humainary.substrates.api.Substrates.Tap;
 
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.VarHandle;
+import java.util.Optional;
 import java.util.concurrent.locks.LockSupport;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
+import java.util.function.Function;
 
 /**
  * Single-digit nanosecond latency Substrates Circuit implementation.
@@ -94,6 +98,10 @@ public final class FsCircuit implements Circuit {
   /// Backs circuit.subscribe(State), circuit.tap(), and circuit.reservoir().
   private volatile FsConduit < State > stateConduit;
 
+  /// 2.4: lazily-initialised Current for this circuit's execution context.
+  /// Must remain stable for the circuit's lifetime (spec §11.3).
+  private volatile Current circuitCurrent;
+
   // ─────────────────────────────────────────────────────────────────────────────
   // Queue infrastructure
   // ─────────────────────────────────────────────────────────────────────────────
@@ -115,9 +123,6 @@ public final class FsCircuit implements Circuit {
 
   // Set when close() is called to reject new emissions
   volatile boolean closed;
-
-  // Observability — incremented from FsChannel.rebuild (worker thread).
-  volatile long rebuildCount;
 
   // Pre-allocated marker receivers — ReceptorAdapter wrapping marker lambdas.
   // Drain loop splits the call site: isMarker() identity check routes markers
@@ -200,6 +205,24 @@ public final class FsCircuit implements Circuit {
     final Runnable action;
     CircuitJob ( Runnable action ) { this.action = action; }
     @Override public void accept ( Object o ) { action.run (); }
+  }
+
+  /// Pulse probe — single-use diagnostic carrier (spec §5.7, 2.4).
+  /// Stamps `dequeued` on the worker thread and unparks the caller.
+  /// Distinct concrete class so it doesn't pollute ReceptorAdapter's call-site profile.
+  static final class PulseProbe implements Consumer < Object > {
+    final Thread caller;
+    volatile long dequeued;
+
+    PulseProbe ( Thread caller ) {
+      this.caller = caller;
+    }
+
+    @Override
+    public void accept ( Object ignored ) {
+      dequeued = System.nanoTime ();   // volatile write publishes the timestamp
+      LockSupport.unpark ( caller );
+    }
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -286,33 +309,6 @@ public final class FsCircuit implements Circuit {
     return worker;
   }
 
-  /**
-   * Worker-thread callback from {@link FsChannel#rebuild()} so the circuit
-   * can count subscriber-graph rebuilds for {@link #stats()}.
-   */
-  void recordRebuild () {
-    rebuildCount++;
-  }
-
-  /**
-   * <b>Fullerstack-internal diagnostic.</b> Not part of any stability contract.
-   * Returns a snapshot of internal queue and dispatch counters for use by our
-   * own test harness, JMH benchmarks, and tuning work — not as a public
-   * observability API. See {@link CircuitStats}.
-   */
-  public CircuitStats stats () {
-    return new CircuitStats (
-      ingress.drainBatchCount,
-      transit.drainCount,
-      transit.enqueueCount,
-      transit.entriesProcessed,
-      transit.growCount,
-      transit.currentSize (),
-      transit.currentCapacity (),
-      rebuildCount
-    );
-  }
-
   // ─────────────────────────────────────────────────────────────────────────────
   // Worker Loop - FIFO depth-first processing with spin-before-park
   // ─────────────────────────────────────────────────────────────────────────────
@@ -367,6 +363,29 @@ public final class FsCircuit implements Circuit {
     return subject;
   }
 
+  /// 2.4: Returns the Current identifying this circuit's execution context.
+  /// The returned reference MUST remain stable for the circuit's lifetime
+  /// (spec §11.3).
+  @NotNull
+  @Override
+  public Current current () {
+    Current c = circuitCurrent;
+    if ( c == null ) {
+      synchronized ( this ) {
+        c = circuitCurrent;
+        if ( c == null ) {
+          FsSubject < Current > cs = new FsSubject <> (
+            subject.name (),
+            (FsSubject < ? >) subject,
+            Current.class );
+          c = new FsCurrent ( cs );
+          circuitCurrent = c;
+        }
+      }
+    }
+    return c;
+  }
+
   @Override
   public void await () {
     // Don't allow await from circuit thread (would deadlock)
@@ -378,6 +397,35 @@ public final class FsCircuit implements Circuit {
       return;
     }
     awaitImpl ();
+  }
+
+  /// 2.4: Submits a no-op probe through the circuit and returns its timing
+  /// snapshot. Captures four timestamps along the round-trip path: caller
+  /// stamps `start` and `enqueued`, worker stamps `dequeued`, caller stamps
+  /// `stop` after the probe fires. Returns empty when the circuit has
+  /// terminated and the probe could not traverse the queue (spec §5.7).
+  @NotNull
+  @Override
+  public Optional < Pulse > pulse () {
+    if ( Thread.currentThread () == worker ) {
+      throw new IllegalStateException ( "Cannot call Circuit::pulse from within a circuit's thread" );
+    }
+    if ( !worker.isAlive () ) return Optional.empty ();
+
+    PulseProbe probe = new PulseProbe ( Thread.currentThread () );
+    long start = System.nanoTime ();
+    submitIngress ( probe, null );
+    long enqueued = System.nanoTime ();
+
+    LockSupport.unpark ( worker );      // cold path — wake worker promptly
+
+    while ( probe.dequeued == 0L ) {
+      if ( !worker.isAlive () ) return Optional.empty ();
+      LockSupport.parkNanos ( this, 1_000_000L );  // 1 ms termination probe
+    }
+
+    long stop = System.nanoTime ();
+    return Optional.of ( new Pulse ( start, enqueued, probe.dequeued, stop ) );
   }
 
   private void awaitClosed () {
@@ -562,7 +610,7 @@ public final class FsCircuit implements Circuit {
   @New
   @NotNull
   @Override
-  public < T > Tap < T > tap ( @NotNull java.util.function.Function < Pipe < T >, Pipe < State > > fn ) {
+  public < T > Tap < T > tap ( @NotNull Function < Pipe < T >, Pipe < State > > fn ) {
     requireNonNull ( fn );
     return stateConduit ().tap ( fn );
   }
@@ -586,8 +634,15 @@ public final class FsCircuit implements Circuit {
   @New
   @NotNull
   @Override
+  public Subscription subscribe ( @NotNull Subscriber < State > subscriber ) {
+    requireNonNull ( subscriber );
+    return stateConduit ().subscribe ( subscriber );
+  }
+
+  @NotNull
+  @Override
   public Subscription subscribe ( @NotNull Subscriber < State > subscriber,
-                                  @NotNull @Queued java.util.function.Consumer < ? super Subscription > onClose ) {
+                                  @NotNull @Queued Consumer < ? super Subscription > onClose ) {
     requireNonNull ( subscriber );
     requireNonNull ( onClose );
     return stateConduit ().subscribe ( subscriber, onClose );

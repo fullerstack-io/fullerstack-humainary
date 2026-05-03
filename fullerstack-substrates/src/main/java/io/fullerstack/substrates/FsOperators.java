@@ -1,5 +1,7 @@
 package io.fullerstack.substrates;
 
+import io.humainary.substrates.api.Substrates.Receptor;
+
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.Objects;
@@ -154,10 +156,10 @@ final class FsOperators {
   }
 
   static final class Peek < E > implements Consumer < E > {
-    final io.humainary.substrates.api.Substrates.Receptor < ? super E > r;
-    final Consumer < E >                                                 d;
+    final Receptor < ? super E > r;
+    final Consumer < E >         d;
 
-    Peek ( io.humainary.substrates.api.Substrates.Receptor < ? super E > r, Consumer < E > d ) {
+    Peek ( Receptor < ? super E > r, Consumer < E > d ) {
       this.r = r; this.d = d;
     }
 

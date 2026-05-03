@@ -1,5 +1,6 @@
 package io.fullerstack.substrates;
 
+import io.humainary.substrates.api.Substrates.Fault;
 import io.humainary.substrates.api.Substrates.Fiber;
 import io.humainary.substrates.api.Substrates.Flow;
 import io.humainary.substrates.api.Substrates.Idempotent;
@@ -181,6 +182,14 @@ final class FsTap < T > implements Tap < T > {
   @NotNull
   @Override
   public Subscription subscribe (
+    @NotNull Subscriber < T > subscriber ) {
+    return subscribe ( subscriber, ignored -> { } );
+  }
+
+  @New
+  @NotNull
+  @Override
+  public Subscription subscribe (
     @NotNull Subscriber < T > subscriber,
     @NotNull @Queued Consumer < ? super Subscription > onClose ) {
     requireNonNull ( subscriber );
@@ -192,7 +201,7 @@ final class FsTap < T > implements Tap < T > {
     if ( subscriber.subject () instanceof FsSubject < ? > subSubject ) {
       FsSubject < ? > subscriberCircuit = subSubject.findCircuitAncestor ();
       if ( subscriberCircuit != null && subscriberCircuit != circuit.subject () ) {
-        throw new FsFault ( "Subscriber belongs to a different circuit" );
+        throw new Fault ( subject, "subscribe", "Subscriber belongs to a different circuit" );
       }
     }
 

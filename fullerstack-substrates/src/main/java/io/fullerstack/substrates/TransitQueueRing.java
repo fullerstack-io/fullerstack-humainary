@@ -34,20 +34,12 @@ final class TransitQueueRing {
   private int              head;
   private int              tail;
 
-  // Observability counters — written by worker thread only, volatile for
-  // cross-thread reads via FsCircuit.stats(). Not on the per-enqueue hot path.
-  volatile long drainCount;
-  volatile long growCount;
-  volatile long enqueueCount;
-  volatile long entriesProcessed;
-
   @jdk.internal.vm.annotation.ForceInline
   void enqueue ( Consumer < Object > receiver, Object value ) {
     int i = tail & mask;
     receivers[i] = receiver;
     values[i] = value;
     tail++;
-    enqueueCount++;
     if ( tail - head > mask ) grow ();
   }
 
@@ -68,7 +60,6 @@ final class TransitQueueRing {
     mask = newCap - 1;
     head = 0;
     tail = n;
-    growCount++;
   }
 
   @jdk.internal.vm.annotation.ForceInline
@@ -80,7 +71,6 @@ final class TransitQueueRing {
   @SuppressWarnings ( "unchecked" )
   boolean drain () {
     if ( head == tail ) return false;
-    long processed = 0;
     do {
       int i = head & mask;
       Consumer < Object > r = (Consumer < Object >) receivers[i];
@@ -88,25 +78,12 @@ final class TransitQueueRing {
       receivers[i] = null;
       values[i] = null;
       head++;
-      processed++;
       r.accept ( v );
     } while ( head != tail );
     // After draining, reset cursors so the ring stays at home position.
     // This is a same-thread operation; no synchronization needed.
     head = 0;
     tail = 0;
-    drainCount++;
-    entriesProcessed += processed;
     return true;
-  }
-
-  /// Live entry count. Worker-thread read; external readers may see slightly stale.
-  int currentSize () {
-    return tail - head;
-  }
-
-  /// Live capacity. Monotonic — equals the high-water capacity ceiling.
-  int currentCapacity () {
-    return mask + 1;
   }
 }

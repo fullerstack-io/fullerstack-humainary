@@ -46,9 +46,6 @@ public final class IngressQueue {
   @SuppressWarnings ( "unused" )  // accessed via FREE_HEAD VarHandle
   private QChunk freeHead;
 
-  // Observability — written by worker thread only, volatile for cross-thread reads.
-  volatile long drainBatchCount;
-
 
   public IngressQueue () {
     QChunk initial = new QChunk ();
@@ -114,7 +111,6 @@ public final class IngressQueue {
     }
     if ( QChunk.SLOTS.getAcquire ( chunk.slots, idx << 1 ) == null ) return false;
     drainBatchLoop ( chunk, idx, circuit );
-    drainBatchCount++;
     return true;
   }
 

@@ -5,6 +5,7 @@ import io.humainary.serventis.sdk.Statuses;
 import io.humainary.serventis.sdk.Surveys;
 import io.humainary.serventis.sdk.Surveys.Dimension;
 import io.humainary.serventis.sdk.Surveys.Signal;
+import io.humainary.serventis.api.Serventis.Sign;
 import io.humainary.substrates.api.Substrates;
 import io.humainary.substrates.api.Substrates.Conduit;
 
@@ -27,7 +28,7 @@ class SurveysTest {
   /// it because Signal.class loses the type parameter.
 
   @SuppressWarnings ( "unchecked" )
-  private static < S extends Enum < S > & io.humainary.serventis.api.Serventis.Sign >
+  private static < S extends Enum < S > & Sign >
   Conduit < Signal < S > > signalConduit (
     final Substrates.Circuit circuit
   ) {

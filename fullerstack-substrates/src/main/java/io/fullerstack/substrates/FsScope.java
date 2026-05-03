@@ -125,7 +125,7 @@ final class FsScope implements Scope {
   @NotNull
   @Override
   @SuppressWarnings ( "unchecked" )
-  public < R extends Resource > Closure < R > closure ( @NotNull R resource ) {
+  public < R extends Resource < R > > Closure < R > closure ( @NotNull R resource ) {
     requireNonNull ( resource, "resource must not be null" );
     if ( closed ) {
       throw new IllegalStateException ( "Scope is closed" );
@@ -153,7 +153,7 @@ final class FsScope implements Scope {
 
   @NotNull
   @Override
-  public < R extends Resource > R register ( @NotNull R resource ) {
+  public < R extends Resource < R > > R register ( @NotNull R resource ) {
     requireNonNull ( resource, "resource must not be null" );
     if ( closed ) {
       throw new IllegalStateException ( "Scope is closed" );

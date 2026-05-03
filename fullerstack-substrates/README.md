@@ -4,10 +4,10 @@ SPI provider implementation of the [Humainary Substrates API](https://github.com
 
 | | |
 |---|---|
-| **Version** | 2.3.0-RC1 |
-| **API** | Substrates 2.3.0 + Serventis 2.3.0 |
+| **Version** | 2.4.0-RC1 |
+| **API** | Substrates 2.4.0 + Serventis 2.4.0 |
 | **Java** | 26 (Virtual Threads + Preview) |
-| **Tests** | 482 (80 contract + 363 TCK + 39 Serventis) |
+| **Tests** | 478 (80 contract + 359 TCK + 39 Serventis) |
 | **Benchmarks** | 14 JMH groups, 185+ benchmarks |
 
 ## Prerequisites
@@ -30,7 +30,7 @@ SPI provider implementation of the [Humainary Substrates API](https://github.com
 ## Build & Test
 
 ```bash
-mvn clean install        # Build + run all 482 tests
+mvn clean install        # Build + run all 478 tests
 mvn test                 # Tests only
 ```
 
@@ -54,7 +54,7 @@ The artifact is published to [GitHub Packages](https://github.com/fullerstack-io
   <dependency>
     <groupId>io.fullerstack</groupId>
     <artifactId>fullerstack-substrates</artifactId>
-    <version>2.3.0-RC1</version>
+    <version>2.4.0-RC1</version>
   </dependency>
 </dependencies>
 ```

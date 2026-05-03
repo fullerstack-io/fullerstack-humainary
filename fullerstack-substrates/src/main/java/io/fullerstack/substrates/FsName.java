@@ -346,6 +346,12 @@ public final class FsName implements Name {
     return segment;
   }
 
+  @Override
+  public int compareTo ( Name other ) {
+    if ( this == other ) return 0;
+    return CharSequence.compare ( path, other.path () );
+  }
+
   /// Returns the cached Optional wrapper. No allocation per call —
   /// the Optional was built once at construction. This makes the default
   /// Extent methods (iterator, within, compareTo, foldTo, ...) efficient.

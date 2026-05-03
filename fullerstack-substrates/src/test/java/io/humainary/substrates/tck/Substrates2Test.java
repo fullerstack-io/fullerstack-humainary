@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -1314,7 +1315,7 @@ class Substrates2Test implements Substrates {
       final var circuit = cortex.circuit ();
       try {
         final var conduit = circuit.conduit ( Integer.class );
-        final var count = new java.util.concurrent.atomic.AtomicInteger ( 0 );
+        final var count = new AtomicInteger ( 0 );
 
         var subscription = conduit.subscribe (
           circuit.subscriber (
@@ -1579,8 +1580,8 @@ class Substrates2Test implements Substrates {
       final var cortex = Substrates.cortex ();
       final var circuit = cortex.circuit ();
       try {
-        final var callbackCount = new java.util.concurrent.atomic.AtomicInteger ( 0 );
-        final var emissionCount = new java.util.concurrent.atomic.AtomicInteger ( 0 );
+        final var callbackCount = new AtomicInteger ( 0 );
+        final var emissionCount = new AtomicInteger ( 0 );
         final var conduit = circuit.conduit ( Integer.class );
         final var latch = new CountDownLatch ( 1 );
 

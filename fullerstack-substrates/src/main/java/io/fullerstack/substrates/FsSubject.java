@@ -109,7 +109,7 @@ public final class FsSubject < S extends Substrate < S > > implements Subject < 
     if ( other instanceof FsSubject < ? > fs ) {
       return Long.compare ( this.id.value (), fs.id.value () );
     }
-    return Subject.super.compareTo ( other );
+    return name ().compareTo ( other.name () );
   }
 
   /// Finds the circuit ancestor in the subject hierarchy.

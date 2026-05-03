@@ -9,7 +9,7 @@ Substrates is a runtime for observable, event-driven systems where every emissio
 | **API** | [Humainary Substrates 1.0.0](https://github.com/humainary-io/substrates-api-java) |
 | **Spec** | [Substrates API Specification](https://github.com/humainary-io/substrates-api-spec) |
 | **Serventis** | [Humainary Serventis 1.0.0](https://github.com/humainary-io/serventis-api-java) (semiotic observability) |
-| **Implementation** | `io.fullerstack:fullerstack-substrates:2.3.0-RC1` |
+| **Implementation** | `io.fullerstack:fullerstack-substrates:2.4.0-RC1` |
 | **Java** | 26 (Virtual Threads + Preview Features) |
 | **Tests** | 722 passing (274 contract + 448 TCK) |
 | **License** | Apache 2.0 |
@@ -22,7 +22,7 @@ The artifact is published to [GitHub Packages](https://github.com/fullerstack-io
 <dependency>
     <groupId>io.fullerstack</groupId>
     <artifactId>fullerstack-substrates</artifactId>
-    <version>2.3.0-RC1</version>
+    <version>2.4.0-RC1</version>
 </dependency>
 ```
 
@@ -66,7 +66,7 @@ The artifact lives in [GitHub Packages](https://github.com/fullerstack-io/fuller
   <dependency>
     <groupId>io.fullerstack</groupId>
     <artifactId>fullerstack-substrates</artifactId>
-    <version>2.3.0-RC1</version>
+    <version>2.4.0-RC1</version>
   </dependency>
 </dependencies>
 ```

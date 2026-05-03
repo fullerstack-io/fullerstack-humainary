@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -311,7 +312,7 @@ final class CircuitTest
 
           latch.countDown ();
 
-        } catch ( final java.lang.Exception ignored ) {
+        } catch ( final Exception ignored ) {
         }
       } );
 
@@ -902,7 +903,7 @@ final class CircuitTest
         );
 
         // Verify each channel is unique
-        final var uniqueChannels = new java.util.HashSet <> ( channels.values () );
+        final var uniqueChannels = new HashSet <> ( channels.values () );
         assertEquals (
           100,
           uniqueChannels.size (),

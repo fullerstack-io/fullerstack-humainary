@@ -7,6 +7,7 @@ import io.humainary.substrates.api.Substrates.NotNull;
 import io.humainary.substrates.api.Substrates.Pipe;
 import io.humainary.substrates.api.Substrates.Provided;
 import io.humainary.substrates.api.Substrates.Receptor;
+import io.humainary.substrates.api.Substrates.Subject;
 
 import java.util.Comparator;
 import java.util.Objects;
@@ -122,7 +123,7 @@ public final class FsFiber < E > implements Fiber < E > {
         chain.accept ( emission );
       }
       @Override
-      public io.humainary.substrates.api.Substrates.Subject < Pipe < E > > subject () {
+      public Subject < Pipe < E > > subject () {
         return target.subject ();
       }
     };

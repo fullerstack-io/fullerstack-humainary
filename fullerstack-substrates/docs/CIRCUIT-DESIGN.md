@@ -251,7 +251,7 @@ For non-STEM channels, `cascadeDispatch == dispatch`. For STEM channels, `cascad
 
 ## Part 5: Diagnostics
 
-`FsCircuit.stats()` returns a `CircuitStats` snapshot of internal counters. **Fullerstack-internal**, not part of the Substrates API or any stability contract — used by our own JMH `@TearDown` to surface ingress drain count, transit drain count, transit enqueue count, entries processed, transit ring capacity, transit grow count, and rebuild count alongside benchmark scores. Counters are written by the worker thread with volatile semantics; readers from any thread observe values via the volatile read.
+`Circuit.pulse()` (Substrates 2.4) returns an `Optional<Pulse>` snapshot of a no-op probe's round-trip through the ingress queue, exposing four timestamps (start / enqueued / dequeued / stop) for supervisory observers. See `FsCircuit.pulse()` and the `PulseProbe` inner class — the spec-level diagnostic surface. We previously carried a `CircuitStats` record with internal queue/drain counters; that has been removed since `Pulse` provides representative timing without polluting the per-emission hot path with counter writes.
 
 The `FsCircuitMarkerInvariantTest` structural tests assert that `AwaitMarker`, `CloseMarker`, `CircuitJob`, and `ReceptorAdapter` remain distinct concrete classes — collapsing any of these into a shared base reintroduces a bimorphic call-site profile on `r.accept(v)` in the drain loop and regresses `PipeOps.async_emit_batch_await` from ~22 ns to ~30+ ns.
 

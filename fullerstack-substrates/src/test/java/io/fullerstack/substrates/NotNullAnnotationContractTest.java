@@ -8,6 +8,12 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
 import io.humainary.substrates.api.Substrates.Cortex;
+import io.humainary.substrates.api.Substrates.Pipe;
+import io.humainary.substrates.api.Substrates.Receptor;
+import io.humainary.substrates.api.Substrates.Registrar;
+import io.humainary.substrates.api.Substrates.Subject;
+
+import java.util.function.BiConsumer;
 
 /// Tests for the @NotNull annotation contract.
 ///
@@ -80,7 +86,7 @@ class NotNullAnnotationContractTest {
       var circuit = cortex ().circuit ();
       try {
         assertThrows ( NullPointerException.class,
-          () -> circuit.pipe ( (io.humainary.substrates.api.Substrates.Receptor < ? >) null ) );
+          () -> circuit.pipe ( (Receptor < ? >) null ) );
       } finally {
         circuit.close ();
       }
@@ -105,7 +111,8 @@ class NotNullAnnotationContractTest {
       var circuit = cortex.circuit ();
       try {
         assertThrows ( NullPointerException.class,
-          () -> circuit.subscriber ( cortex.name ( "s" ), null ) );
+          () -> circuit.subscriber ( cortex.name ( "s" ),
+            (BiConsumer < ? super Subject < Pipe < Object > >, ? super Registrar < Object > >) null ) );
       } finally {
         circuit.close ();
       }

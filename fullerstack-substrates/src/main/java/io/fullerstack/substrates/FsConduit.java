@@ -1,6 +1,7 @@
 package io.fullerstack.substrates;
 
 import io.humainary.substrates.api.Substrates.Conduit;
+import io.humainary.substrates.api.Substrates.Fault;
 import io.humainary.substrates.api.Substrates.Fiber;
 import io.humainary.substrates.api.Substrates.Flow;
 import io.humainary.substrates.api.Substrates.Idempotent;
@@ -161,13 +162,22 @@ public final class FsConduit < E > implements Conduit < E > {
   @Queued
   @Override
   public Subscription subscribe (
+    @NotNull Subscriber < E > subscriber ) {
+    return subscribe ( subscriber, ignored -> { } );
+  }
+
+  @New
+  @NotNull
+  @Queued
+  @Override
+  public Subscription subscribe (
     @NotNull Subscriber < E > subscriber,
     @NotNull @Queued Consumer < ? super Subscription > onClose ) {
 
     FsSubject < ? > subSubject = (FsSubject < ? >) subscriber.subject ();
     FsSubject < ? > subscriberCircuit = subSubject.findCircuitAncestor ();
     if ( subscriberCircuit != null && subscriberCircuit != circuit.subject () ) {
-      throw new FsFault ( "Subscriber belongs to a different circuit" );
+      throw new Fault ( subject, "subscribe", "Subscriber belongs to a different circuit" );
     }
 
     FsSubscriber < E > fs = (FsSubscriber < E >) subscriber;

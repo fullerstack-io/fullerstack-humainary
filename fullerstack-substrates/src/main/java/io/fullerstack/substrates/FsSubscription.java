@@ -1,11 +1,13 @@
 package io.fullerstack.substrates;
 
 import io.humainary.substrates.api.Substrates.Idempotent;
-import io.humainary.substrates.api.Substrates.Queued;
 import io.humainary.substrates.api.Substrates.Name;
 import io.humainary.substrates.api.Substrates.Provided;
+import io.humainary.substrates.api.Substrates.Queued;
 import io.humainary.substrates.api.Substrates.Subject;
 import io.humainary.substrates.api.Substrates.Subscription;
+
+import java.util.function.Consumer;
 
 /// A cancellable handle representing an active subscription to a source.
 ///
@@ -34,7 +36,7 @@ public final class FsSubscription implements Subscription {
   private final Runnable onClose;
 
   /// User-supplied close callback — fires exactly once when subscription terminates.
-  private final java.util.function.Consumer < ? super Subscription > onCloseCallback;
+  private final Consumer < ? super Subscription > onCloseCallback;
 
   /// Whether this subscription has been closed.
   private volatile boolean closed;
@@ -55,7 +57,7 @@ public final class FsSubscription implements Subscription {
   /// @param onClose         action to run when subscription is closed (internal cleanup)
   /// @param onCloseCallback user-supplied callback fired exactly once on termination, or null
   FsSubscription ( Name name, FsSubject < ? > parent, Runnable onClose,
-                   java.util.function.Consumer < ? super Subscription > onCloseCallback ) {
+                   Consumer < ? super Subscription > onCloseCallback ) {
     this.name = name;
     this.parent = parent;
     this.onClose = onClose;

@@ -1,6 +1,6 @@
 # Benchmark Comparison: Fullerstack vs Humainary Substrates
 
-**Substrates/Serventis 2.3.0** · `io.fullerstack:fullerstack-substrates:2.3.0-RC1`
+**Substrates/Serventis 2.4.0** · `io.fullerstack:fullerstack-substrates:2.4.0-RC1`
 
 Full pre-2.3 → post-audit comparison for every JMH benchmark. Measured on a Codespaces 2-vCPU host with `-f 1 -wi 3 -i 5 -w 2s -r 2s -tu ns -bm avgt`. Numbers vary ±10-30% iteration-to-iteration on this host — group-level patterns and large deltas are more meaningful than any single number.
 

@@ -6,6 +6,8 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import java.util.Set;
+
 /// Structural test for the marker-class invariant documented in
 /// {@code FsCircuit.java}. Each marker class must have {@link Object} as its
 /// direct superclass — adding a shared base reintroduces a bimorphic profile
@@ -47,7 +49,7 @@ class FsCircuitMarkerInvariantTest {
       FsCircuit.CircuitJob.class,
       FsCircuit.ReceptorAdapter.class
     };
-    assertEquals ( 4, java.util.Set.of ( markers ).size (),
+    assertEquals ( 4, Set.of ( markers ).size (),
       "marker classes must be distinct — merging any two reintroduces a bimorphic profile on the dispatch hot path" );
   }
 }

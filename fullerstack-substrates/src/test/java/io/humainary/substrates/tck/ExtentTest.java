@@ -38,60 +38,11 @@ final class ExtentTest {
   // Test Implementation
   // ===========================
 
-  @SuppressWarnings ( "EqualsWithItself" )
-  @Test
-  void testCompareTo () {
-
-    final var a = TestExtent.root ( "a" );
-    final var b = TestExtent.root ( "b" );
-    final var c = TestExtent.root ( "c" );
-
-    assertTrue ( a.compareTo ( b ) < 0 );
-    assertTrue ( c.compareTo ( b ) > 0 );
-    assertEquals ( 0, a.compareTo ( a ) );
-
-  }
+  // Note: Extent no longer extends Comparable in 2.4 — compareTo tests removed.
 
   // ===========================
   // Basic Extent Tests
   // ===========================
-
-  @SuppressWarnings ( "DataFlowIssue" )
-  @Test
-  void testCompareToNullThrows () {
-
-    final var extent = TestExtent.root ( "test" );
-
-    assertThrows (
-      NullPointerException.class,
-      () -> extent.compareTo ( null )
-    );
-
-  }
-
-  @Test
-  void testCompareToSameHierarchy () {
-
-    final var root1 = TestExtent.root ( "root" );
-    final var child1 = root1.child ( "child" );
-
-    final var root2 = TestExtent.root ( "root" );
-    final var child2 = root2.child ( "child" );
-
-    assertEquals ( 0, child1.compareTo ( child2 ) );
-
-  }
-
-  @Test
-  void testCompareToWithHierarchy () {
-
-    final var root = TestExtent.root ( "root" );
-    final var child = root.child ( "child" );
-
-    assertTrue ( root.compareTo ( child ) < 0 );
-    assertTrue ( child.compareTo ( root ) > 0 );
-
-  }
 
   /// Validates consistency across all traversal mechanisms: depth, stream, fold, iterator.
   ///
