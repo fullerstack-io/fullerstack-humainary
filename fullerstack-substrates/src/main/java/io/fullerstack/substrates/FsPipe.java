@@ -1,90 +1,86 @@
 package io.fullerstack.substrates;
 
-import jdk.internal.vm.annotation.Stable;
-
-import java.util.function.Consumer;
-
-import io.humainary.substrates.api.Substrates.Name;
 import io.humainary.substrates.api.Substrates.NotNull;
 import io.humainary.substrates.api.Substrates.Pipe;
 import io.humainary.substrates.api.Substrates.Provided;
 import io.humainary.substrates.api.Substrates.Subject;
 
-/**
- * Pipe implementation with direct circuit emission.
- *
- * <p>Routes emissions directly to circuit:
- * <ul>
- *   <li>External threads → circuit.submitIngress()
- *   <li>Worker thread → circuit.submitTransit()
- * </ul>
- */
+import java.util.function.Consumer;
+
+import static java.util.Objects.requireNonNull;
+
+/// Pipe — the emission carrier.
+///
+/// Holds a receiver and a circuit. emit(v) enqueues [receiver, v]
+/// to the circuit's queue. That's it.
+///
+/// The receiver is typically a Channel (for conduit pipes) but can be
+/// any Consumer<Object> (flow receivers, receptor adapters).
+///
+/// pipe.pipe(flow) creates a new pipe whose receiver runs the flow
+/// chain on the circuit thread, then delivers to the original target.
 @Provided
 public final class FsPipe < E > implements Pipe < E > {
 
-  @Stable private final Consumer < Object > receiver;
-  @Stable private final FsCircuit           circuit;
-  @Stable private final Thread              worker;
-  @Stable private final Name                name;
-  @Stable private final FsSubject < ? >     parentSubject;
+  private final Consumer < Object > receiver;
+  private final FsCircuit           circuit;
 
   private volatile Subject < Pipe < E > > subject;
 
-  FsPipe (
-    Name name,
-    FsCircuit circuit,
-    FsSubject < ? > parentSubject,
-    Consumer < Object > receiver
-  ) {
+  /// Conduit pipe constructor — receiver is a channel.
+  FsPipe ( FsChannel < E > channel, FsCircuit circuit ) {
+    this.receiver = channel;
+    this.circuit = circuit;
+  }
+
+  /// General constructor — for flow pipes, circuit.pipe(receptor), etc.
+  FsPipe ( Consumer < Object > receiver, FsCircuit circuit ) {
     this.receiver = receiver;
     this.circuit = circuit;
-    this.worker = circuit.worker ();
-    this.name = name;
-    this.parentSubject = parentSubject;
   }
 
   @Override
-  public final Subject < Pipe < E > > subject () {
+  public Subject < Pipe < E > > subject () {
     Subject < Pipe < E > > s = subject;
     if ( s == null ) {
-      Name actualName = ( name != null ) ? name : parentSubject.name ();
-      s = new FsSubject <> ( actualName, parentSubject, Pipe.class );
+      // Derive subject from receiver if it's a channel
+      @SuppressWarnings ( "unchecked" )
+      Subject < Pipe < E > > derived = ( receiver instanceof FsChannel < ? > ch )
+        ? (Subject < Pipe < E > >) (Subject < ? >) ch.subject ()
+        : new FsSubject <> ( null, null, Pipe.class );
+      s = derived;
       subject = s;
     }
     return s;
   }
 
-  final Name name () {
-    return name;
-  }
-
-  final FsCircuit circuit () {
-    return circuit;
-  }
-
-  final Consumer < Object > receiver () {
+  Consumer < Object > receiver () {
     return receiver;
   }
 
-  /**
-   * Returns true if caller is on this pipe's circuit thread.
-   * Used to determine if receiver can be extracted safely (same circuit)
-   * or if emit() must be used (cross-circuit).
-   */
-  @jdk.internal.vm.annotation.ForceInline
-  final boolean isOnCircuitThread () {
-    return Thread.currentThread () == worker;
+  FsCircuit circuit () {
+    return circuit;
   }
 
+  // ─── Emit ───
+
+  /// Routes the emission per SPEC §5.3 dual-queue model:
+  /// - External threads → ingress queue (shared, MPSC)
+  /// - Circuit/worker thread (cascade re-entry from within processing) → transit
+  ///   queue (single-thread, takes priority over ingress)
+  ///
+  /// Cascade priority is the spec's mechanism for ensuring effects of an emission
+  /// resolve before the next external input is processed.
   @Override
   @jdk.internal.vm.annotation.ForceInline
-  public final void emit ( @NotNull final E emission ) {
-    java.util.Objects.requireNonNull ( emission, "emission must not be null" );
+  public void emit ( @NotNull E emission ) {
+    requireNonNull ( emission, "emission must not be null" );
     if ( circuit.closed ) return;
-    if ( isOnCircuitThread () ) {
+    if ( Thread.currentThread () == circuit.worker () ) {
       circuit.submitTransit ( receiver, emission );
     } else {
       circuit.submitIngress ( receiver, emission );
     }
   }
+
 }

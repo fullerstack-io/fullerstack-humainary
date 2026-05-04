@@ -54,3 +54,5 @@ client-demos/
 .claude/
 .hive-mind/
 .swarm/
+substrates-api-spec/
+io.humainary.*-AverageTime/

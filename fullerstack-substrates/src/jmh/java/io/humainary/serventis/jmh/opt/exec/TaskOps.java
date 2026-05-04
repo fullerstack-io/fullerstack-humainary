@@ -34,7 +34,7 @@ public class TaskOps implements Substrates {
 
   private Cortex                 cortex;
   private Circuit                circuit;
-  private Conduit < Task, Sign > conduit;
+  private Conduit < Sign > conduit;
   private Task                   task;
   private Name                   name;
 
@@ -266,11 +266,11 @@ public class TaskOps implements Substrates {
 
     conduit =
       circuit.conduit (
-        Tasks::composer
+        Sign.class
       );
 
     task =
-      conduit.percept (
+      Tasks.pool ( conduit ).get (
         name
       );
 
@@ -299,7 +299,7 @@ public class TaskOps implements Substrates {
   public Task task_from_conduit () {
 
     return
-      conduit.percept (
+      Tasks.pool ( conduit ).get (
         name
       );
 
@@ -309,7 +309,7 @@ public class TaskOps implements Substrates {
   @OperationsPerInvocation ( BATCH_SIZE )
   public Task task_from_conduit_batch () {
     Task result = null;
-    for ( var i = 0; i < BATCH_SIZE; i++ ) result = conduit.percept ( name );
+    for ( var i = 0; i < BATCH_SIZE; i++ ) result = Tasks.pool ( conduit ).get ( name );
     return result;
   }
 

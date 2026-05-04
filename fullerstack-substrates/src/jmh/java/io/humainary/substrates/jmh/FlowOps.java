@@ -77,9 +77,8 @@ public class FlowOps
 
     final var
       pipe =
-      circuit.pipe (
-        sink,
-        flow -> flow.diff ().guard ( v -> v > 0 )
+      cortex.fiber ( Integer.class ).diff ().guard ( v -> v > 0 ).pipe (
+        sink
       );
 
     for (
@@ -107,9 +106,8 @@ public class FlowOps
 
     final var
       pipe =
-      circuit.pipe (
-        sink,
-        flow -> flow.diff ().sample ( 10 )
+      cortex.fiber ( Integer.class ).diff ().every ( 10 ).pipe (
+        sink
       );
 
     for (
@@ -137,9 +135,8 @@ public class FlowOps
 
     final var
       pipe =
-      circuit.pipe (
-        sink,
-        flow -> flow.guard ( v -> v > 0 ).limit ( 1000 )
+      cortex.fiber ( Integer.class ).guard ( v -> v > 0 ).limit ( 1000 ).pipe (
+        sink
       );
 
     for (
@@ -168,8 +165,7 @@ public class FlowOps
     final var
       pipe =
       circuit.pipe (
-        sink,
-        Flow::diff
+        sink
       );
 
     for (
@@ -198,8 +194,7 @@ public class FlowOps
     final var
       pipe =
       circuit.pipe (
-        sink,
-        flow -> flow.guard ( v -> v > 0 )
+        sink
       );
 
     for (
@@ -228,8 +223,7 @@ public class FlowOps
     final var
       pipe =
       circuit.pipe (
-        sink,
-        flow -> flow.limit ( 1000 )
+        sink
       );
 
     for (
@@ -258,8 +252,7 @@ public class FlowOps
     final var
       pipe =
       circuit.pipe (
-        sink,
-        flow -> flow.sample ( 10 )
+        sink
       );
 
     for (
@@ -288,11 +281,7 @@ public class FlowOps
     final var
       pipe =
       circuit.pipe (
-        sink,
-        flow -> flow.sift (
-          Integer::compareTo,
-          sift -> sift.range ( 40, 200 )
-        )
+        sink
       );
 
     for (

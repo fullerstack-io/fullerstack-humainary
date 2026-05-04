@@ -1,36 +1,38 @@
 package io.fullerstack.substrates;
 
+import static io.humainary.substrates.api.Substrates.cortex;
 import static java.util.Objects.requireNonNull;
 
-import io.humainary.substrates.api.Substrates.Channel;
 import io.humainary.substrates.api.Substrates.Circuit;
-import io.humainary.substrates.api.Substrates.Composer;
 import io.humainary.substrates.api.Substrates.Conduit;
-import io.humainary.substrates.api.Substrates.Configurer;
+import io.humainary.substrates.api.Substrates.Current;
+import io.humainary.substrates.api.Substrates.Fiber;
 import io.humainary.substrates.api.Substrates.Flow;
 import io.humainary.substrates.api.Substrates.Idempotent;
 import io.humainary.substrates.api.Substrates.Name;
 import io.humainary.substrates.api.Substrates.New;
 import io.humainary.substrates.api.Substrates.NotNull;
-import io.humainary.substrates.api.Substrates.Percept;
 import io.humainary.substrates.api.Substrates.Pipe;
 import io.humainary.substrates.api.Substrates.Provided;
+import io.humainary.substrates.api.Substrates.Pulse;
 import io.humainary.substrates.api.Substrates.Queued;
 import io.humainary.substrates.api.Substrates.Receptor;
 import io.humainary.substrates.api.Substrates.Registrar;
 import io.humainary.substrates.api.Substrates.Reservoir;
+import io.humainary.substrates.api.Substrates.Routing;
 import io.humainary.substrates.api.Substrates.State;
 import io.humainary.substrates.api.Substrates.Subject;
 import io.humainary.substrates.api.Substrates.Subscriber;
 import io.humainary.substrates.api.Substrates.Subscription;
+import io.humainary.substrates.api.Substrates.Tap;
 
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.VarHandle;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.locks.LockSupport;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
+import java.util.function.Function;
 
 /**
  * Single-digit nanosecond latency Substrates Circuit implementation.
@@ -73,21 +75,39 @@ public final class FsCircuit implements Circuit {
   // 1μs: on virtual threads this is just an FJP reschedule, no carrier blocking.
   private static final long PARK_NANOS = 1_000L;
 
+  // Spin iterations the awaiter performs before falling back to park().
+  // The marker fires within ~2µs in the common case (worker self-wakes every
+  // PARK_NANOS, drains, fires marker). Spinning catches the signal without
+  // paying the ~5-15µs virtual-thread park/unpark round-trip.
+  //
+  // Tuned via sweep — 500 falls below the cliff (shallow cyclic_emit_await
+  // regresses 10ns/op), 1000 catches the marker, 5000+ wastes ~3ns/op on
+  // deep-cascade awaits (140µs cascades the spin can never catch). For real
+  // awaits (rare — tests, shutdown, bridges), the spin cost is negligible.
+  private static final int AWAIT_SPIN_COUNT = 1_000;
+
 
   // ─────────────────────────────────────────────────────────────────────────────
   // Circuit state (read-only after construction)
   // ─────────────────────────────────────────────────────────────────────────────
 
-  private final Subject < Circuit >           subject;
-  private final List < Subscriber < State > > subscribers;
-  private final Thread                        worker;
+  private final Subject < Circuit > subject;
+  private final Thread              worker;
+
+  /// Internal conduit for State emissions — lazy, created on first Source<State> operation.
+  /// Backs circuit.subscribe(State), circuit.tap(), and circuit.reservoir().
+  private volatile FsConduit < State > stateConduit;
+
+  /// 2.4: lazily-initialised Current for this circuit's execution context.
+  /// Must remain stable for the circuit's lifetime (spec §11.3).
+  private volatile Current circuitCurrent;
 
   // ─────────────────────────────────────────────────────────────────────────────
   // Queue infrastructure
   // ─────────────────────────────────────────────────────────────────────────────
 
-  private final IngressQueue ingress = new IngressQueue ();
-  private final TransitQueue transit = new TransitQueue ();
+  private final IngressQueue     ingress = new IngressQueue ();
+  private final TransitQueueRing transit = new TransitQueueRing ();
 
   // ─────────────────────────────────────────────────────────────────────────────
   // Synchronization state
@@ -104,7 +124,7 @@ public final class FsCircuit implements Circuit {
   // Set when close() is called to reject new emissions
   volatile boolean closed;
 
-  // Pre-allocated marker receivers — ReceptorReceiver wrapping marker lambdas.
+  // Pre-allocated marker receivers — ReceptorAdapter wrapping marker lambdas.
   // Drain loop splits the call site: isMarker() identity check routes markers
   // to fireMarker() (cold, separate type profile), keeping the hot-path
   // r.accept(v) and receptor.receive() fully monomorphic — zero class_check traps.
@@ -112,26 +132,96 @@ public final class FsCircuit implements Circuit {
   private final Consumer < Object > closeMarkerReceiver;
 
   // ─────────────────────────────────────────────────────────────────────────────
-  // ReceptorReceiver - Concrete class for JIT devirtualization/inlining
+  // ReceptorAdapter — wraps a user Receptor in a Consumer<Object>.
+  //
+  // Hot path: ingress/transit drain → r.accept(v) → receptor.receive(v).
+  // Used ONLY for user receptors (circuit.pipe(receptor) and friends).
+  // Markers and circuit jobs use distinct concrete classes below so the
+  // bci=5 receptor.receive call site here stays monomorphic per circuit.
   // ─────────────────────────────────────────────────────────────────────────────
 
-  /**
-   * Concrete Consumer wrapper for receptors.
-   * Using a named class instead of a lambda allows the JIT to:
-   * 1. Devirtualize the accept() call (lambda has invokedynamic overhead)
-   * 2. Inline the receptor.receive() call when the receptor type is known
-   */
-  static final class ReceptorReceiver < E > implements Consumer < Object > {
+  @SuppressWarnings ( "unchecked" )
+  static final class ReceptorAdapter < E > implements Consumer < Object >, Receptor < E > {
     final Receptor < ? super E > receptor;
 
-    ReceptorReceiver ( Receptor < ? super E > receptor ) {
+    ReceptorAdapter ( Receptor < ? super E > receptor ) {
       this.receptor = receptor;
     }
 
     @Override
-    @SuppressWarnings ( "unchecked" )
     public void accept ( Object o ) {
       receptor.receive ( (E) o );
+    }
+
+    @Override
+    public void receive ( E emission ) {
+      receptor.receive ( emission );
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Marker classes — DO NOT COLLAPSE.
+  //
+  // AwaitMarker, CloseMarker, CircuitJob, and ReceptorAdapter (above) are
+  // deliberately separate concrete classes, each with a distinct .accept()
+  // body. Each call site in the dispatch chain only ever sees ONE of these
+  // class types, which keeps every site monomorphic in the JIT type profile:
+  //
+  //   ReceptorAdapter.accept → receptor.receive   (user emissions, hot path)
+  //   AwaitMarker.accept     → circuit.onAwaitMarker
+  //   CloseMarker.accept     → circuit.onCloseMarker
+  //   CircuitJob.accept      → action.run         (subscribe / unsubscribe etc.)
+  //
+  // Collapsing any of these into a shared base reintroduces a bimorphic (or
+  // worse) call-site profile on r.accept(v) in the drain loop. HotSpot then
+  // emits a class_check trap that deoptimizes the inlined receptor chain,
+  // regressing PipeOps.async_emit_batch_await from ~22 ns to ~30+ ns.
+  //
+  // Canary benchmark: io.humainary.substrates.jmh.PipeOps.async_emit_batch_await
+  // Structural test:  FsCircuitMarkerInvariantTest
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  /// Await marker — delivered through the ingress queue and routed to
+  /// {@link FsCircuit#onAwaitMarker(Object)} via isMarker() identity check.
+  static final class AwaitMarker implements Consumer < Object > {
+    final FsCircuit circuit;
+    AwaitMarker ( FsCircuit circuit ) { this.circuit = circuit; }
+    @Override public void accept ( Object o ) { circuit.onAwaitMarker ( o ); }
+  }
+
+  /// Close marker — delivered through the ingress queue and routed to
+  /// {@link FsCircuit#onCloseMarker(Object)} via isMarker() identity check.
+  static final class CloseMarker implements Consumer < Object > {
+    final FsCircuit circuit;
+    CloseMarker ( FsCircuit circuit ) { this.circuit = circuit; }
+    @Override public void accept ( Object o ) { circuit.onCloseMarker ( o ); }
+  }
+
+  /// Generic one-shot circuit job — wraps a Runnable for ingress dispatch.
+  /// Used by FsConduit subscribe/unsubscribe and similar circuit-thread-only work.
+  /// Distinct compiled body keeps the action.run() call site separate from
+  /// ReceptorAdapter.accept's receptor.receive() call site.
+  static final class CircuitJob implements Consumer < Object > {
+    final Runnable action;
+    CircuitJob ( Runnable action ) { this.action = action; }
+    @Override public void accept ( Object o ) { action.run (); }
+  }
+
+  /// Pulse probe — single-use diagnostic carrier (spec §5.7, 2.4).
+  /// Stamps `dequeued` on the worker thread and unparks the caller.
+  /// Distinct concrete class so it doesn't pollute ReceptorAdapter's call-site profile.
+  static final class PulseProbe implements Consumer < Object > {
+    final Thread caller;
+    volatile long dequeued;
+
+    PulseProbe ( Thread caller ) {
+      this.caller = caller;
+    }
+
+    @Override
+    public void accept ( Object ignored ) {
+      dequeued = System.nanoTime ();   // volatile write publishes the timestamp
+      LockSupport.unpark ( caller );
     }
   }
 
@@ -141,16 +231,12 @@ public final class FsCircuit implements Circuit {
 
   public FsCircuit ( Subject < Circuit > subject ) {
     this.subject = subject;
-    this.subscribers = new ArrayList <> ();
 
-    // Pre-allocate marker receivers as ReceptorReceiver instances.
-    // Drain loop uses isMarker() identity check to route markers to
-    // fireMarker() (cold path, separate type profile). Hot-path
-    // r.accept(v) → receptor.receive() stays fully monomorphic.
-    Receptor < Object > awaitReceptor = this::onAwaitMarker;
-    this.awaitMarkerReceiver = new ReceptorReceiver <> ( awaitReceptor );
-    Receptor < Object > closeReceptor = this::onCloseMarker;
-    this.closeMarkerReceiver = new ReceptorReceiver <> ( closeReceptor );
+    // Pre-allocate marker receivers as concrete classes — distinct types
+    // from ReceptorAdapter so the hot-path r.accept(v) → receptor.receive()
+    // call site stays monomorphic when only user receptors flow through it.
+    this.awaitMarkerReceiver = new AwaitMarker ( this );
+    this.closeMarkerReceiver = new CloseMarker ( this );
 
     // Create and start worker thread
     this.worker = Thread.ofVirtual ()
@@ -191,7 +277,7 @@ public final class FsCircuit implements Circuit {
   }
 
   /**
-   * Drain all queued cascade emissions. Delegates to TransitQueue.
+   * Drain all queued cascade emissions. Delegates to TransitQueueRing.
    */
   @jdk.internal.vm.annotation.ForceInline
   boolean drainTransit () {
@@ -201,7 +287,7 @@ public final class FsCircuit implements Circuit {
   /**
    * Identity check: is this receiver a marker (await/close)?
    * Splits the call site so the hot path {@code r.accept(v)} only
-   * ever sees regular ReceptorReceivers — monomorphic, no class_check traps.
+   * ever sees regular ReceptorAdapters — monomorphic, no class_check traps.
    */
   @jdk.internal.vm.annotation.ForceInline
   boolean isMarker ( Consumer < Object > r ) {
@@ -262,13 +348,9 @@ public final class FsCircuit implements Circuit {
   // Pipe Factory Helper
   // ─────────────────────────────────────────────────────────────────────────────
 
-  private < E > FsPipe < E > newPipe ( Name name, Consumer < Object > receiver ) {
-    return new FsPipe <> ( name, this, (FsSubject < ? >) subject, receiver );
-  }
-
-  /** Package-private pipe factory for FsChannel, FsConduit, FsFlow */
-  < E > FsPipe < E > createPipe ( Name name, FsSubject < ? > parent, Consumer < Object > receiver ) {
-    return new FsPipe <> ( name, this, parent, receiver );
+  /// Creates a pipe wrapping a receptor adapter.
+  private < E > FsPipe < E > newPipe ( Receptor < ? super E > receptor ) {
+    return new FsPipe <> ( new ReceptorAdapter <> ( receptor ), this );
   }
 
 
@@ -279,6 +361,29 @@ public final class FsCircuit implements Circuit {
   @Override
   public Subject < Circuit > subject () {
     return subject;
+  }
+
+  /// 2.4: Returns the Current identifying this circuit's execution context.
+  /// The returned reference MUST remain stable for the circuit's lifetime
+  /// (spec §11.3).
+  @NotNull
+  @Override
+  public Current current () {
+    Current c = circuitCurrent;
+    if ( c == null ) {
+      synchronized ( this ) {
+        c = circuitCurrent;
+        if ( c == null ) {
+          FsSubject < Current > cs = new FsSubject <> (
+            subject.name (),
+            (FsSubject < ? >) subject,
+            Current.class );
+          c = new FsCurrent ( cs );
+          circuitCurrent = c;
+        }
+      }
+    }
+    return c;
   }
 
   @Override
@@ -292,6 +397,35 @@ public final class FsCircuit implements Circuit {
       return;
     }
     awaitImpl ();
+  }
+
+  /// 2.4: Submits a no-op probe through the circuit and returns its timing
+  /// snapshot. Captures four timestamps along the round-trip path: caller
+  /// stamps `start` and `enqueued`, worker stamps `dequeued`, caller stamps
+  /// `stop` after the probe fires. Returns empty when the circuit has
+  /// terminated and the probe could not traverse the queue (spec §5.7).
+  @NotNull
+  @Override
+  public Optional < Pulse > pulse () {
+    if ( Thread.currentThread () == worker ) {
+      throw new IllegalStateException ( "Cannot call Circuit::pulse from within a circuit's thread" );
+    }
+    if ( !worker.isAlive () ) return Optional.empty ();
+
+    PulseProbe probe = new PulseProbe ( Thread.currentThread () );
+    long start = System.nanoTime ();
+    submitIngress ( probe, null );
+    long enqueued = System.nanoTime ();
+
+    LockSupport.unpark ( worker );      // cold path — wake worker promptly
+
+    while ( probe.dequeued == 0L ) {
+      if ( !worker.isAlive () ) return Optional.empty ();
+      LockSupport.parkNanos ( this, 1_000_000L );  // 1 ms termination probe
+    }
+
+    long stop = System.nanoTime ();
+    return Optional.of ( new Pulse ( start, enqueued, probe.dequeued, stop ) );
   }
 
   private void awaitClosed () {
@@ -321,11 +455,18 @@ public final class FsCircuit implements Circuit {
       return;
     }
 
-    // We're the first awaiter - inject marker job (uses pre-allocated ReceptorReceiver)
+    // We're the first awaiter - inject marker job (uses pre-allocated ReceptorAdapter)
     marker ( awaitMarkerReceiver );
 
     // Unpark worker to process marker promptly (cold path)
     LockSupport.unpark ( worker );
+
+    // Spin briefly before parking. Marker fires in single-digit µs in the
+    // common case, faster than a park/unpark round-trip on virtual threads.
+    for ( int i = 0; i < AWAIT_SPIN_COUNT; i++ ) {
+      if ( AWAITER.getOpaque ( this ) != current ) return;
+      Thread.onSpinWait ();
+    }
 
     // Park until marker wakes us (spurious wakeup safe via loop)
     while ( AWAITER.getOpaque ( this ) == current ) {
@@ -382,55 +523,48 @@ public final class FsCircuit implements Circuit {
 
 
   // ===================================================================================
-  // Factory Methods - Conduit
+  // Factory Methods - Conduit (2.0: conduit(Name, Class<E>) — no Composer/Configurer)
   // ===================================================================================
 
   @New
   @NotNull
   @Override
-  public < P extends Percept, E > Conduit < P, E > conduit (
-    @NotNull Name name, @NotNull Composer < E, ? extends P > composer ) {
-    requireNonNull ( name );
-    requireNonNull ( composer );
-    return new FsConduit <> ( (FsSubject < ? >) subject, name, channel -> composer.compose ( channel ), this );
+  public < E > Conduit < E > conduit () {
+    // 2.3: no-arg conduit uses the circuit's own subject name.
+    return new FsConduit <> ( (FsSubject < ? >) subject, subject.name (), this );
   }
 
   @New
   @NotNull
   @Override
-  public < P extends Percept, E > Conduit < P, E > conduit (
-    @NotNull Name name,
-    @NotNull Composer < E, ? extends P > composer,
-    @NotNull Configurer < ? super Flow < E > > configurer ) {
+  public < E > Conduit < E > conduit ( @NotNull Name name, @NotNull Class < E > type ) {
     requireNonNull ( name );
-    requireNonNull ( composer );
-    requireNonNull ( configurer );
-    // Eagerly validate configurer per API contract — exceptions wrapped in Substrates.Exception
-    try {
-      FsFlow < E > validationFlow = new FsFlow <> ( name, this, null );
-      configurer.configure ( validationFlow );
-    } catch ( FsException e ) {
-      throw e;
-    } catch ( RuntimeException e ) {
-      throw new FsException ( "Flow configuration failed", e );
-    }
-    return new FsConduit <> (
-      (FsSubject < ? >) subject, name, channel -> composer.compose ( channel ), this, configurer );
+    requireNonNull ( type );
+    return new FsConduit <> ( (FsSubject < ? >) subject, name, this );
+  }
+
+  @New
+  @NotNull
+  @Override
+  public < E > Conduit < E > conduit ( @NotNull Name name, @NotNull Class < E > type,
+                                       @NotNull Routing routing ) {
+    requireNonNull ( name );
+    requireNonNull ( type );
+    requireNonNull ( routing );
+    return new FsConduit <> ( (FsSubject < ? >) subject, name, this, routing );
   }
 
   // ===================================================================================
-  // Factory Methods - Pipe (without name)
+  // Factory Methods - Pipe
   // ===================================================================================
 
-  /**
-   * Extract receiver for same-circuit FsPipe targets to avoid double-queue.
-   * For cross-circuit targets, wrap with target.emit() as normal.
-   */
-  private < E > Consumer < Object > targetReceiver ( Pipe < ? super E > target ) {
-    if ( target instanceof FsPipe < ? > fsPipe && fsPipe.circuit () == this ) {
-      return fsPipe.receiver ();
-    }
-    return new ReceptorReceiver <> ( target::emit );
+  @New
+  @NotNull
+  @Override
+  public < E > Pipe < E > pipe () {
+    // 2.3: no-arg pipe — queues emissions and discards them on the circuit thread.
+    // Equivalent to circuit.pipe(Receptor.NOOP) but without the wrapper.
+    return newPipe ( v -> { /* no-op */ } );
   }
 
   @New ( conditional = true )
@@ -438,10 +572,12 @@ public final class FsCircuit implements Circuit {
   @Override
   public < E > Pipe < E > pipe ( @NotNull Pipe < E > target ) {
     requireNonNull ( target );
+    // Same-circuit pipe already routes through this circuit — return as-is
     if ( target instanceof FsPipe < E > fsPipe && fsPipe.circuit () == this ) {
       return target;
     }
-    return newPipe ( null, targetReceiver ( target ) );
+    // Cross-circuit: wrap in a receptor pipe that calls target.emit()
+    return newPipe ( target::emit );
   }
 
   @New
@@ -449,130 +585,93 @@ public final class FsCircuit implements Circuit {
   @Override
   public < E > Pipe < E > pipe ( @NotNull Receptor < ? super E > receptor ) {
     requireNonNull ( receptor );
-    return newPipe ( null, new ReceptorReceiver <> ( receptor ) );
-  }
-
-  @New
-  @NotNull
-  @Override
-  public < E > Pipe < E > pipe ( @NotNull Pipe < ? super E > target, @NotNull Configurer < ? super Flow < E > > configurer ) {
-    requireNonNull ( target );
-    requireNonNull ( configurer );
-    Pipe < E > basePipe = newPipe ( null, targetReceiver ( target ) );
-    FsFlow < E > flow = new FsFlow <> ( (Name) null, this, basePipe );
-    configurer.configure ( flow );
-    return flow.pipe ();
-  }
-
-  @New
-  @NotNull
-  @Override
-  public < E > Pipe < E > pipe ( @NotNull Receptor < ? super E > receptor, @NotNull Configurer < ? super Flow < E > > configurer ) {
-    requireNonNull ( receptor );
-    requireNonNull ( configurer );
-    Pipe < E > basePipe = newPipe ( null, new ReceptorReceiver <> ( receptor ) );
-    FsFlow < E > flow = new FsFlow <> ( (Name) null, this, basePipe );
-    configurer.configure ( flow );
-    return flow.pipe ();
+    return newPipe ( receptor );
   }
 
   // ===================================================================================
-  // Factory Methods - Pipe (with name)
+  // Source<State, Circuit> — delegates to internal State conduit
   // ===================================================================================
 
-  @New ( conditional = true )
-  @NotNull
-  @Override
-  public < E > Pipe < E > pipe ( @NotNull Name name, @NotNull Pipe < E > target ) {
-    requireNonNull ( name );
-    requireNonNull ( target );
-    if ( target instanceof FsPipe < E > fsPipe && fsPipe.circuit () == this ) {
-      return target;
+  private FsConduit < State > stateConduit () {
+    FsConduit < State > c = stateConduit;
+    if ( c == null ) {
+      synchronized ( this ) {
+        c = stateConduit;
+        if ( c == null ) {
+          c = new FsConduit <> ( (FsSubject < ? >) subject,
+            cortex ().name ( "circuit.state" ), this );
+          stateConduit = c;
+        }
+      }
     }
-    return newPipe ( name, targetReceiver ( target ) );
+    return c;
   }
 
   @New
   @NotNull
   @Override
-  public < E > Pipe < E > pipe ( @NotNull Name name, @NotNull Receptor < ? super E > receptor ) {
-    requireNonNull ( name );
-    requireNonNull ( receptor );
-    return newPipe ( name, new ReceptorReceiver <> ( receptor ) );
+  public < T > Tap < T > tap ( @NotNull Function < Pipe < T >, Pipe < State > > fn ) {
+    requireNonNull ( fn );
+    return stateConduit ().tap ( fn );
   }
 
   @New
   @NotNull
   @Override
-  public < E > Pipe < E > pipe (
-    @NotNull Name name, @NotNull Pipe < ? super E > target, @NotNull Configurer < ? super Flow < E > > configurer ) {
-    requireNonNull ( name );
-    requireNonNull ( target );
-    requireNonNull ( configurer );
-    Pipe < E > basePipe = newPipe ( name, targetReceiver ( target ) );
-    FsFlow < E > flow = new FsFlow <> ( name, this, basePipe );
-    configurer.configure ( flow );
-    return flow.pipe ();
+  public < T > Tap < T > tap ( @NotNull Flow < State, T > flow ) {
+    requireNonNull ( flow );
+    return stateConduit ().tap ( flow );
   }
 
   @New
   @NotNull
   @Override
-  public < E > Pipe < E > pipe (
-    @NotNull Name name,
-    @NotNull Receptor < ? super E > receptor,
-    @NotNull Configurer < ? super Flow < E > > configurer ) {
-    requireNonNull ( name );
-    requireNonNull ( receptor );
-    requireNonNull ( configurer );
-    Pipe < E > basePipe = newPipe ( name, new ReceptorReceiver <> ( receptor ) );
-    FsFlow < E > flow = new FsFlow <> ( name, this, basePipe );
-    configurer.configure ( flow );
-    return flow.pipe ();
+  public Tap < State > tap ( @NotNull Fiber < State > fiber ) {
+    requireNonNull ( fiber );
+    return stateConduit ().tap ( fiber );
+  }
+
+  @New
+  @NotNull
+  @Override
+  public Subscription subscribe ( @NotNull Subscriber < State > subscriber ) {
+    requireNonNull ( subscriber );
+    return stateConduit ().subscribe ( subscriber );
+  }
+
+  @NotNull
+  @Override
+  public Subscription subscribe ( @NotNull Subscriber < State > subscriber,
+                                  @NotNull @Queued Consumer < ? super Subscription > onClose ) {
+    requireNonNull ( subscriber );
+    requireNonNull ( onClose );
+    return stateConduit ().subscribe ( subscriber, onClose );
+  }
+
+  @New
+  @NotNull
+  @Override
+  public Reservoir < State > reservoir () {
+    return stateConduit ().reservoir ();
   }
 
   // ===================================================================================
-  // Factory Methods - Subscriber
+  // Factory Methods - Subscriber (2.0: Subject<Pipe<E>> instead of Subject<Channel<E>>)
   // ===================================================================================
 
   @New
   @NotNull
   @Override
   public < E > Subscriber < E > subscriber (
-    @NotNull Name name, @NotNull BiConsumer < ? super Subject < Channel < E > >, ? super Registrar < E > > callback ) {
+    @NotNull Name name, @NotNull @Queued BiConsumer < ? super Subject < Pipe < E > >, ? super Registrar < E > > callback ) {
     requireNonNull ( name );
     requireNonNull ( callback );
     return new FsSubscriber <> (
       new FsSubject <> ( name, (FsSubject < ? >) subject, Subscriber.class ), callback );
   }
 
-  // ===================================================================================
-  // Factory Methods - Subscribe & Reservoir
-  // ===================================================================================
+  // 1-arg `subscribe(Subscriber<State>)` is inherited from Source's default impl,
+  // which delegates to the 2-arg subscribe. We don't override it — the previous
+  // override added to a `subscribers` list that nothing read, dropping callbacks.
 
-  @New
-  @NotNull
-  @Queued
-  @Override
-  @SuppressWarnings ( "unchecked" )
-  public Subscription subscribe ( @NotNull Subscriber < State > subscriber ) {
-    requireNonNull ( subscriber );
-    if ( subscriber.subject () instanceof FsSubject < ? > subSubject ) {
-      FsSubject < ? > subscriberCircuit = subSubject.findCircuitAncestor ();
-      if ( subscriberCircuit != null && subscriberCircuit != subject ) {
-        throw new FsException ( "Subscriber belongs to a different circuit" );
-      }
-    }
-    subscribers.add ( subscriber );
-    return new FsSubscription (
-      subject.name (), (FsSubject < ? >) subject, () -> subscribers.remove ( subscriber ) );
-  }
-
-  @New
-  @NotNull
-  @Override
-  @SuppressWarnings ( "unchecked" )
-  public Reservoir < State > reservoir () {
-    return new FsReservoir <> ( (Subject < Reservoir < State > >) (Subject < ? >) subject );
-  }
 }

@@ -32,7 +32,7 @@ public class BreakerOps implements Substrates {
 
   private Cortex                    cortex;
   private Circuit                   circuit;
-  private Conduit < Breaker, Sign > conduit;
+  private Conduit < Sign > conduit;
   private Breaker                   breaker;
   private Name                      name;
 
@@ -44,7 +44,7 @@ public class BreakerOps implements Substrates {
   public Breaker breaker_from_conduit () {
 
     return
-      conduit.percept (
+      Breakers.pool ( conduit ).get (
         name
       );
 
@@ -66,8 +66,8 @@ public class BreakerOps implements Substrates {
       i++
     ) {
       result =
-        conduit.percept (
-          name
+        Breakers.pool ( conduit ).get (
+        name
         );
     }
 
@@ -291,11 +291,11 @@ public class BreakerOps implements Substrates {
 
     conduit =
       circuit.conduit (
-        Breakers::composer
+        Sign.class
       );
 
     breaker =
-      conduit.percept (
+      Breakers.pool ( conduit ).get (
         name
       );
 

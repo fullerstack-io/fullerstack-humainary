@@ -10,7 +10,7 @@ import java.util.function.Consumer;
 ///
 /// @param <R> the resource type
 @Provided
-final class FsClosure < R extends Resource > implements Closure < R > {
+final class FsClosure < R extends Resource < R > > implements Closure < R > {
 
   private final R       resource;
   private final FsScope scope;

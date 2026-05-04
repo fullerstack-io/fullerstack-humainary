@@ -34,7 +34,7 @@ public class ActorOps
 
   private Cortex                  cortex;
   private Circuit                 circuit;
-  private Conduit < Actor, Sign > conduit;
+  private Conduit < Sign > conduit;
   private Actor                   actor;
   private Name                    name;
 
@@ -46,7 +46,7 @@ public class ActorOps
   public Actor actor_from_conduit () {
 
     return
-      conduit.percept (
+      Actors.pool ( conduit ).get (
         name
       );
 
@@ -68,8 +68,8 @@ public class ActorOps
       i++
     ) {
       result =
-        conduit.percept (
-          name
+        Actors.pool ( conduit ).get (
+        name
         );
     }
 
@@ -438,11 +438,11 @@ public class ActorOps
 
     conduit =
       circuit.conduit (
-        Actors::composer
+        Sign.class
       );
 
     actor =
-      conduit.percept (
+      Actors.pool ( conduit ).get (
         name
       );
 

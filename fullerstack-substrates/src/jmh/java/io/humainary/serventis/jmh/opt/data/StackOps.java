@@ -33,7 +33,7 @@ public class StackOps implements Substrates {
 
   private Cortex                  cortex;
   private Circuit                 circuit;
-  private Conduit < Stack, Sign > conduit;
+  private Conduit < Sign > conduit;
   private Stack                   stack;
   private Name                    name;
 
@@ -194,11 +194,11 @@ public class StackOps implements Substrates {
 
     conduit =
       circuit.conduit (
-        Stacks::composer
+        Sign.class
       );
 
     stack =
-      conduit.percept (
+      Stacks.pool ( conduit ).get (
         name
       );
 
@@ -227,7 +227,7 @@ public class StackOps implements Substrates {
   public Stack stack_from_conduit () {
 
     return
-      conduit.percept (
+      Stacks.pool ( conduit ).get (
         name
       );
 
@@ -249,8 +249,8 @@ public class StackOps implements Substrates {
       i++
     ) {
       result =
-        conduit.percept (
-          name
+        Stacks.pool ( conduit ).get (
+        name
         );
     }
 

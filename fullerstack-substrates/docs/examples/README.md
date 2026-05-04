@@ -3,7 +3,7 @@
 Practical examples demonstrating common Substrates usage patterns.
 
 **Implementation:** Fullerstack Substrates (FsCircuit)
-**API Version:** 1.0.0
+**API Version:** Substrates 2.3.0 + Serventis 2.3.0
 **Java Version:** 26 (Virtual Threads + Preview Features)
 
 ## Quick Start Examples
@@ -56,10 +56,7 @@ See the [Architecture Guide](../ARCHITECTURE.md#advanced-patterns) for:
 ### Logging and Monitoring
 
 ```java
-Conduit<Pipe<LogEvent>, LogEvent> logs = circuit.conduit(
-    cortex().name("logs"),
-    Composer.pipe()
-);
+Conduit<LogEvent> logs = circuit.conduit(cortex().name("logs"), LogEvent.class);
 
 // Console logger
 logs.subscribe(consoleSubscriber);
@@ -74,14 +71,17 @@ logs.subscribe(metricsSubscriber);
 ### Event Processing Pipeline
 
 ```java
-Conduit<Pipe<Event>, Event> events = circuit.conduit(
-    cortex().name("events"),
-    Composer.pipe(segment -> segment
-        .guard(e -> e.isValid())        // Filter invalid
-        .replace(e -> e.normalize())     // Normalize
-        .limit(10000)                    // Rate limit
-    )
-);
+// Flow handles type changes; Fiber handles per-emission operators.
+var fiber = cortex().fiber(Event.class)
+    .guard(Event::isValid)        // Filter invalid
+    .replace(Event::normalize)    // Normalize
+    .limit(10_000);               // Rate limit
+
+Conduit<Event> events = circuit.conduit(cortex().name("events"), Event.class);
+
+// Pre-process emissions through the fiber
+Pool<Pipe<Event>> filtered = events.pool(fiber);
+filtered.get(cortex().name("source")).emit(rawEvent);
 ```
 
 ### Hierarchical Resource Cleanup
@@ -100,7 +100,7 @@ try (Scope scope = cortex().scope(cortex().name("request"))) {
 3. **Subscribe early** before emitting to avoid missed events
 4. **Use circuit.await()** to wait for async processing (not Thread.sleep())
 5. **Check Subject.name()** in subscribers for conditional logic
-6. **Cache Pipes** for repeated emissions - don't call conduit.percept() in loops
+6. **Cache Pipes** for repeated emissions - don't call conduit.get() in loops
 7. **Eager thread start** - Virtual thread starts immediately on circuit construction
 
 ## Key Implementation Details

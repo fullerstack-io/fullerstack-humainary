@@ -7,49 +7,55 @@ import io.humainary.substrates.api.Substrates.Registrar;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Consumer;
 
-/// A registrar that collects receptors during subscriber activation.
+/// Registrar — collects consumers during subscriber activation.
 ///
-/// Registered pipes always go through pipe.emit() to preserve the
-/// transit-queue async boundary. This prevents stack overflow in
-/// cyclic emission patterns (subscriber re-emits to same conduit)
-/// by ensuring each re-emission is enqueued rather than inlined.
+/// Everything is Consumer<Object> on the hot path — no lambda wrappers
+/// between the channel dispatch and the flow chain.
 ///
-/// The registrar enforces the @Temporal contract: register() may only
-/// be called during the subscriber callback. After the callback completes,
-/// the registrar is closed and subsequent register() calls throw
-/// IllegalStateException.
-///
-/// @param <E> the emission type
+/// Enforces the @Temporal contract: register() only valid during callback.
 @Provided
 public final class FsRegistrar < E > implements Registrar < E > {
 
-  /// Receptors registered by the subscriber.
-  private final List < Receptor < ? super E > > receptors = new ArrayList <> ();
-
-  /// Temporal enforcement flag — set after callback completes.
+  private final List < Consumer < Object > > consumers = new ArrayList <> ();
   private boolean closed;
 
   @Override
+  @SuppressWarnings ( "unchecked" )
   public void register ( Receptor < ? super E > receptor ) {
     if ( closed ) throw new IllegalStateException ( "Registrar is closed — register() only valid during callback" );
-    receptors.add ( receptor );
-  }
-
-  /// Returns the registered receptors and closes this registrar.
-  public List < Receptor < ? super E > > receptors () {
-    closed = true;
-    return receptors;
+    // Wrap Receptor in Consumer<Object> — this is the cold path (subscriber callback)
+    consumers.add ( v -> receptor.receive ( (E) v ) );
   }
 
   @Override
   public void register ( Pipe < ? super E > pipe ) {
     if ( closed ) throw new IllegalStateException ( "Registrar is closed — register() only valid during callback" );
-    // Always go through pipe.emit() to preserve the transit-queue async
-    // boundary. This ensures cyclic patterns (subscriber re-emits to same
-    // conduit) use queue-based iteration rather than stack recursion.
-    // pipe.emit() routes correctly: submitTransit for same circuit thread,
-    // submitIngress for cross-circuit threads.
-    receptors.add ( pipe::emit );
+    // For FsPipe: store the receiver directly — it's already Consumer<Object>.
+    // No lambda wrapper on the hot path.
+    // For unknown pipes: wrap pipe::emit.
+    if ( pipe instanceof FsPipe < ? > fp ) {
+      consumers.add ( fp.receiver () );
+    } else {
+      consumers.add ( v -> pipe.emit ( (E) v ) );
+    }
+  }
+
+  /// Returns the registered consumers and closes this registrar.
+  public List < Consumer < Object > > consumers () {
+    closed = true;
+    return consumers;
+  }
+
+  /// Legacy accessor — returns consumers as receptors for compatibility.
+  @SuppressWarnings ( "unchecked" )
+  public List < Receptor < ? super E > > receptors () {
+    closed = true;
+    List < Receptor < ? super E > > result = new ArrayList <> ();
+    for ( Consumer < Object > c : consumers ) {
+      result.add ( v -> c.accept ( v ) );
+    }
+    return result;
   }
 }

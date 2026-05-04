@@ -32,7 +32,7 @@ public class GaugeOps implements Substrates {
 
   private Cortex                  cortex;
   private Circuit                 circuit;
-  private Conduit < Gauge, Sign > conduit;
+  private Conduit < Sign > conduit;
   private Gauge                   gauge;
   private Name                    name;
 
@@ -223,7 +223,7 @@ public class GaugeOps implements Substrates {
   public Gauge gauge_from_conduit () {
 
     return
-      conduit.percept (
+      Gauges.pool ( conduit ).get (
         name
       );
 
@@ -245,8 +245,8 @@ public class GaugeOps implements Substrates {
       i++
     ) {
       result =
-        conduit.percept (
-          name
+        Gauges.pool ( conduit ).get (
+        name
         );
     }
 
@@ -263,11 +263,11 @@ public class GaugeOps implements Substrates {
 
     conduit =
       circuit.conduit (
-        Gauges::composer
+        Sign.class
       );
 
     gauge =
-      conduit.percept (
+      Gauges.pool ( conduit ).get (
         name
       );
 

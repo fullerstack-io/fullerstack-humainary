@@ -35,7 +35,7 @@ public class SystemOps implements Substrates {
 
   private Cortex                     cortex;
   private Circuit                    circuit;
-  private Conduit < System, Signal > conduit;
+  private Conduit < Signal > conduit;
   private System                     system;
   private Name                       name;
 
@@ -214,11 +214,11 @@ public class SystemOps implements Substrates {
 
     conduit =
       circuit.conduit (
-        Systems::composer
+        Signal.class
       );
 
     system =
-      conduit.percept (
+      Systems.pool ( conduit ).get (
         name
       );
 
@@ -247,7 +247,7 @@ public class SystemOps implements Substrates {
   public System system_from_conduit () {
 
     return
-      conduit.percept (
+      Systems.pool ( conduit ).get (
         name
       );
 
@@ -269,8 +269,8 @@ public class SystemOps implements Substrates {
       i++
     ) {
       result =
-        conduit.percept (
-          name
+        Systems.pool ( conduit ).get (
+        name
         );
     }
 

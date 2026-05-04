@@ -14,11 +14,8 @@ public class HelloSubstrates {
         // 1. Create Circuit (central processing engine)
         Circuit circuit = cortex().circuit(cortex().name("hello-circuit"));
 
-        // 2. Create Conduit with Pipe composer
-        Conduit<Pipe<String>, String> conduit = circuit.conduit(
-            cortex().name("messages"),
-            Composer.pipe()
-        );
+        // 2. Create typed Conduit
+        Conduit<String> conduit = circuit.conduit(cortex().name("messages"), String.class);
 
         // 3. CONSUMER: Subscribe to observe emissions
         conduit.subscribe(
@@ -34,7 +31,7 @@ public class HelloSubstrates {
         );
 
         // 4. PRODUCER: Get a pipe and emit
-        Pipe<String> pipe = conduit.percept(cortex().name("producer1"));
+        Pipe<String> pipe = conduit.get(cortex().name("producer1"));
         pipe.emit("Hello, Substrates!");
         pipe.emit("This is message 2");
         pipe.emit("And message 3");
@@ -62,9 +59,9 @@ Done!
 ## What's Happening
 
 1. **Circuit** - Central processing engine created via `cortex().circuit()`
-2. **Conduit** - Routes messages from producers (Channels) to consumers (Subscribers)
-3. **Subscriber** - Registers a consumer Pipe to receive messages
-4. **Producer** - Gets a Pipe from conduit and emits messages
+2. **Conduit** - Routes typed emissions from producers to consumers
+3. **Subscriber** - Registers a Receptor to receive messages
+4. **Producer** - Gets a Pipe from conduit (`conduit.get(name)`) and emits messages
 5. **Async Processing** - Circuit processes emissions on virtual thread (eager-started)
 6. **circuit.await()** - Test pattern to wait for async processing
 7. **Cleanup** - Circuit closes all resources

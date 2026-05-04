@@ -5,7 +5,6 @@ package io.humainary.substrates.jmh;
 import io.humainary.substrates.api.Substrates;
 import org.openjdk.jmh.annotations.*;
 
-import static io.humainary.substrates.api.Substrates.Composer.pipe;
 import static java.util.concurrent.TimeUnit.NANOSECONDS;
 import static org.openjdk.jmh.annotations.Level.Trial;
 import static org.openjdk.jmh.annotations.Mode.AverageTime;
@@ -55,7 +54,7 @@ public class CircuitOps
   ///
 
   @Benchmark
-  public Conduit < Pipe < Integer >, Integer > conduit_create_close () {
+  public Conduit < Integer > conduit_create_close () {
 
     final var
       circuit =
@@ -64,9 +63,7 @@ public class CircuitOps
     final var
       result =
       circuit.conduit (
-        pipe (
-          Integer.class
-        )
+        Integer.class
       );
 
     circuit.close ();
@@ -81,7 +78,7 @@ public class CircuitOps
   ///
 
   @Benchmark
-  public Conduit < Pipe < Integer >, Integer > conduit_create_named () {
+  public Conduit < Integer > conduit_create_named () {
 
     final var
       circuit =
@@ -91,9 +88,7 @@ public class CircuitOps
       result =
       circuit.conduit (
         name,
-        pipe (
-          Integer.class
-        )
+        Integer.class
       );
 
     circuit.close ();
@@ -108,7 +103,7 @@ public class CircuitOps
   ///
 
   @Benchmark
-  public Conduit < Pipe < Integer >, Integer > conduit_create_with_flow () {
+  public Conduit < Integer > conduit_create_with_flow () {
 
     final var
       circuit =
@@ -118,10 +113,7 @@ public class CircuitOps
       result =
       circuit.conduit (
         name,
-        pipe (
-          Integer.class
-        ),
-        Flow::diff
+        Integer.class
       );
 
     circuit.close ();
@@ -231,13 +223,11 @@ public class CircuitOps
   ///
 
   @Benchmark
-  public Conduit < Pipe < Integer >, Integer > hot_conduit_create () {
+  public Conduit < Integer > hot_conduit_create () {
 
     return
       hotCircuit.conduit (
-        pipe (
-          Integer.class
-        )
+        Integer.class
       );
 
   }
@@ -253,14 +243,12 @@ public class CircuitOps
   ///
 
   @Benchmark
-  public Conduit < Pipe < Integer >, Integer > hot_conduit_create_named () {
+  public Conduit < Integer > hot_conduit_create_named () {
 
     return
       hotCircuit.conduit (
         name,
-        pipe (
-          Integer.class
-        )
+        Integer.class
       );
 
   }
@@ -270,15 +258,12 @@ public class CircuitOps
   ///
 
   @Benchmark
-  public Conduit < Pipe < Integer >, Integer > hot_conduit_create_with_flow () {
+  public Conduit < Integer > hot_conduit_create_with_flow () {
 
     return
       hotCircuit.conduit (
         name,
-        pipe (
-          Integer.class
-        ),
-        Flow::diff
+        Integer.class
       );
 
   }
@@ -306,8 +291,7 @@ public class CircuitOps
 
     return
       hotCircuit.pipe (
-        Receptor.of ( Integer.class ),
-        flow -> flow.guard ( v -> v > 0 )
+        Receptor.of ( Integer.class )
       );
 
   }
@@ -352,8 +336,7 @@ public class CircuitOps
     final var
       result =
       circuit.pipe (
-        Receptor.of ( Integer.class ),
-        flow -> flow.guard ( v -> v > 0 )
+        Receptor.of ( Integer.class )
       );
 
     circuit.close ();

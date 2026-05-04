@@ -148,19 +148,20 @@ public class StateOps
   /// Benchmark state compaction (removing duplicates).
   ///
 
-  @Benchmark
+  // Removed in 2.0: compact() no longer on State interface
+  // //  -- compact() removed from State interface in 2.0
   public State state_compact () {
 
     return
-      multiSlotState.compact ();
+      multiSlotState;
 
   }
 
-  @Benchmark
-  @OperationsPerInvocation ( BATCH_SIZE )
+  //  -- compact() removed from State interface in 2.0
+  //  ( BATCH_SIZE )
   public State state_compact_batch () {
     State result = null;
-    for ( var i = 0; i < BATCH_SIZE; i++ ) result = multiSlotState.compact ();
+    for ( var i = 0; i < BATCH_SIZE; i++ ) result = multiSlotState;
     return result;
   }
 
@@ -293,13 +294,11 @@ public class StateOps
   /// Benchmark reading multiple values from state (stream).
   ///
 
-  @Benchmark
+  //  -- values() removed from State interface in 2.0
   public long state_values_stream () {
 
     return
-      multiSlotState.values (
-        intSlot
-      ).count ();
+      multiSlotState.stream ().count ();
 
   }
 

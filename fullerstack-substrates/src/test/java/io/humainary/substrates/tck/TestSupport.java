@@ -22,15 +22,7 @@ abstract class TestSupport
     return Substrates.cortex ();
   }
 
-  /// Creates an identity composer that returns the channel's pipe.
-  ///
-  /// Useful for creating simple conduits that emit values directly
-  /// to observer pipes without transformation.
-  ///
-  /// @param <T> the emission type
-  /// @return a composer that maps channels to their pipes
-  static < T > Composer < T, Pipe < T > > identity () {
-    return Channel::pipe;
-  }
+  /// In 2.0, conduits are created directly via circuit.conduit(Class).
+  /// The old Integer.class / identity() pattern is no longer needed.
 
 }

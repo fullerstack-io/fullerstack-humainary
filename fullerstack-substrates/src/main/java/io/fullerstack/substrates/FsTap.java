@@ -1,111 +1,117 @@
 package io.fullerstack.substrates;
 
-import static io.humainary.substrates.api.Substrates.cortex;
-
-import java.util.ArrayList;
-import java.util.IdentityHashMap;
-import java.util.Map;
-import java.util.function.Consumer;
-import java.util.function.Function;
-
-import io.humainary.substrates.api.Substrates.Channel;
-import io.humainary.substrates.api.Substrates.Configurer;
+import io.humainary.substrates.api.Substrates.Fault;
+import io.humainary.substrates.api.Substrates.Fiber;
 import io.humainary.substrates.api.Substrates.Flow;
+import io.humainary.substrates.api.Substrates.Idempotent;
 import io.humainary.substrates.api.Substrates.Name;
 import io.humainary.substrates.api.Substrates.New;
 import io.humainary.substrates.api.Substrates.NotNull;
 import io.humainary.substrates.api.Substrates.Pipe;
 import io.humainary.substrates.api.Substrates.Provided;
+import io.humainary.substrates.api.Substrates.Queued;
 import io.humainary.substrates.api.Substrates.Receptor;
 import io.humainary.substrates.api.Substrates.Reservoir;
+import io.humainary.substrates.api.Substrates.Source;
 import io.humainary.substrates.api.Substrates.Subject;
 import io.humainary.substrates.api.Substrates.Subscriber;
 import io.humainary.substrates.api.Substrates.Subscription;
 import io.humainary.substrates.api.Substrates.Tap;
 
-/// A transformed view of a conduit's emissions.
-///
-/// Tap mirrors the channel structure of its source conduit but transforms
-/// emissions from type E to type T using a mapper function. Channels are
-/// created automatically as subjects appear in the source conduit.
-///
-/// @param <E> the source emission type
-/// @param <T> the transformed emission type
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.IdentityHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.function.Consumer;
+import java.util.function.Function;
+
+import static io.humainary.substrates.api.Substrates.cortex;
+import static java.util.Objects.requireNonNull;
+
+/// A transformed view of a source's emissions (Substrates 2.0).
 @Provided
-final class FsTap < E, T > implements Tap < T > {
+final class FsTap < T > implements Tap < T > {
 
-  private final Subject < Tap < T > >               subject;
-  private final FsCircuit                           circuit;
-  private final Function < ? super E, ? extends T > mapper;
-  private final Configurer < ? super Flow < T > >   flowConfigurer;
-  private final Subscription                        sourceSubscription;
+  private final Subject < Tap < T > > subject;
+  private final FsCircuit              circuit;
+  private final Subscription           sourceSubscription;
 
-  /// Channels by name - mirrors source conduit's channel structure.
-  /// Copy-on-write for lock-free reads; writes synchronize on 'this'.
-  private volatile Map < Name, FsChannel < T > > channels = new IdentityHashMap <> ();
+  /// Lightweight per-name dispatch for tap channels.
+  static final class TapChannel < T > {
+    final Subject < Pipe < T > > subject;
+    Consumer < Object >          dispatch;
+    int                          builtVersion = -1;
+    Map < FsSubscriber < T >, List < Consumer < Object > > > subscriberReceptors;
 
-  /// Subscribers to this tap.
+    TapChannel ( Subject < Pipe < T > > subject ) {
+      this.subject = subject;
+    }
+  }
+
+  private volatile Map < Name, TapChannel < T > > channels = new IdentityHashMap <> ();
+
   private          ArrayList < FsSubscriber < T > > subscribersList;
   private volatile FsSubscriber < T >[]             subscribersSnapshot;
   private final    Object                           subscriberLock = new Object ();
   private volatile int                              version        = 0;
   private volatile boolean                          closed         = false;
 
-  /// Creates a tap that transforms emissions from a source conduit.
   @SuppressWarnings ( "unchecked" )
-  < P extends io.humainary.substrates.api.Substrates.Percept > FsTap (
+  < E > FsTap (
     FsSubject < ? > parent,
     Name name,
-    FsConduit < P, E > sourceConduit,
+    Source < E, ? > source,
     FsCircuit circuit,
-    Function < ? super E, ? extends T > mapper,
-    Configurer < ? super Flow < T > > flowConfigurer ) {
+    Function < Pipe < T >, Pipe < E > > fn ) {
+
     this.subject = new FsSubject <> ( name, parent, Tap.class );
     this.circuit = circuit;
-    this.mapper = mapper;
-    this.flowConfigurer = flowConfigurer;
 
-    // Subscribe to source conduit to receive emissions
     FsSubscriber < E > tapSubscriber = new FsSubscriber <> (
       new FsSubject <> ( cortex ().name ( "tap.subscriber" ), (FsSubject < ? >) subject, Subscriber.class ),
-      ( channelSubject, registrar ) -> registrar.register ( emission -> handleSourceEmission ( channelSubject, emission ) ) );
+      ( pipeSubject, registrar ) -> {
+        Name channelName = pipeSubject.name ();
+        TapChannel < T > tapChannel = getOrCreateChannel ( channelName );
 
-    this.sourceSubscription = sourceConduit.subscribe ( tapSubscriber );
+        Pipe < T > targetPipe = new Pipe <> () {
+          @Override
+          public void emit ( T emission ) {
+            if ( closed ) return;
+            if ( tapChannel.builtVersion != version ) {
+              rebuildTapChannel ( tapChannel );
+            }
+            Consumer < Object > d = tapChannel.dispatch;
+            if ( d != null ) d.accept ( emission );
+          }
+
+          @Override
+          public Subject < Pipe < T > > subject () {
+            return tapChannel.subject;
+          }
+        };
+
+        Pipe < E > sourcePipe = fn.apply ( targetPipe );
+        registrar.register ( sourcePipe );
+      } );
+
+    this.sourceSubscription = source.subscribe ( tapSubscriber );
   }
 
-  /// Handle emission from source conduit - transform and deliver to tap subscribers.
-  private void handleSourceEmission ( Subject < Channel < E > > sourceChannelSubject, E emission ) {
-    if ( closed ) return;
-
-    Name channelName = sourceChannelSubject.name ();
-    FsChannel < T > channel = channels.get ( channelName );
-
-    if ( channel == null ) {
-      // Lazy init channel (copy-on-write)
-      synchronized ( this ) {
-        channel = channels.get ( channelName );
-        if ( channel == null ) {
-          Subject < Channel < T > > tapChannelSubject = new FsSubject <> ( channelName, (FsSubject < ? >) subject, Channel.class );
-          channel = new FsChannel <> ( tapChannelSubject, circuit, (Consumer < T >) null );
-          Map < Name, FsChannel < T > > newChannels = new IdentityHashMap <> ( channels );
-          newChannels.put ( channelName, channel );
-          channels = newChannels;
-        }
-      }
-    }
-
-    // Rebuild if subscriber version has changed
-    if ( channel.builtVersion != version ) {
-      rebuildChannelPipes ( channel );
-    }
-
-    // Transform and deliver through router (null = filtered out)
-    T transformed = mapper.apply ( emission );
-    if ( transformed == null ) return;
-
-    Consumer < T > router = channel.router;
-    if ( router != null ) {
-      router.accept ( transformed );
+  private TapChannel < T > getOrCreateChannel ( Name name ) {
+    TapChannel < T > ch = channels.get ( name );
+    if ( ch != null ) return ch;
+    synchronized ( this ) {
+      ch = channels.get ( name );
+      if ( ch != null ) return ch;
+      @SuppressWarnings ( "unchecked" )
+      Subject < Pipe < T > > tapPipeSubject = new FsSubject <> ( name, (FsSubject < ? >) subject, Pipe.class );
+      ch = new TapChannel <> ( tapPipeSubject );
+      Map < Name, TapChannel < T > > copy = new IdentityHashMap <> ( channels );
+      copy.put ( name, ch );
+      channels = copy;
+      return ch;
     }
   }
 
@@ -118,11 +124,9 @@ final class FsTap < E, T > implements Tap < T > {
       synchronized ( subscriberLock ) {
         snapshot = subscribersSnapshot;
         if ( snapshot == null ) {
-          if ( subscribersList == null || subscribersList.isEmpty () ) {
-            snapshot = (FsSubscriber < T >[]) EMPTY_SUBSCRIBERS;
-          } else {
-            snapshot = subscribersList.toArray ( new FsSubscriber[0] );
-          }
+          snapshot = ( subscribersList == null || subscribersList.isEmpty () )
+                     ? (FsSubscriber < T >[]) EMPTY_SUBSCRIBERS
+                     : subscribersList.toArray ( new FsSubscriber[0] );
           subscribersSnapshot = snapshot;
         }
       }
@@ -130,76 +134,43 @@ final class FsTap < E, T > implements Tap < T > {
     return snapshot;
   }
 
-  private void rebuildChannelPipes ( FsChannel < T > channel ) {
+  @SuppressWarnings ( "unchecked" )
+  private void rebuildTapChannel ( TapChannel < T > ch ) {
     FsSubscriber < T >[] currentSubs = getSubscribersSnapshot ();
 
-    java.util.Set < FsSubscriber < T > > activeSet = java.util.Collections.newSetFromMap ( new IdentityHashMap <> () );
-    for ( FsSubscriber < T > sub : currentSubs ) {
-      activeSet.add ( sub );
+    if ( ch.subscriberReceptors == null ) {
+      ch.subscriberReceptors = new IdentityHashMap <> ();
     }
 
-    channel.subscriberReceptors.keySet ().removeIf ( sub -> !activeSet.contains ( sub ) );
+    Set < FsSubscriber < T > > activeSet = Collections.newSetFromMap ( new IdentityHashMap <> () );
+    for ( FsSubscriber < T > sub : currentSubs ) activeSet.add ( sub );
+
+    ch.subscriberReceptors.keySet ().removeIf ( sub -> !activeSet.contains ( sub ) );
 
     for ( FsSubscriber < T > subscriber : currentSubs ) {
-      if ( !channel.subscriberReceptors.containsKey ( subscriber ) ) {
+      if ( !ch.subscriberReceptors.containsKey ( subscriber ) ) {
         FsRegistrar < T > registrar = new FsRegistrar <> ();
-        subscriber.activate ( channel.subject (), registrar );
-        channel.subscriberReceptors.put ( subscriber, registrar.receptors () );
+        subscriber.activate ( ch.subject, registrar );
+        ch.subscriberReceptors.put ( subscriber, registrar.consumers () );
       }
     }
 
-    channel.rebuildReceptorsArray ();
-
-    // Build router: flow pipeline wrapping receptor dispatch, or direct dispatch
-    if ( flowConfigurer != null && channel.receptors != null ) {
-      // Direct receptor dispatch consumer (downstream of flow pipeline)
-      Consumer < T > downstream = value -> {
-        Receptor < ? super T >[] r = channel.receptors;
-        if ( r != null ) {
-          for ( int i = 0, len = r.length; i < len; i++ ) {
-            r[i].receive ( value );
-          }
-        }
-      };
-
-      // Dummy pipe targeting the downstream consumer
-      @SuppressWarnings ( "unchecked" )
-      Pipe < T > targetPipe = new Pipe < T > () {
-        @Override
-        public void emit ( T emission ) {
-          downstream.accept ( emission );
-        }
-
-        @Override
-        public Subject < Pipe < T > > subject () {
-          return (Subject < Pipe < T > >) (Subject < ? >) channel.subject ();
-        }
-      };
-
-      FsFlow < T > flow = new FsFlow <> ( channel.subject ().name (), circuit, targetPipe );
-      try {
-        flowConfigurer.configure ( flow );
-      } catch ( FsException e ) {
-        throw e;
-      } catch ( RuntimeException e ) {
-        throw new FsException ( "Flow configuration failed", e );
-      }
-      channel.router = flow.consumer ();
-    } else if ( channel.receptors != null ) {
-      // No flow — direct receptor dispatch
-      channel.router = value -> {
-        Receptor < ? super T >[] r = channel.receptors;
-        if ( r != null ) {
-          for ( int i = 0, len = r.length; i < len; i++ ) {
-            r[i].receive ( value );
-          }
-        }
-      };
+    List < Consumer < Object > > all = new ArrayList <> ();
+    for ( List < Consumer < Object > > list : ch.subscriberReceptors.values () ) {
+      all.addAll ( list );
+    }
+    if ( all.isEmpty () ) {
+      ch.dispatch = null;
+    } else if ( all.size () == 1 ) {
+      ch.dispatch = all.getFirst ();
     } else {
-      channel.router = null;
+      Consumer < Object >[] arr = all.toArray ( new Consumer[0] );
+      ch.dispatch = v -> {
+        for ( int i = 0, len = arr.length; i < len; i++ ) arr[i].accept ( v );
+      };
     }
 
-    channel.builtVersion = version;
+    ch.builtVersion = version;
   }
 
   @Override
@@ -210,27 +181,43 @@ final class FsTap < E, T > implements Tap < T > {
   @New
   @NotNull
   @Override
-  public Subscription subscribe ( @NotNull Subscriber < T > subscriber ) {
-    java.util.Objects.requireNonNull ( subscriber, "subscriber must not be null" );
-    if ( closed ) {
-      throw new IllegalStateException ( "Tap is closed" );
+  public Subscription subscribe (
+    @NotNull Subscriber < T > subscriber ) {
+    return subscribe ( subscriber, ignored -> { } );
+  }
+
+  @New
+  @NotNull
+  @Override
+  public Subscription subscribe (
+    @NotNull Subscriber < T > subscriber,
+    @NotNull @Queued Consumer < ? super Subscription > onClose ) {
+    requireNonNull ( subscriber );
+    requireNonNull ( onClose );
+
+    // SPEC §7.2 — cross-circuit subscriber detected synchronously on the
+    // caller thread, signalled before any side effects. No registration,
+    // no subscription handle, no callback invocation on rejection.
+    if ( subscriber.subject () instanceof FsSubject < ? > subSubject ) {
+      FsSubject < ? > subscriberCircuit = subSubject.findCircuitAncestor ();
+      if ( subscriberCircuit != null && subscriberCircuit != circuit.subject () ) {
+        throw new Fault ( subject, "subscribe", "Subscriber belongs to a different circuit" );
+      }
     }
+
+    if ( closed ) throw new IllegalStateException ( "Tap is closed" );
 
     FsSubscriber < T > fs = (FsSubscriber < T >) subscriber;
 
     synchronized ( subscriberLock ) {
-      if ( subscribersList == null ) {
-        subscribersList = new ArrayList <> ();
-      }
+      if ( subscribersList == null ) subscribersList = new ArrayList <> ();
       subscribersList.add ( fs );
       subscribersSnapshot = null;
     }
     version++;
 
-    Subscription subscription = new FsSubscription ( subscriber.subject ().name (),
-      (FsSubject < ? >) subject, () -> unsubscribe ( fs ) );
-
-    return subscription;
+    return new FsSubscription ( subscriber.subject ().name (),
+      (FsSubject < ? >) subject, () -> unsubscribe ( fs ), onClose );
   }
 
   private void unsubscribe ( FsSubscriber < T > subscriber ) {
@@ -250,16 +237,34 @@ final class FsTap < E, T > implements Tap < T > {
     FsSubject < Reservoir < T > > resSubject = new FsSubject <> ( cortex ().name ( "reservoir" ), (FsSubject < ? >) subject,
       Reservoir.class );
     FsReservoir < T > reservoir = new FsReservoir <> ( resSubject );
-
     FsSubscriber < T > sub = new FsSubscriber <> (
-      new FsSubject <> ( cortex ().name ( "reservoir.subscriber" ), resSubject, Subscriber.class ), ( channelSubject,
-                                                                                                      registrar ) -> registrar.register (
-      emission -> reservoir.capture ( emission, channelSubject ) ) );
+      new FsSubject <> ( cortex ().name ( "reservoir.subscriber" ), resSubject, Subscriber.class ),
+      ( pipeSubject, registrar ) -> registrar.register ( emission -> reservoir.capture ( emission, pipeSubject ) ) );
     subscribe ( sub );
     return reservoir;
   }
 
   @Override
+  public < U > Tap < U > tap ( @NotNull Function < Pipe < U >, Pipe < T > > fn ) {
+    requireNonNull ( fn );
+    return new FsTap <> ( (FsSubject < ? >) subject, cortex ().name ( "tap" ), this, circuit, fn );
+  }
+
+  @Override
+  public < U > Tap < U > tap ( @NotNull Flow < T, U > flow ) {
+    requireNonNull ( flow );
+    return tap ( target -> flow.pipe ( target ) );
+  }
+
+  @Override
+  public Tap < T > tap ( @NotNull Fiber < T > fiber ) {
+    requireNonNull ( fiber );
+    return tap ( (Function < Pipe < T >, Pipe < T > >) target -> fiber.pipe ( target ) );
+  }
+
+  @Override
+  @Idempotent
+  @Queued
   public void close () {
     if ( closed ) return;
     closed = true;

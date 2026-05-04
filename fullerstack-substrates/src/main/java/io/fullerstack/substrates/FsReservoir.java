@@ -1,10 +1,11 @@
 package io.fullerstack.substrates;
 
 import io.humainary.substrates.api.Substrates.Capture;
-import io.humainary.substrates.api.Substrates.Channel;
+import io.humainary.substrates.api.Substrates.Pipe;
 import io.humainary.substrates.api.Substrates.Idempotent;
 import io.humainary.substrates.api.Substrates.Provided;
 import io.humainary.substrates.api.Substrates.Reservoir;
+import io.humainary.substrates.api.Substrates.Tenure;
 import io.humainary.substrates.api.Substrates.Subject;
 
 import java.util.ArrayList;
@@ -20,10 +21,11 @@ import java.util.stream.Stream;
 /// @param <E> the class type of the emitted value
 /// @see Capture
 @Provided
+@Tenure ( Tenure.EPHEMERAL )
 public final class FsReservoir < E > implements Reservoir < E > {
 
   /// A capture of an emitted value from a channel with its associated subject.
-  private record Cap < E >( E emission, Subject < Channel < E > > subject ) implements Capture < E > {
+  private record Cap < E >( E emission, Subject < Pipe < E > > subject ) implements Capture < E > {
   }
 
   /// The subject identity for this reservoir.
@@ -31,6 +33,10 @@ public final class FsReservoir < E > implements Reservoir < E > {
 
   /// Internal buffer storing captured emissions.
   private final List < Cap < E > > buffer = new ArrayList <> ();
+
+  /// Closed flag. Spec §9.1 requires `close()` be idempotent — explicit gate
+  /// here keeps the contract intact if cleanup grows beyond `buffer.clear()`.
+  private volatile boolean closed;
 
   /// Creates a new reservoir with the given subject identity.
   ///
@@ -60,7 +66,7 @@ public final class FsReservoir < E > implements Reservoir < E > {
   }
 
   /// Captures an emission with its channel subject.
-  void capture ( E emission, Subject < Channel < E > > channelSubject ) {
+  void capture ( E emission, Subject < Pipe < E > > channelSubject ) {
     buffer.add ( new Cap <> ( emission, channelSubject ) );
   }
 
@@ -68,6 +74,8 @@ public final class FsReservoir < E > implements Reservoir < E > {
   @Idempotent
   @Override
   public void close () {
+    if ( closed ) return;
+    closed = true;
     buffer.clear ();
   }
 

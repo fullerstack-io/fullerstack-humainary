@@ -50,12 +50,12 @@ public class ReservoirOps
     final var
       conduit =
       circuit.conduit (
-        Composer.pipe ()
+        Integer.class
       );
 
     final var
       pipe =
-      conduit.percept (
+      conduit.get (
         name
       );
 
@@ -84,12 +84,12 @@ public class ReservoirOps
     final var
       conduit =
       circuit.conduit (
-        Composer.pipe ()
+        Integer.class
       );
 
     final var
       pipe =
-      conduit.percept (
+      conduit.get (
         name
       );
 
@@ -119,7 +119,7 @@ public class ReservoirOps
     final var
       conduit =
       circuit.conduit (
-        Composer.pipe ()
+        Integer.class
       );
 
     final var
@@ -128,7 +128,7 @@ public class ReservoirOps
 
     final var
       pipe =
-      conduit.percept (
+      conduit.get (
         name
       );
 
@@ -170,7 +170,7 @@ public class ReservoirOps
     final var
       conduit =
       circuit.conduit (
-        Composer.pipe ()
+        Integer.class
       );
 
     final var
@@ -179,7 +179,7 @@ public class ReservoirOps
 
     final var
       pipe =
-      conduit.percept (
+      conduit.get (
         name
       );
 
@@ -221,7 +221,7 @@ public class ReservoirOps
     final var
       conduit =
       circuit.conduit (
-        Composer.pipe ()
+        Integer.class
       );
 
     final var
@@ -230,7 +230,7 @@ public class ReservoirOps
 
     final var
       pipe =
-      conduit.percept (
+      conduit.get (
         name
       );
 
@@ -270,7 +270,7 @@ public class ReservoirOps
     final var
       conduit =
       circuit.conduit (
-        Composer.pipe ()
+        Integer.class
       );
 
     final var
@@ -279,7 +279,7 @@ public class ReservoirOps
 
     final var
       pipe =
-      conduit.percept (
+      conduit.get (
         name
       );
 
@@ -320,7 +320,7 @@ public class ReservoirOps
     final var
       conduit =
       circuit.conduit (
-        Composer.pipe ()
+        Integer.class
       );
 
     final var
@@ -329,7 +329,7 @@ public class ReservoirOps
 
     final var
       pipe =
-      conduit.percept (
+      conduit.get (
         name
       );
 
@@ -381,7 +381,7 @@ public class ReservoirOps
     final var
       conduit =
       circuit.conduit (
-        Composer.pipe ()
+        Integer.class
       );
 
     final var
@@ -390,7 +390,7 @@ public class ReservoirOps
 
     final var
       pipe =
-      conduit.percept (
+      conduit.get (
         name
       );
 
@@ -421,7 +421,7 @@ public class ReservoirOps
     final var
       conduit =
       circuit.conduit (
-        Composer.pipe ()
+        Integer.class
       );
 
     final var
@@ -430,7 +430,7 @@ public class ReservoirOps
 
     final var
       pipe =
-      conduit.percept (
+      conduit.get (
         name
       );
 
@@ -468,7 +468,7 @@ public class ReservoirOps
     final var
       conduit =
       circuit.conduit (
-        Composer.pipe ()
+        Integer.class
       );
 
     final var
@@ -477,7 +477,7 @@ public class ReservoirOps
 
     final var
       pipe =
-      conduit.percept (
+      conduit.get (
         name
       );
 
@@ -520,7 +520,7 @@ public class ReservoirOps
     final var
       conduit =
       circuit.conduit (
-        Composer.pipe ()
+        Integer.class
       );
 
     final var
@@ -529,7 +529,7 @@ public class ReservoirOps
 
     final var
       pipe =
-      conduit.percept (
+      conduit.get (
         name
       );
 
@@ -574,7 +574,7 @@ public class ReservoirOps
     final var
       conduit =
       circuit.conduit (
-        Composer.pipe ()
+        Integer.class
       );
 
     final var
@@ -583,7 +583,7 @@ public class ReservoirOps
 
     final var
       pipe =
-      conduit.percept (
+      conduit.get (
         name
       );
 

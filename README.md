@@ -6,12 +6,12 @@ Substrates is a runtime for observable, event-driven systems where every emissio
 
 | | |
 |---|---|
-| **API** | [Humainary Substrates 1.0.0](https://github.com/humainary-io/substrates-api-java) |
+| **API** | [Humainary Substrates 2.4.0](https://github.com/humainary-io/substrates-api-java) |
 | **Spec** | [Substrates API Specification](https://github.com/humainary-io/substrates-api-spec) |
-| **Serventis** | [Humainary Serventis 1.0.0](https://github.com/humainary-io/serventis-api-java) (semiotic observability) |
-| **Implementation** | `io.fullerstack:fullerstack-substrates:1.0.0-RC5` |
+| **Serventis** | [Humainary Serventis 2.4.0](https://github.com/humainary-io/serventis-api-java) (semiotic observability) |
+| **Implementation** | `io.fullerstack:fullerstack-substrates:2.4.0-RC1` |
 | **Java** | 26 (Virtual Threads + Preview Features) |
-| **Tests** | 722 passing (274 contract + 448 TCK) |
+| **Tests** | 494 passing (80 contract + 375 TCK + 39 Serventis) |
 | **License** | Apache 2.0 |
 
 ## Quick Start
@@ -22,7 +22,7 @@ The artifact is published to [GitHub Packages](https://github.com/fullerstack-io
 <dependency>
     <groupId>io.fullerstack</groupId>
     <artifactId>fullerstack-substrates</artifactId>
-    <version>1.0.0-RC5</version>
+    <version>2.4.0-RC1</version>
 </dependency>
 ```
 
@@ -33,15 +33,15 @@ import static io.humainary.substrates.api.Substrates.*;
 var cortex  = cortex();
 var circuit = cortex.circuit(cortex.name("example"));
 
-// Create a conduit and subscribe
-var conduit = circuit.conduit(cortex.name("events"), Composer.pipe());
+// Create a typed conduit and subscribe
+var conduit = circuit.conduit(cortex.name("events"), String.class);
 conduit.subscribe(circuit.subscriber(
     cortex.name("logger"),
     (subject, registrar) -> registrar.register(System.out::println)
 ));
 
-// Emit — async, deterministic, ~13ns
-conduit.percept(cortex.name("source")).emit("hello");
+// Emit — async, deterministic, ~12 ns
+conduit.get(cortex.name("source")).emit("hello");
 circuit.await();
 circuit.close();
 ```
@@ -66,7 +66,7 @@ The artifact lives in [GitHub Packages](https://github.com/fullerstack-io/fuller
   <dependency>
     <groupId>io.fullerstack</groupId>
     <artifactId>fullerstack-substrates</artifactId>
-    <version>1.0.0-RC5</version>
+    <version>2.4.0-RC1</version>
   </dependency>
 </dependencies>
 ```
@@ -121,13 +121,13 @@ cd ../..
 ```bash
 git clone https://github.com/fullerstack-io/fullerstack-humainary.git
 cd fullerstack-humainary/fullerstack-substrates
-mvn clean install        # Build + 722 tests
+mvn clean install        # Build + 494 tests
 ```
 
 ### Benchmarks
 
 ```bash
-./scripts/benchmark.sh              # All 14 JMH groups
+./scripts/benchmark.sh              # All groups (14 Substrates + 36 Serventis instruments)
 ./scripts/benchmark.sh PipeOps      # Specific group
 ./scripts/benchmark.sh -l           # List available
 ```
@@ -150,33 +150,35 @@ See the [Specification](https://github.com/humainary-io/substrates-api-spec) for
 
 ### Implementation
 
-25 classes in `io.fullerstack.substrates`:
+26 classes in `io.fullerstack.substrates`:
 
 | API Interface | Implementation | Purpose |
 |--------------|---------------|---------|
-| Cortex | FsCortex | Entry point — circuits, scopes, names |
-| Circuit | FsCircuit | Dual-queue sequential execution engine |
-| Conduit | FsConduit | Channel factory + subscriber management |
-| Channel | FsChannel | Named emission port |
+| Cortex | FsCortex | Entry point — circuits, scopes, names, flows, fibers |
+| Circuit | FsCircuit | Dual-queue sequential execution engine + `pulse()` diagnostic (2.4) |
+| Conduit | FsConduit | Channel factory + subscriber management; `Pool<Pipe<E>>` |
 | Pipe | FsPipe | Async emission carrier |
-| Flow | FsFlow | Processing pipeline (diff, guard, limit, sample, sift) |
+| Pool | FsDerivedPool | Derived pool — `pool(Function)` / `pool(Flow)` / `pool(Fiber)` with three-state lazy storage |
+| Flow | FsFlow | Type-changing composition: `map` / `fiber` / `flow` / `pipe` |
+| Fiber | FsFiber | Per-emission operators (~35: `guard`, `diff`, `limit`, `peek`, `replace`, `chance`, `change`, `deadband`, `delay`, `edge`, `every`, `hysteresis`, `inhibit`, `pulse`, `rolling`, `steady`, `tumble`, ...) |
 | Name | FsName | Hierarchical dot-notation names with interning |
 | Subject | FsSubject | Identity (Id + Name + State + Type) |
 | Scope | FsScope | Structured resource lifecycle (RAII) |
 | Subscriber | FsSubscriber | Emission observer with lazy callback |
-| Subscription | FsSubscription | Subscriber lifecycle handle |
-| Tap | FsTap | Conduit emission transformation |
+| Subscription | FsSubscription | Subscriber lifecycle handle (with `onClose` overload, 2.4) |
+| Tap | FsTap | Source emission transformation; `tap(Function|Flow|Fiber)` |
 | Reservoir | FsReservoir | Buffered emission capture |
 | Closure | FsClosure | Block-scoped resource management |
-| Current | FsCurrent | Circuit execution context |
+| Current | FsCurrent | Execution context identity (per circuit, 2.4) |
 | State | FsState | Slot-based state container |
 | Slot | FsSlot | Typed state value holder |
-| Sift | FsSift | Comparison-based filtering |
 | Registrar | FsRegistrar | Pipe registration during subscriber callback |
-| Substrate | FsSubstrate | Base substrate implementation |
-| Exception | FsException | Provider error handling |
+| (internal) | FsChannel | Per-name dispatch — split: `dispatch` (receptors) vs `cascadeDispatch` (receptors + STEM) |
+| (internal) | FsHub | Subscriber list + version counter (per-conduit) |
+| (internal) | FsOperators | Shared operator implementations (Guard, Diff, Limit, Peek, ... — used by FsFiber and FsFlow) |
+| (Fault) | — | `Substrates.Fault` is `final` in 2.4; we throw it directly |
 
-Infrastructure: `IngressQueue` (wait-free MPSC), `TransitQueue` (single-threaded cascade FIFO), `QChunk` (64-slot interleaved array), `FsCortexProvider` (SPI entry point).
+Infrastructure: `IngressQueue` (wait-free MPSC), `TransitQueueRing` (single-threaded power-of-2 ring; cascade priority), `QChunk` (128-slot interleaved `[receiver, value]` array), `FsCortexProvider` (SPI entry point).
 
 ## Documentation
 
@@ -196,7 +198,7 @@ Infrastructure: `IngressQueue` (wait-free MPSC), `TransitQueue` (single-threaded
 |-----------|-------------|
 | [substrates-api-java](https://github.com/humainary-io/substrates-api-java) | Substrates API interfaces |
 | [substrates-api-spec](https://github.com/humainary-io/substrates-api-spec) | Formal specification + design rationale |
-| [serventis-api-java](https://github.com/humainary-io/serventis-api-java) | Serventis semiotic observability (33 instrument types) |
+| [serventis-api-java](https://github.com/humainary-io/serventis-api-java) | Serventis semiotic observability (~36 instrument types) |
 
 All API design, architecture, and concepts by **[William Louth](https://humainary.io/)** and the **Humainary** project. We implement the specification — we don't extend it.
 

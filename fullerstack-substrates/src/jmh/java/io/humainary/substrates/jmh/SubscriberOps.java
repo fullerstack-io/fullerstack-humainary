@@ -8,7 +8,6 @@ import org.openjdk.jmh.annotations.*;
 import org.openjdk.jmh.annotations.Scope;
 import org.openjdk.jmh.annotations.State;
 
-import static io.humainary.substrates.api.Substrates.Composer.pipe;
 import static java.util.concurrent.TimeUnit.NANOSECONDS;
 import static org.openjdk.jmh.annotations.Level.Invocation;
 import static org.openjdk.jmh.annotations.Level.Trial;
@@ -357,7 +356,7 @@ public class SubscriberOps {
   public static class OneSubscriptionState {
 
     Circuit                         circuit;
-    Conduit < Pipe < Long >, Long > conduit;
+    Conduit < Long > conduit;
     Subscriber < Long >             subscriber;
 
     @Setup ( Invocation )
@@ -370,7 +369,7 @@ public class SubscriberOps {
 
       conduit =
         circuit.conduit (
-          pipe ( Long.class )
+          Long.class
         );
 
       subscriber =
@@ -398,7 +397,7 @@ public class SubscriberOps {
   public static class OneSubscriptionBatchState {
 
     Circuit                         circuit;
-    Conduit < Pipe < Long >, Long > conduit;
+    Conduit < Long > conduit;
     Subscriber < Long >[]           subscribers;
 
     @SuppressWarnings ( "unchecked" )
@@ -412,7 +411,7 @@ public class SubscriberOps {
 
       conduit =
         circuit.conduit (
-          pipe ( Long.class )
+          Long.class
         );
 
       subscribers =
@@ -444,7 +443,7 @@ public class SubscriberOps {
   public static class FiveSubscriptionsState {
 
     Circuit                           circuit;
-    Conduit < Pipe < Long >, Long >[] conduits;
+    Conduit < Long >[] conduits;
     Subscriber < Long >               subscriber;
 
     @SuppressWarnings ( "unchecked" )
@@ -470,7 +469,7 @@ public class SubscriberOps {
       for ( int i = 0; i < 5; i++ ) {
         conduits[i] =
           circuit.conduit (
-            pipe ( Long.class )
+            Long.class
           );
         conduits[i].subscribe ( subscriber );
       }
@@ -490,7 +489,7 @@ public class SubscriberOps {
   public static class TenSubscriptionsState {
 
     Circuit                           circuit;
-    Conduit < Pipe < Long >, Long >[] conduits;
+    Conduit < Long >[] conduits;
     Subscriber < Long >               subscriber;
 
     @SuppressWarnings ( "unchecked" )
@@ -516,7 +515,7 @@ public class SubscriberOps {
       for ( int i = 0; i < 10; i++ ) {
         conduits[i] =
           circuit.conduit (
-            pipe ( Long.class )
+            Long.class
           );
         conduits[i].subscribe ( subscriber );
       }
@@ -536,7 +535,7 @@ public class SubscriberOps {
   public static class FiveConduitsState {
 
     Circuit                           circuit;
-    Conduit < Pipe < Long >, Long >[] conduits;
+    Conduit < Long >[] conduits;
     Subscriber < Long >               subscriber;
 
     @SuppressWarnings ( "unchecked" )
@@ -562,7 +561,7 @@ public class SubscriberOps {
       for ( int i = 0; i < 5; i++ ) {
         conduits[i] =
           circuit.conduit (
-            pipe ( Long.class )
+            Long.class
           );
         conduits[i].subscribe ( subscriber );
       }
@@ -582,7 +581,7 @@ public class SubscriberOps {
   public static class TenConduitsState {
 
     Circuit                           circuit;
-    Conduit < Pipe < Long >, Long >[] conduits;
+    Conduit < Long >[] conduits;
     Subscriber < Long >               subscriber;
 
     @SuppressWarnings ( "unchecked" )
@@ -608,7 +607,7 @@ public class SubscriberOps {
       for ( int i = 0; i < 10; i++ ) {
         conduits[i] =
           circuit.conduit (
-            pipe ( Long.class )
+            Long.class
           );
         conduits[i].subscribe ( subscriber );
       }
@@ -628,7 +627,7 @@ public class SubscriberOps {
   public static class IdempotentCloseState {
 
     Circuit                         circuit;
-    Conduit < Pipe < Long >, Long > conduit;
+    Conduit < Long > conduit;
     Subscriber < Long >             subscriber;
 
     @Setup ( Invocation )
@@ -641,7 +640,7 @@ public class SubscriberOps {
 
       conduit =
         circuit.conduit (
-          pipe ( Long.class )
+          Long.class
         );
 
       subscriber =
@@ -674,7 +673,7 @@ public class SubscriberOps {
   public static class EmissionLoadState {
 
     Circuit                               circuit;
-    Conduit < Pipe < Integer >, Integer > conduit;
+    Conduit < Integer > conduit;
     Pipe < Integer >                      pipe;
     Subscriber < Integer >                subscriber;
 
@@ -688,7 +687,7 @@ public class SubscriberOps {
 
       conduit =
         circuit.conduit (
-          pipe ( Integer.class )
+          Integer.class
         );
 
       subscriber =
@@ -702,7 +701,7 @@ public class SubscriberOps {
       conduit.subscribe ( subscriber );
 
       pipe =
-        conduit.percept (
+        conduit.get (
           ops.cortex.name ( "channel" )
         );
 

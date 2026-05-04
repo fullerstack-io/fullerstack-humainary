@@ -5,7 +5,8 @@ package io.humainary.substrates.jmh;
 import io.humainary.substrates.api.Substrates;
 import org.openjdk.jmh.annotations.*;
 
-import static io.humainary.substrates.api.Substrates.Composer.pipe;
+import java.util.function.Function;
+
 import static java.util.concurrent.TimeUnit.NANOSECONDS;
 import static org.openjdk.jmh.annotations.Level.Iteration;
 import static org.openjdk.jmh.annotations.Level.Trial;
@@ -37,29 +38,35 @@ public class TapOps
   private static final int    VALUE      = 42;
   private static final int    BATCH_SIZE = 1000;
 
+  /// Identity pipe transformer — passes pipe through unchanged.
+  private static final Function < Pipe < Integer >, Pipe < Integer > > IDENTITY = p -> p;
+
   private Cortex  cortex;
   private Name    name;
   private Circuit circuit;
 
+  /// String tap transformer — maps Integer to String via the flow's map operator.
+  private Function < Pipe < String >, Pipe < Integer > > toStringTap;
+
   // Conduit for tap creation benchmarks (no subscribers attached)
-  private Conduit < Pipe < Integer >, Integer > conduit;
+  private Conduit < Integer > conduit;
 
   // Baseline: conduit with 1 direct subscriber (no tap)
-  private Conduit < Pipe < Integer >, Integer > baselineConduit;
+  private Conduit < Integer > baselineConduit;
   private Pipe < Integer >                      baselinePipe;
 
   // Identity tap: conduit → tap → 1 subscriber
-  private Conduit < Pipe < Integer >, Integer > identityConduit;
+  private Conduit < Integer > identityConduit;
   private Tap < Integer >                       identityTap;
   private Pipe < Integer >                      identityTapPipe;
 
   // String tap: conduit → tap (with transform) → 1 subscriber
-  private Conduit < Pipe < Integer >, Integer > stringConduit;
+  private Conduit < Integer > stringConduit;
   private Tap < String >                        stringTap;
   private Pipe < Integer >                      stringTapPipe;
 
   // Multi-tap: conduit → 2 taps → 2 subscribers (fan-out)
-  private Conduit < Pipe < Integer >, Integer > multiConduit;
+  private Conduit < Integer > multiConduit;
   private Tap < Integer >                       multiTap1;
   private Tap < Integer >                       multiTap2;
   private Pipe < Integer >                      multiTapPipe;
@@ -77,9 +84,7 @@ public class TapOps
   public Tap < Integer > tap_create_identity () {
 
     return
-      conduit.tap (
-        i -> i
-      );
+      conduit.tap ( IDENTITY );
 
   }
 
@@ -92,9 +97,7 @@ public class TapOps
   public Tap < String > tap_create_string () {
 
     return
-      conduit.tap (
-        Object::toString
-      );
+      conduit.tap ( toStringTap );
 
   }
 
@@ -109,7 +112,7 @@ public class TapOps
     Tap < Integer > result = null;
 
     for ( int i = 0; i < BATCH_SIZE; i++ ) {
-      result = conduit.tap ( v -> v );
+      result = conduit.tap ( IDENTITY );
     }
 
     return result;
@@ -231,7 +234,7 @@ public class TapOps
   @Benchmark
   public void tap_close () {
 
-    final var tap = conduit.tap ( i -> i );
+    final var tap = conduit.tap ( IDENTITY );
     tap.close ();
     circuit.await ();
 
@@ -245,7 +248,7 @@ public class TapOps
   @Benchmark
   public void tap_lifecycle () {
 
-    final var tap = conduit.tap ( Object::toString );
+    final var tap = conduit.tap ( toStringTap );
 
     tap.subscribe (
       circuit.subscriber (
@@ -256,7 +259,7 @@ public class TapOps
     );
 
     // Emit through conduit (which tap is subscribed to)
-    conduit.percept ( name ).emit ( VALUE );
+    conduit.get ( name ).emit ( VALUE );
     circuit.await ();
 
     tap.close ();
@@ -275,7 +278,7 @@ public class TapOps
     // Conduit for tap creation benchmarks (no subscribers)
     conduit =
       circuit.conduit (
-        pipe ( Integer.class )
+        Integer.class
       );
 
     // ─────────────────────────────────────────────────────────────────
@@ -284,7 +287,7 @@ public class TapOps
     // ─────────────────────────────────────────────────────────────────
     baselineConduit =
       circuit.conduit (
-        pipe ( Integer.class )
+        Integer.class
       );
 
     baselineConduit.subscribe (
@@ -296,7 +299,7 @@ public class TapOps
     );
 
     baselinePipe =
-      baselineConduit.percept ( name );
+      baselineConduit.get ( name );
 
     // ─────────────────────────────────────────────────────────────────
     // IDENTITY TAP: conduit → identity tap → 1 subscriber
@@ -304,11 +307,11 @@ public class TapOps
     // ─────────────────────────────────────────────────────────────────
     identityConduit =
       circuit.conduit (
-        pipe ( Integer.class )
+        Integer.class
       );
 
     identityTap =
-      identityConduit.tap ( i -> i );
+      identityConduit.tap ( IDENTITY );
 
     identityTap.subscribe (
       circuit.subscriber (
@@ -319,7 +322,7 @@ public class TapOps
     );
 
     identityTapPipe =
-      identityConduit.percept ( name );
+      identityConduit.get ( name );
 
     // ─────────────────────────────────────────────────────────────────
     // STRING TAP: conduit → string tap → 1 subscriber
@@ -327,11 +330,11 @@ public class TapOps
     // ─────────────────────────────────────────────────────────────────
     stringConduit =
       circuit.conduit (
-        pipe ( Integer.class )
+        Integer.class
       );
 
     stringTap =
-      stringConduit.tap ( Object::toString );
+      stringConduit.tap ( toStringTap );
 
     stringTap.subscribe (
       circuit.subscriber (
@@ -342,7 +345,7 @@ public class TapOps
     );
 
     stringTapPipe =
-      stringConduit.percept ( name );
+      stringConduit.get ( name );
 
     // ─────────────────────────────────────────────────────────────────
     // MULTI-TAP: conduit → 2 identity taps → 2 subscribers
@@ -350,11 +353,11 @@ public class TapOps
     // ─────────────────────────────────────────────────────────────────
     multiConduit =
       circuit.conduit (
-        pipe ( Integer.class )
+        Integer.class
       );
 
     multiTap1 =
-      multiConduit.tap ( i -> i );
+      multiConduit.tap ( IDENTITY );
 
     multiTap1.subscribe (
       circuit.subscriber (
@@ -365,7 +368,7 @@ public class TapOps
     );
 
     multiTap2 =
-      multiConduit.tap ( i -> i );
+      multiConduit.tap ( IDENTITY );
 
     multiTap2.subscribe (
       circuit.subscriber (
@@ -376,7 +379,7 @@ public class TapOps
     );
 
     multiTapPipe =
-      multiConduit.percept ( name );
+      multiConduit.get ( name );
 
     // Warm up - ensure all subscriptions are registered
     circuit.await ();
@@ -393,6 +396,10 @@ public class TapOps
       cortex.name (
         NAME_STR
       );
+
+    // Create the string tap transformer using flow.map
+    Flow < Integer, String > intToString = cortex.flow ( Integer.class ).map ( Object::toString );
+    toStringTap = stringPipe -> intToString.pipe ( stringPipe );
 
   }
 

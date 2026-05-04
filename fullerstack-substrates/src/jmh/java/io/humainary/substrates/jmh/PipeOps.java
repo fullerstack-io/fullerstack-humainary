@@ -8,7 +8,6 @@ import org.openjdk.jmh.infra.Blackhole;
 
 import java.util.concurrent.atomic.AtomicInteger;
 
-import static io.humainary.substrates.api.Substrates.Composer.pipe;
 import static io.humainary.substrates.api.Substrates.Receptor.NOOP;
 import static java.util.concurrent.TimeUnit.NANOSECONDS;
 import static org.openjdk.jmh.annotations.Level.Iteration;
@@ -115,8 +114,15 @@ public class PipeOps
   }
 
   ///
-  /// Batch async emissions with await - full throughput measurement.
+  /// Batch async emissions with await — full throughput measurement.
   /// This is the key benchmark for validating sub-3ns emission target.
+  ///
+  /// **CANARY** for the marker-class invariant in
+  /// {@code FsCircuit.java}. If this benchmark regresses from ~22 ns to
+  /// ~30+ ns, check that {@code AwaitMarker}, {@code CloseMarker},
+  /// {@code CircuitJob}, and {@code ReceptorAdapter} remain distinct
+  /// concrete classes with no shared base type — collapsing them
+  /// reintroduces a bimorphic profile on the dispatch hot path.
   ///
 
   @Benchmark
@@ -299,9 +305,10 @@ public class PipeOps
   public Pipe < Integer > pipe_create_with_flow () {
 
     return
-      circuit.pipe (
-        Receptor.of ( Integer.class ),
-        flow -> flow.guard ( v -> v > 0 ).diff ()
+      cortex.fiber ( Integer.class ).guard ( v -> v > 0 ).diff ().pipe (
+        circuit.pipe (
+          Receptor.of ( Integer.class )
+        )
       );
 
   }
@@ -331,9 +338,10 @@ public class PipeOps
 
     // Async pipe with flow operations
     asyncPipeWithFlow =
-      circuit.pipe (
-        Receptor.of ( Integer.class ),
-        flow -> flow.guard ( v -> v > 0 ).diff ()
+      cortex.fiber ( Integer.class ).guard ( v -> v > 0 ).diff ().pipe (
+        circuit.pipe (
+          Receptor.of ( Integer.class )
+        )
       );
 
     // Chained pipe - pipe to pipe forwarding
@@ -350,7 +358,7 @@ public class PipeOps
     // Fan-out pipe via conduit with multiple subscribers
     final var conduit =
       circuit.conduit (
-        pipe ( Integer.class )
+        Integer.class
       );
 
     // Subscribe 3 receptors to create fan-out
@@ -367,7 +375,7 @@ public class PipeOps
 
     // Get the channel's pipe for emission via the conduit
     fanOutPipe =
-      conduit.percept ( name );
+      conduit.get ( name );
 
     // Warm up the circuit
     circuit.await ();

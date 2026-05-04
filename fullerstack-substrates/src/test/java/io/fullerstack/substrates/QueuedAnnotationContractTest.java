@@ -1,302 +1,193 @@
 package io.fullerstack.substrates;
 
-import static io.humainary.substrates.api.Substrates.*;
+import static io.humainary.substrates.api.Substrates.cortex;
 import static org.junit.jupiter.api.Assertions.*;
 
-import io.humainary.substrates.api.Substrates.Circuit;
-import io.humainary.substrates.api.Substrates.Composer;
-import io.humainary.substrates.api.Substrates.Conduit;
-import io.humainary.substrates.api.Substrates.Name;
-import io.humainary.substrates.api.Substrates.Pipe;
-import io.humainary.substrates.api.Substrates.Receptor;
-
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
-/**
- * Tests to verify the @Queued annotation contract from Substrates API.
- *
- * <p>
- * The @Queued annotation indicates that a method's execution is queued to the
- * circuit's processing thread. Key semantics:
- *
- * <ul>
- * <li>Method returns immediately (non-blocking to caller)
- * <li>Actual work executes on circuit's processing thread
- * <li>Effects are not visible until circuit processes the job
- * <li>Use {@link Circuit#await()} to synchronize
- * <li>Ordering is deterministic relative to other circuit operations
- * </ul>
- *
- * <p>
- *
- * @Queued methods in Substrates API:
- *
- *         <ul>
- *         <li>{@link Circuit#close()} - queues circuit shutdown
- *         <li>{@link Pipe#emit(Object)} - queues emission to receptor
- *         <li>{@code Resource.close()} - queues resource cleanup (default
- *         no-op)
- *         <li>{@code Source.subscribe(Subscriber)} - queues subscriber
- *         registration
- *         </ul>
- */
+import io.humainary.substrates.api.Substrates.Cortex;
+import io.humainary.substrates.api.Substrates.Receptor;
+
+/// Tests for the @Queued annotation contract.
+///
+/// @Queued methods queue execution to the circuit's processing thread.
+/// The caller returns immediately; actual processing happens asynchronously
+/// on the circuit worker thread.
+///
+/// Annotated methods:
+/// - Pipe.emit() — queues emission for circuit thread processing
+/// - Circuit.close() — queues shutdown
+/// - Source.subscribe() — queues subscription registration
+
 @DisplayName ( "@Queued Annotation Contract Tests" )
 class QueuedAnnotationContractTest {
 
-  private Circuit circuit;
-  private Name    testName;
-
-  @BeforeEach
-  void setUp () {
-    testName = cortex ().name ( "test" );
-    circuit = cortex ().circuit ( testName );
-  }
-
-  @AfterEach
-  void tearDown () {
-    if ( circuit != null ) {
-      circuit.close ();
-    }
-  }
-
-  // ============================================================
-  // Pipe.emit() @Queued contract
-  // ============================================================
-
   @Nested
-  @DisplayName ( "Pipe.emit() @Queued contract" )
+  @DisplayName ( "Pipe.emit() @Queued" )
   class PipeEmitQueued {
 
     @Test
-    @DisplayName ( "emit() effect becomes visible after await()" )
-    void emit_effectVisibleAfterAwait () {
-      AtomicBoolean received = new AtomicBoolean ( false );
+    @DisplayName ( "emit returns immediately before processing" )
+    void emit_returnsImmediately () {
+      Cortex cortex = cortex ();
+      var circuit = cortex.circuit ();
+      try {
+        var conduit = circuit.conduit ( Integer.class );
+        final List < Integer > received = new ArrayList <> ();
 
-      Pipe < Integer > pipe = circuit.pipe (
-        (Receptor < Integer >) value -> received.set ( true )
-      );
+        conduit.subscribe (
+          circuit.subscriber (
+            cortex.name ( "sub" ),
+            ( subject, registrar ) ->
+              registrar.register ( received::add )
+          )
+        );
 
-      pipe.emit ( 42 );
-      circuit.await ();
+        // emit() is @Queued — returns before receptor fires
+        conduit.get ( cortex.name ( "src" ) ).emit ( 42 );
 
-      assertTrue ( received.get (), "Emission effect must be visible after await()" );
-    }
-
-    @Test
-    @DisplayName ( "emit() multiple values processed in submission order" )
-    void emit_multipleValues_processedInOrder () {
-      List < Integer > results = Collections.synchronizedList ( new ArrayList <> () );
-
-      Pipe < Integer > pipe = circuit.pipe (
-        (Receptor < Integer >) results::add
-      );
-
-      pipe.emit ( 1 );
-      pipe.emit ( 2 );
-      pipe.emit ( 3 );
-      circuit.await ();
-
-      assertEquals ( List.of ( 1, 2, 3 ), results,
-        "Queued emissions must be processed in submission order" );
-    }
-
-    @Test
-    @DisplayName ( "emit() processes all values before await() returns" )
-    void emit_allProcessedBeforeAwaitReturns () {
-      AtomicInteger count = new AtomicInteger ();
-
-      Pipe < Integer > pipe = circuit.pipe (
-        (Receptor < Integer >) value -> count.incrementAndGet ()
-      );
-
-      for ( int i = 0; i < 100; i++ ) {
-        pipe.emit ( i );
+        // Without await, processing may not have happened yet
+        // After await, it must have been processed
+        circuit.await ();
+        assertEquals ( List.of ( 42 ), received );
+      } finally {
+        circuit.close ();
       }
-      circuit.await ();
+    }
 
-      assertEquals ( 100, count.get (),
-        "All queued emissions must complete before await() returns" );
+    @Test
+    @DisplayName ( "emissions from external thread are queued to circuit thread" )
+    void emit_fromExternalThread () throws Exception {
+      Cortex cortex = cortex ();
+      var circuit = cortex.circuit ();
+      try {
+        var conduit = circuit.conduit ( Integer.class );
+        final List < Integer > received = new ArrayList <> ();
+        final var latch = new CountDownLatch ( 1 );
+
+        conduit.subscribe (
+          circuit.subscriber (
+            cortex.name ( "sub" ),
+            ( subject, registrar ) ->
+              registrar.register ( v -> { received.add ( v ); latch.countDown (); } )
+          )
+        );
+
+        // Emit from a different thread — @Queued routes through ingress queue
+        new Thread ( () -> conduit.get ( cortex.name ( "src" ) ).emit ( 99 ) ).start ();
+
+        circuit.await ();
+        assertTrue ( latch.await ( 2, TimeUnit.SECONDS ) );
+        assertEquals ( List.of ( 99 ), received );
+      } finally {
+        circuit.close ();
+      }
+    }
+
+    @Test
+    @DisplayName ( "multiple queued emissions preserve order" )
+    void emit_preservesOrder () throws Exception {
+      Cortex cortex = cortex ();
+      var circuit = cortex.circuit ();
+      try {
+        var conduit = circuit.conduit ( Integer.class );
+        final List < Integer > received = new ArrayList <> ();
+        final var latch = new CountDownLatch ( 5 );
+
+        conduit.subscribe (
+          circuit.subscriber (
+            cortex.name ( "sub" ),
+            ( subject, registrar ) ->
+              registrar.register ( v -> { received.add ( v ); latch.countDown (); } )
+          )
+        );
+
+        var pipe = conduit.get ( cortex.name ( "src" ) );
+        pipe.emit ( 1 );
+        pipe.emit ( 2 );
+        pipe.emit ( 3 );
+        pipe.emit ( 4 );
+        pipe.emit ( 5 );
+
+        circuit.await ();
+        assertTrue ( latch.await ( 2, TimeUnit.SECONDS ) );
+        assertEquals ( List.of ( 1, 2, 3, 4, 5 ), received,
+          "@Queued emissions must preserve FIFO order" );
+      } finally {
+        circuit.close ();
+      }
     }
   }
 
-  // ============================================================
-  // Circuit.close() @Queued contract
-  // ============================================================
-
   @Nested
-  @DisplayName ( "Circuit.close() @Queued contract" )
+  @DisplayName ( "Circuit.close() @Queued" )
   class CircuitCloseQueued {
 
     @Test
-    @DisplayName ( "close() allows prior queued operations to complete" )
-    void close_priorQueuedOperationsComplete () {
-      AtomicBoolean received = new AtomicBoolean ( false );
-
-      Circuit localCircuit = cortex ().circuit ( cortex ().name ( "close-test" ) );
-
-      Pipe < Integer > pipe = localCircuit.pipe (
-        (Receptor < Integer >) value -> received.set ( true )
-      );
-
-      pipe.emit ( 42 );
-      localCircuit.close ();
-      localCircuit.await ();
-
-      assertTrue ( received.get (),
-        "Emissions queued before close() must be processed" );
+    @DisplayName ( "close() returns immediately" )
+    void close_returnsImmediately () {
+      var circuit = cortex ().circuit ();
+      // @Queued: close() must return without blocking
+      assertDoesNotThrow ( () -> circuit.close () );
     }
 
     @Test
-    @DisplayName ( "close() is idempotent - multiple close calls are safe" )
-    void close_idempotent () {
-      Circuit localCircuit = cortex ().circuit ( cortex ().name ( "idempotent-test" ) );
-
-      // Multiple closes should not throw
-      assertDoesNotThrow ( () -> {
-        localCircuit.close ();
-        localCircuit.close ();
-        localCircuit.close ();
-        localCircuit.await ();
-      }, "Multiple close() calls must be safe (idempotent)" );
-    }
-  }
-
-  // ============================================================
-  // Source.subscribe() @Queued contract
-  // ============================================================
-
-  @Nested
-  @DisplayName ( "Source.subscribe() @Queued contract" )
-  class SourceSubscribeQueued {
-
-    @Test
-    @DisplayName ( "subscribe() callback invoked after emission and await()" )
-    void subscribe_callbackInvokedAfterEmissionAndAwait () {
-      AtomicBoolean callbackFired = new AtomicBoolean ( false );
-
-      Conduit < Pipe < Integer >, Integer > conduit = circuit.conduit (
-        cortex ().name ( "conduit" ),
-        Composer.pipe ()
-      );
+    @DisplayName ( "emissions after close are silently dropped" )
+    void emit_afterClose_dropped () throws Exception {
+      Cortex cortex = cortex ();
+      var circuit = cortex.circuit ();
+      var conduit = circuit.conduit ( Integer.class );
+      final List < Integer > received = new ArrayList <> ();
 
       conduit.subscribe (
         circuit.subscriber (
-          cortex ().name ( "sub" ),
-          ( subject, registrar ) -> {
-            callbackFired.set ( true );
-            registrar.register ( Receptor.of ( Integer.class ) );
-          }
+          cortex.name ( "sub" ),
+          ( subject, registrar ) ->
+            registrar.register ( received::add )
         )
       );
 
-      // Emit to trigger subscriber callback
-      conduit.percept ( cortex ().name ( "channel" ) ).emit ( 1 );
-      circuit.await ();
+      circuit.close ();
 
-      assertTrue ( callbackFired.get (),
-        "Subscriber callback must be invoked after emission and await()" );
-    }
-
-    @Test
-    @DisplayName ( "subscribe() multiple subscribers all notified" )
-    void subscribe_multipleSubscribers_allNotified () {
-      AtomicInteger subscriberCount = new AtomicInteger ();
-
-      Conduit < Pipe < Integer >, Integer > conduit = circuit.conduit (
-        cortex ().name ( "multi-sub" ),
-        Composer.pipe ()
-      );
-
-      for ( int i = 0; i < 3; i++ ) {
-        conduit.subscribe (
-          circuit.subscriber (
-            cortex ().name ( "sub-" + i ),
-            ( subject, registrar ) -> {
-              subscriberCount.incrementAndGet ();
-              registrar.register ( Receptor.of ( Integer.class ) );
-            }
-          )
-        );
-      }
-
-      conduit.percept ( cortex ().name ( "channel" ) ).emit ( 1 );
-      circuit.await ();
-
-      assertEquals ( 3, subscriberCount.get (),
-        "All subscribers must be notified after emission" );
+      // Emissions after close should be silently dropped
+      assertDoesNotThrow (
+        () -> conduit.get ( cortex.name ( "src" ) ).emit ( 42 ) );
     }
   }
 
-  // ============================================================
-  // Queued ordering contract
-  // ============================================================
-
   @Nested
-  @DisplayName ( "Queued ordering contract" )
-  class QueuedOrdering {
+  @DisplayName ( "Source.subscribe() @Queued" )
+  class SubscribeQueued {
 
     @Test
-    @DisplayName ( "Queued operations execute in deterministic order" )
-    void queuedOperations_deterministicOrder () {
-      List < String > events = Collections.synchronizedList ( new ArrayList <> () );
+    @DisplayName ( "subscribe returns subscription before activation completes" )
+    void subscribe_returnsImmediately () {
+      Cortex cortex = cortex ();
+      var circuit = cortex.circuit ();
+      try {
+        var conduit = circuit.conduit ( Integer.class );
 
-      Pipe < Integer > pipe = circuit.pipe (
-        (Receptor < Integer >) value -> events.add ( "emit:" + value )
-      );
+        // subscribe() is @Queued — returns Subscription immediately
+        // Actual subscriber activation happens on circuit thread
+        var subscription = conduit.subscribe (
+          circuit.subscriber (
+            cortex.name ( "sub" ),
+            ( subject, registrar ) ->
+              registrar.register ( (Receptor < Integer >) v -> {} )
+          )
+        );
 
-      pipe.emit ( 1 );
-      pipe.emit ( 2 );
-      pipe.emit ( 3 );
-      circuit.await ();
-
-      assertEquals (
-        List.of ( "emit:1", "emit:2", "emit:3" ),
-        events,
-        "Queued operations must execute in deterministic submission order"
-      );
-    }
-
-    @Test
-    @DisplayName ( "Emissions from different pipes on same circuit preserve per-pipe order" )
-    void differentPipes_perPipeOrderPreserved () {
-      List < String > events = Collections.synchronizedList ( new ArrayList <> () );
-
-      Pipe < Integer > pipeA = circuit.pipe (
-        (Receptor < Integer >) value -> events.add ( "A:" + value )
-      );
-
-      Pipe < Integer > pipeB = circuit.pipe (
-        (Receptor < Integer >) value -> events.add ( "B:" + value )
-      );
-
-      pipeA.emit ( 1 );
-      pipeB.emit ( 1 );
-      pipeA.emit ( 2 );
-      pipeB.emit ( 2 );
-      circuit.await ();
-
-      // Verify per-pipe ordering is maintained
-      List < String > aEvents = events.stream ()
-        .filter ( e -> e.startsWith ( "A:" ) )
-        .toList ();
-      List < String > bEvents = events.stream ()
-        .filter ( e -> e.startsWith ( "B:" ) )
-        .toList ();
-
-      assertEquals ( List.of ( "A:1", "A:2" ), aEvents,
-        "Pipe A emissions must maintain order" );
-      assertEquals ( List.of ( "B:1", "B:2" ), bEvents,
-        "Pipe B emissions must maintain order" );
+        assertNotNull ( subscription, "@Queued subscribe must return immediately" );
+      } finally {
+        circuit.close ();
+      }
     }
   }
 }

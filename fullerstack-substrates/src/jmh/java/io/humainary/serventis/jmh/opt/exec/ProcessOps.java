@@ -34,7 +34,7 @@ public class ProcessOps implements Substrates {
 
   private Cortex                    cortex;
   private Circuit                   circuit;
-  private Conduit < Process, Sign > conduit;
+  private Conduit < Sign > conduit;
   private Process                   process;
   private Name                      name;
 
@@ -232,7 +232,7 @@ public class ProcessOps implements Substrates {
   public Process process_from_conduit () {
 
     return
-      conduit.percept (
+      Processes.pool ( conduit ).get (
         name
       );
 
@@ -242,7 +242,7 @@ public class ProcessOps implements Substrates {
   @OperationsPerInvocation ( BATCH_SIZE )
   public Process process_from_conduit_batch () {
     Process result = null;
-    for ( var i = 0; i < BATCH_SIZE; i++ ) result = conduit.percept ( name );
+    for ( var i = 0; i < BATCH_SIZE; i++ ) result = Processes.pool ( conduit ).get ( name );
     return result;
   }
 
@@ -254,11 +254,11 @@ public class ProcessOps implements Substrates {
 
     conduit =
       circuit.conduit (
-        Processes::composer
+        Sign.class
       );
 
     process =
-      conduit.percept (
+      Processes.pool ( conduit ).get (
         name
       );
 

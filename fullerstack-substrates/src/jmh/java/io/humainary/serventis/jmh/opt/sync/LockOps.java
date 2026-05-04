@@ -34,7 +34,7 @@ public class LockOps implements Substrates {
 
   private Cortex                 cortex;
   private Circuit                circuit;
-  private Conduit < Lock, Sign > conduit;
+  private Conduit < Sign > conduit;
   private Lock                   lock;
   private Name                   name;
 
@@ -249,7 +249,7 @@ public class LockOps implements Substrates {
   public Lock lock_from_conduit () {
 
     return
-      conduit.percept (
+      Locks.pool ( conduit ).get (
         name
       );
 
@@ -259,7 +259,7 @@ public class LockOps implements Substrates {
   @OperationsPerInvocation ( BATCH_SIZE )
   public Lock lock_from_conduit_batch () {
     Lock result = null;
-    for ( var i = 0; i < BATCH_SIZE; i++ ) result = conduit.percept ( name );
+    for ( var i = 0; i < BATCH_SIZE; i++ ) result = Locks.pool ( conduit ).get ( name );
     return result;
   }
 
@@ -271,11 +271,11 @@ public class LockOps implements Substrates {
 
     conduit =
       circuit.conduit (
-        Locks::composer
+        Sign.class
       );
 
     lock =
-      conduit.percept (
+      Locks.pool ( conduit ).get (
         name
       );
 

@@ -3,8 +3,11 @@ package io.fullerstack.substrates;
 import io.humainary.substrates.api.Substrates.Idempotent;
 import io.humainary.substrates.api.Substrates.Name;
 import io.humainary.substrates.api.Substrates.Provided;
+import io.humainary.substrates.api.Substrates.Queued;
 import io.humainary.substrates.api.Substrates.Subject;
 import io.humainary.substrates.api.Substrates.Subscription;
+
+import java.util.function.Consumer;
 
 /// A cancellable handle representing an active subscription to a source.
 ///
@@ -29,8 +32,11 @@ public final class FsSubscription implements Subscription {
   private final    FsSubject < ? >          parent;
   private volatile Subject < Subscription > subject;
 
-  /// Action to run on close.
+  /// Action to run on close (unsubscribe from source).
   private final Runnable onClose;
+
+  /// User-supplied close callback — fires exactly once when subscription terminates.
+  private final Consumer < ? super Subscription > onCloseCallback;
 
   /// Whether this subscription has been closed.
   private volatile boolean closed;
@@ -39,20 +45,40 @@ public final class FsSubscription implements Subscription {
   ///
   /// @param name   the name for the subscription subject
   /// @param parent the parent subject for hierarchy
-  /// @param onClose action to run when subscription is closed
+  /// @param onClose action to run when subscription is closed (internal cleanup)
   FsSubscription ( Name name, FsSubject < ? > parent, Runnable onClose ) {
+    this ( name, parent, onClose, null );
+  }
+
+  /// Creates a new subscription with lazy subject creation and an onClose callback.
+  ///
+  /// @param name            the name for the subscription subject
+  /// @param parent          the parent subject for hierarchy
+  /// @param onClose         action to run when subscription is closed (internal cleanup)
+  /// @param onCloseCallback user-supplied callback fired exactly once on termination, or null
+  FsSubscription ( Name name, FsSubject < ? > parent, Runnable onClose,
+                   Consumer < ? super Subscription > onCloseCallback ) {
     this.name = name;
     this.parent = parent;
     this.onClose = onClose;
+    this.onCloseCallback = onCloseCallback;
   }
 
-  /// Returns the subject identity of this subscription (lazy creation).
+  /// Returns the subject identity of this subscription. Lazy creation with
+  /// double-checked locking — FsSubject's constructor calls
+  /// ID_COUNTER.getAndIncrement(), so an unsynchronised race would mint
+  /// distinct ids and orphan one of them.
   @Override
   public Subject < Subscription > subject () {
     Subject < Subscription > s = subject;
     if ( s == null ) {
-      s = new FsSubject <> ( name, parent, Subscription.class );
-      subject = s;
+      synchronized ( this ) {
+        s = subject;
+        if ( s == null ) {
+          s = new FsSubject <> ( name, parent, Subscription.class );
+          subject = s;
+        }
+      }
     }
     return s;
   }
@@ -60,11 +86,19 @@ public final class FsSubscription implements Subscription {
   /// Closes this subscription, unregistering from the source.
   /// Idempotent - repeated calls have no effect.
   @Idempotent
+  @Queued
   @Override
   public void close () {
     if ( !closed ) {
       closed = true;
       onClose.run ();
+      if ( onCloseCallback != null ) {
+        try {
+          onCloseCallback.accept ( this );
+        } catch ( Exception e ) {
+          // SPEC §15.4: onClose exceptions do not propagate to circuit dispatch loop
+        }
+      }
     }
   }
 

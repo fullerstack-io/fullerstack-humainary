@@ -4,7 +4,6 @@ import jdk.internal.vm.annotation.Contended;
 
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.VarHandle;
-import java.util.Arrays;
 import java.util.function.Consumer;
 
 /**
@@ -137,7 +136,7 @@ public final class IngressQueue {
       } else {
         r.accept ( v );                                    // hot: monomorphic receptor
         if ( circuit.transitHasWork () ) {                 // guard: plain field read
-          do { } while ( circuit.drainTransit () );        // depth-first cascade drain
+          circuit.drainTransit ();                         // drain all transit (drain() loops internally)
         }
       }
 
@@ -158,11 +157,14 @@ public final class IngressQueue {
   /**
    * Peek for ingress work. Returns non-null if a committed slot exists.
    */
+  /// Peek at the next ingress slot. Returns non-null if work is available.
   @jdk.internal.vm.annotation.ForceInline
   public Object peek () {
     int idx = headIndex;
-    if ( idx >= QChunk.CAPACITY ) return headChunk.next;
-    return QChunk.SLOTS.getAcquire ( headChunk.slots, idx << 1 );
+    if ( idx < QChunk.CAPACITY ) {
+      return QChunk.SLOTS.getAcquire ( headChunk.slots, idx << 1 );
+    }
+    return QChunk.NEXT.getAcquire ( headChunk );
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -182,7 +184,11 @@ public final class IngressQueue {
   }
 
   private void recycleFreeChunk ( QChunk chunk ) {
-    Arrays.fill ( chunk.slots, null );
+    // No Arrays.fill needed — drainBatchLoop already clears each slot inline as it
+    // processes (slots[base] = null after dispatching). When a chunk reaches this
+    // method, every slot has either been processed and cleared or was never touched
+    // (fresh allocation has zero-init Object[]). Reset claimed/next so the chunk is
+    // ready for the next producer to fill from slot 0.
     QChunk.CLAIMED.setRelease ( chunk, 0 );
     QChunk.NEXT.setRelease ( chunk, null );
     for ( ; ; ) {

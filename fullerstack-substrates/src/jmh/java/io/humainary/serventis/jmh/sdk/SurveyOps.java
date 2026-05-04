@@ -37,7 +37,7 @@ public class SurveyOps implements Substrates {
 
   private Cortex                                                         cortex;
   private Circuit                                                        circuit;
-  private Conduit < Survey < Outcomes.Sign >, Signal < Outcomes.Sign > > conduit;
+  private Conduit < Signal < Outcomes.Sign > > conduit;
   private Survey < Outcomes.Sign >                                       survey;
   private Name                                                           name;
 
@@ -45,7 +45,7 @@ public class SurveyOps implements Substrates {
   public Survey < Outcomes.Sign > survey_from_conduit () {
 
     return
-      conduit.percept (
+      Surveys.pool ( Outcomes.Sign.class, conduit ).get (
         name
       );
 
@@ -63,8 +63,8 @@ public class SurveyOps implements Substrates {
       i++
     ) {
       result =
-        conduit.percept (
-          name
+        Surveys.pool ( Outcomes.Sign.class, conduit ).get (
+        name
         );
     }
 
@@ -153,15 +153,15 @@ public class SurveyOps implements Substrates {
     circuit =
       cortex.circuit ();
 
-    conduit =
-      circuit.conduit (
-        Surveys.composer (
-          Outcomes.Sign.class
-        )
+    @SuppressWarnings ( "unchecked" )
+    Conduit < Signal < Outcomes.Sign > > c =
+      (Conduit < Signal < Outcomes.Sign > >) (Conduit < ? >) circuit.conduit (
+        Signal.class
       );
+    conduit = c;
 
     survey =
-      conduit.percept (
+      Surveys.pool ( Outcomes.Sign.class, conduit ).get (
         name
       );
 

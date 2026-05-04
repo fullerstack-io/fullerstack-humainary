@@ -33,7 +33,7 @@ public class ValveOps implements Substrates {
 
   private Cortex                  cortex;
   private Circuit                 circuit;
-  private Conduit < Valve, Sign > conduit;
+  private Conduit < Sign > conduit;
   private Valve                   valve;
   private Name                    name;
 
@@ -252,11 +252,11 @@ public class ValveOps implements Substrates {
 
     conduit =
       circuit.conduit (
-        Valves::composer
+        Sign.class
       );
 
     valve =
-      conduit.percept (
+      Valves.pool ( conduit ).get (
         name
       );
 
@@ -292,7 +292,7 @@ public class ValveOps implements Substrates {
   public Valve valve_from_conduit () {
 
     return
-      conduit.percept (
+      Valves.pool ( conduit ).get (
         name
       );
 
@@ -314,8 +314,8 @@ public class ValveOps implements Substrates {
       i++
     ) {
       result =
-        conduit.percept (
-          name
+        Valves.pool ( conduit ).get (
+        name
         );
     }
 

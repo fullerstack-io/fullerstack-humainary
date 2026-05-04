@@ -30,7 +30,7 @@ public class IdOps
 
   private Cortex                                cortex;
   private Circuit                               circuit;
-  private Conduit < Pipe < Integer >, Integer > conduit;
+  private Conduit < Integer > conduit;
   private Subject < ? >                         subject;
   private Id                                    id;
 
@@ -46,7 +46,7 @@ public class IdOps
     conduit =
       circuit.conduit (
         cortex.name ( "benchmark" ),
-        Composer.pipe ()
+        Integer.class
       );
 
     subject =

@@ -1,168 +1,181 @@
 package io.fullerstack.substrates;
 
-import io.humainary.substrates.api.Substrates.Channel;
-import io.humainary.substrates.api.Substrates.Configurer;
-import io.humainary.substrates.api.Substrates.Flow;
-import io.humainary.substrates.api.Substrates.New;
-import io.humainary.substrates.api.Substrates.NotNull;
+import io.humainary.substrates.api.Substrates.Name;
 import io.humainary.substrates.api.Substrates.Pipe;
-import io.humainary.substrates.api.Substrates.Provided;
 import io.humainary.substrates.api.Substrates.Receptor;
+import io.humainary.substrates.api.Substrates.Routing;
 import io.humainary.substrates.api.Substrates.Subject;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Consumer;
 
-/// A named port in a conduit that provides a pipe for emission.
+/// Channel — the per-name dispatch point on the routing path.
 ///
-/// Channels serve as named entry points into a conduit's processing pipeline.
-/// Each channel has a unique Subject with an associated Name, and emissions
-/// to the channel are routed through the conduit's Flow pipeline to registered
-/// subscribers.
+/// Cortex → Circuit → Conduit → **Channel** → Pipe → Receptor
 ///
-/// Channels are pooled by name within a conduit (`@Tenure INTERNED`).
-/// The channel holds per-channel subscriber state and implements `Receptor`
-/// for direct emission dispatch on the circuit thread.
+/// The channel has two roles:
+/// - **Ingress receiver**: implements Consumer<Object>. Stored in the
+///   ingress queue. On dequeue, checks version and dispatches.
+/// - **Dispatch builder**: after rebuild, sets the dispatch Consumer
+///   which is used directly on the transit hot path. The dispatch
+///   already includes STEM propagation if applicable, so transit
+///   cascades can call dispatch directly without going through the
+///   channel — bypassing the version check (which the spec guarantees
+///   is stable mid-cascade per §5.4.1 + §7.6.2).
 ///
-/// @param <E> the class type of emitted value
-/// @see FsConduit
-@Provided
-final class FsChannel < E > implements Channel < E >, Receptor < E > {
+/// The dispatch is Consumer<Object> throughout — same type as the
+/// transit queue, the flow chain, and the registrar's stored receivers.
+/// No lambda wrappers on the hot path.
+final class FsChannel < E > implements Receptor < E >, Consumer < Object > {
 
-  /// The subject identity for this channel.
-  private final Subject < Channel < E > > subject;
+  private final Subject < Pipe < E > > subject;
+  private final FsCircuit              circuit;
+  private final FsHub < E >            hub;
+  private final boolean                stem;
+  private final FsConduit < E >        conduit;
 
-  /// The circuit that owns this channel.
-  private final FsCircuit circuit;
+  /// The upstream pipe — what conduit.get(name) returns.
+  final FsPipe < E > pipe;
 
-  /// The emission consumer for routing emissions through the pipeline.
-  /// Non-final: for conduit-managed channels, set after construction
-  /// to break the circular dependency (channel wraps itself via ReceptorReceiver).
-  Consumer < E > router;
+  /// Downstream dispatch — receptors only, no STEM. Used by ingress receive()
+  /// (which adds version check + STEM externally) and by dispatchStem when
+  /// walking ancestors (must NOT trigger ancestor's STEM walk too).
+  Consumer < Object > dispatch;
 
-  /// The owning conduit (null for standalone channels, e.g. FsCell).
-  private final FsConduit < ?, E > conduit;
+  /// Transit-side cascade dispatch — receptors + STEM (if applicable).
+  /// Submitted directly to transit by fiber/flow terminals to bypass the
+  /// version check on the cascade hot path. For non-STEM channels this is
+  /// the same reference as `dispatch`. For STEM channels it's a wrapper
+  /// that fires receptors then walks STEM.
+  Consumer < Object > cascadeDispatch;
 
-  /// Cached pipe subject - all pipes from this channel share the same identity.
-  /// Lazy initialized on first pipe() call.
-  private volatile Subject < Pipe < E > > cachedPipeSubject;
-
-  // ─────────────────────────────────────────────────────────────────────────────
-  // Subscriber state — circuit-thread only (no synchronization needed)
-  // ─────────────────────────────────────────────────────────────────────────────
-
-  /// Receptors per subscriber — for proper unsubscribe handling.
-  final Map < FsSubscriber < E >, List < Receptor < ? super E > > > subscriberReceptors = new IdentityHashMap <> ();
-
-  /// Cached flat array for fast iteration (rebuilt when subscribers change).
-  Receptor < ? super E >[] receptors;
-
-  /// Dirty flag — start dirty to force first rebuild.
-  boolean dirty = true;
-
-  /// Version tracking for FsTap — tracks which subscriber version this channel
-  /// was last built against. Uses -1 as sentinel to force initial rebuild.
+  /// Version this channel was last built at.
   int builtVersion = -1;
 
-  /// Creates a conduit-managed channel with subscriber support.
-  ///
-  /// @param subject the subject identity for this channel
-  /// @param circuit the circuit that owns this channel
-  /// @param conduit the owning conduit for subscriber rebuild
-  /// @param router the consumer that routes emissions to subscribers
-  FsChannel ( Subject < Channel < E > > subject, FsCircuit circuit, FsConduit < ?, E > conduit, Consumer < E > router ) {
+  /// Per-subscriber receptor registrations — lazy, circuit-thread only.
+  Map < FsSubscriber < E >, List < Consumer < Object > > > subscriberReceptors;
+
+  FsChannel (
+    Subject < Pipe < E > > subject,
+    FsCircuit circuit,
+    FsHub < E > hub,
+    FsConduit < E > conduit,
+    Routing routing
+  ) {
     this.subject = subject;
     this.circuit = circuit;
+    this.hub = hub;
     this.conduit = conduit;
-    this.router = router;
+    this.stem = routing == Routing.STEM;
+    this.pipe = new FsPipe <> ( this, circuit );
   }
 
-  /// Creates a standalone channel (no conduit subscriber management).
-  /// Used by FsCell where channels have their own routing logic.
-  ///
-  /// @param subject the subject identity for this channel
-  /// @param circuit the circuit that owns this channel
-  /// @param router the consumer that routes emissions to subscribers
-  FsChannel ( Subject < Channel < E > > subject, FsCircuit circuit, Consumer < E > router ) {
-    this ( subject, circuit, null, router );
-  }
-
-  /// Returns the subject identity of this channel.
-  @Override
-  public Subject < Channel < E > > subject () {
+  Subject < Pipe < E > > subject () {
     return subject;
   }
 
-  /// Returns the cached pipe subject, creating it lazily if needed.
-  /// All pipes from this channel share the same subject identity.
-  private Subject < Pipe < E > > pipeSubject () {
-    Subject < Pipe < E > > cached = cachedPipeSubject;
-    if ( cached == null ) {
-      cached = new FsSubject <> ( subject.name (), (FsSubject < ? >) subject, Pipe.class );
-      cachedPipeSubject = cached;
-    }
-    return cached;
-  }
+  // ─── Ingress receiver ───
 
-  /// Returns a new pipe for emitting to this channel.
-  @New
-  @NotNull
   @Override
   @SuppressWarnings ( "unchecked" )
-  public Pipe < E > pipe () {
-    return circuit.createPipe ( subject.name (), (FsSubject < ? >) subject, (Consumer < Object >) (Consumer < ? >) router );
+  public void accept ( Object o ) {
+    receive ( (E) o );
   }
 
-  /// Returns a new pipe with custom flow configuration.
-  /// Configurer is invoked eagerly; exceptions are wrapped in Substrates.Exception.
-  @New
-  @NotNull
-  @Override
-  @SuppressWarnings ( "unchecked" )
-  public Pipe < E > pipe ( @NotNull Configurer < ? super Flow < E > > configurer ) {
-    try {
-      Subject < Pipe < E > > ps = pipeSubject ();
-      Pipe < E > basePipe = circuit.createPipe ( ps.name (), (FsSubject < ? >) subject, (Consumer < Object >) (Consumer < ? >) router );
-      FsFlow < E > flow = new FsFlow <> ( ps, circuit, basePipe );
-      configurer.configure ( flow );
-      return flow.pipe ();
-    } catch ( FsException e ) {
-      throw e;
-    } catch ( RuntimeException e ) {
-      throw new FsException ( "Flow configuration failed", e );
-    }
-  }
+  // ─── Dispatch (ingress path — version check) ───
+  //
+  // Called only from the ingress drain. The version check fires here because
+  // an ingress emission may follow a subscriber change (which is itself
+  // queued in ingress order). Per §5.4.1 relation 3 + §7.6.2, no subscriber
+  // change can interleave during a cascade, so transit-side dispatch goes
+  // straight to `dispatch` and skips this method entirely.
 
-  // ─────────────────────────────────────────────────────────────────────────────
-  // Receptor — emission dispatch on circuit thread
-  // ─────────────────────────────────────────────────────────────────────────────
-
-  /// Receives an emission on the circuit thread.
-  /// Checks dirty flag and triggers lazy rebuild before dispatching
-  /// to all registered subscriber receptors.
   @Override
+  @jdk.internal.vm.annotation.ForceInline
   public void receive ( E emission ) {
-    if ( dirty || conduit.subscribersDirty ) {
-      conduit.rebuildChannelPipes ( this );
-      dirty = false;
-    }
-    Receptor < ? super E >[] r = receptors;
-    if ( r == null ) return;
-    for ( int i = 0, len = r.length; i < len; i++ ) {
-      r[i].receive ( emission );
+    if ( builtVersion != hub.subscriberVersion ) rebuild ();
+    Consumer < Object > d = dispatch;
+    if ( d != null ) d.accept ( emission );
+    if ( stem ) dispatchStem ( emission );
+  }
+
+  /// STEM — propagate to ancestor channels' dispatch (no version checks here;
+  /// rebuild is driven from receive() before any transit can run).
+  private void dispatchStem ( E emission ) {
+    Name n = subject.name ();
+    while ( n.enclosure ().isPresent () ) {
+      n = n.enclosure ().get ();
+      FsChannel < E > ancestor = conduit.channel ( n );
+      if ( ancestor != null ) {
+        if ( ancestor.builtVersion != hub.subscriberVersion ) ancestor.rebuild ();
+        Consumer < Object > d = ancestor.dispatch;
+        if ( d != null ) d.accept ( emission );
+      }
     }
   }
 
-  /// Rebuilds the flat receptors array from the subscriberReceptors map.
+  // ─── Rebuild (cold path) ───
+
   @SuppressWarnings ( "unchecked" )
-  void rebuildReceptorsArray () {
-    List < Receptor < ? super E > > all = new ArrayList <> ();
-    for ( List < Receptor < ? super E > > list : subscriberReceptors.values () ) {
+  private void rebuild () {
+    FsSubscriber < E >[] currentSubs = hub.ensureSnapshot ();
+
+    if ( subscriberReceptors == null ) {
+      subscriberReceptors = new IdentityHashMap <> ();
+    }
+
+    Set < FsSubscriber < E > > activeSet = Collections.newSetFromMap ( new IdentityHashMap <> () );
+    for ( FsSubscriber < E > sub : currentSubs ) {
+      activeSet.add ( sub );
+    }
+
+    subscriberReceptors.keySet ().removeIf ( sub -> !activeSet.contains ( sub ) );
+
+    for ( FsSubscriber < E > subscriber : currentSubs ) {
+      if ( !subscriberReceptors.containsKey ( subscriber ) ) {
+        FsRegistrar < E > registrar = new FsRegistrar <> ();
+        subscriber.activate ( subject, registrar );
+        subscriberReceptors.put ( subscriber, registrar.consumers () );
+      }
+    }
+
+    // Build receptor-only dispatch — used by ingress receive() and by
+    // dispatchStem when walking ancestors.
+    List < Consumer < Object > > all = new ArrayList <> ();
+    for ( List < Consumer < Object > > list : subscriberReceptors.values () ) {
       all.addAll ( list );
     }
-    receptors = all.isEmpty () ? null : all.toArray ( new Receptor[0] );
+
+    if ( all.isEmpty () ) {
+      dispatch = null;
+    } else if ( all.size () == 1 ) {
+      dispatch = all.getFirst ();
+    } else {
+      Consumer < Object >[] arr = all.toArray ( new Consumer[0] );
+      dispatch = v -> {
+        for ( int i = 0, len = arr.length; i < len; i++ ) arr[i].accept ( v );
+      };
+    }
+
+    // Build cascadeDispatch — what transit cascade terminals submit.
+    // Same as dispatch for non-STEM channels; wraps in STEM walk for STEM channels.
+    if ( stem ) {
+      final Consumer < Object > base = dispatch;
+      cascadeDispatch = v -> {
+        if ( base != null ) base.accept ( v );
+        @SuppressWarnings ( "unchecked" )
+        E e = (E) v;
+        dispatchStem ( e );
+      };
+    } else {
+      cascadeDispatch = dispatch;
+    }
+
+    builtVersion = hub.subscriberVersion;
   }
 }

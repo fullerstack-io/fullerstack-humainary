@@ -4,7 +4,6 @@ package io.humainary.serventis.jmh.opt.pool;
 
 import io.humainary.substrates.api.Substrates;
 import io.humainary.serventis.opt.pool.Pools;
-import io.humainary.serventis.opt.pool.Pools.Pool;
 import io.humainary.serventis.opt.pool.Pools.Sign;
 import org.openjdk.jmh.annotations.*;
 
@@ -33,8 +32,8 @@ public class PoolOps implements Substrates {
 
   private Cortex                 cortex;
   private Circuit                circuit;
-  private Conduit < Pool, Sign > conduit;
-  private Pool                   pool;
+  private Conduit < Sign > conduit;
+  private Pools.Pool             pool;
   private Name                   name;
 
   ///
@@ -191,10 +190,10 @@ public class PoolOps implements Substrates {
   ///
 
   @Benchmark
-  public Pool pool_from_conduit () {
+  public Pools.Pool pool_from_conduit () {
 
     return
-      conduit.percept (
+      io.humainary.serventis.opt.pool.Pools.pool ( conduit ).get (
         name
       );
 
@@ -206,9 +205,9 @@ public class PoolOps implements Substrates {
 
   @Benchmark
   @OperationsPerInvocation ( BATCH_SIZE )
-  public Pool pool_from_conduit_batch () {
+  public Pools.Pool pool_from_conduit_batch () {
 
-    Pool result = null;
+    Pools.Pool result = null;
 
     for (
       var i = 0;
@@ -216,8 +215,8 @@ public class PoolOps implements Substrates {
       i++
     ) {
       result =
-        conduit.percept (
-          name
+        io.humainary.serventis.opt.pool.Pools.pool ( conduit ).get (
+        name
         );
     }
 
@@ -234,11 +233,11 @@ public class PoolOps implements Substrates {
 
     conduit =
       circuit.conduit (
-        Pools::composer
+        Sign.class
       );
 
     pool =
-      conduit.percept (
+      io.humainary.serventis.opt.pool.Pools.pool ( conduit ).get (
         name
       );
 

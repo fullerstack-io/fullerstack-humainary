@@ -5,7 +5,6 @@ package io.humainary.substrates.jmh;
 import io.humainary.substrates.api.Substrates;
 import org.openjdk.jmh.annotations.*;
 
-import static io.humainary.substrates.api.Substrates.Composer.pipe;
 import static java.util.concurrent.TimeUnit.NANOSECONDS;
 import static org.openjdk.jmh.annotations.Level.Iteration;
 import static org.openjdk.jmh.annotations.Level.Trial;
@@ -36,7 +35,7 @@ public class ConduitOps
 
   private Cortex                                cortex;
   private Circuit                               circuit;
-  private Conduit < Pipe < Integer >, Integer > conduit;
+  private Conduit < Integer > conduit;
   private Name                                  name;
   private Scope                                 scope;
   private Name[]                                names;
@@ -50,7 +49,7 @@ public class ConduitOps
   public Pipe < Integer > get_by_name () {
 
     return
-      conduit.percept (
+      conduit.get (
         name
       );
 
@@ -66,7 +65,7 @@ public class ConduitOps
   @OperationsPerInvocation ( BATCH_SIZE )
   public Pipe < Integer > get_by_name_batch () {
     Pipe < Integer > result = null;
-    for ( var i = 0; i < BATCH_SIZE; i++ ) result = conduit.percept ( name );
+    for ( var i = 0; i < BATCH_SIZE; i++ ) result = conduit.get ( name );
     return result;
   }
 
@@ -78,7 +77,7 @@ public class ConduitOps
   public Pipe < Integer > get_by_substrate () {
 
     return
-      conduit.percept (
+      conduit.get (
         scope
       );
 
@@ -88,7 +87,7 @@ public class ConduitOps
   @OperationsPerInvocation ( BATCH_SIZE )
   public Pipe < Integer > get_by_substrate_batch () {
     Pipe < Integer > result = null;
-    for ( var i = 0; i < BATCH_SIZE; i++ ) result = conduit.percept ( scope );
+    for ( var i = 0; i < BATCH_SIZE; i++ ) result = conduit.get ( scope );
     return result;
   }
 
@@ -101,13 +100,13 @@ public class ConduitOps
 
     final var
       first =
-      conduit.percept (
+      conduit.get (
         name
       );
 
     final var
       second =
-      conduit.percept (
+      conduit.get (
         name
       );
 
@@ -121,8 +120,8 @@ public class ConduitOps
   public boolean get_cached_batch () {
     boolean result = false;
     for ( var i = 0; i < BATCH_SIZE; i++ ) {
-      final var first = conduit.percept ( name );
-      final var second = conduit.percept ( name );
+      final var first = conduit.get ( name );
+      final var second = conduit.get ( name );
       result = first == second;
     }
     return result;
@@ -138,7 +137,7 @@ public class ConduitOps
   public Pipe < Integer > get_varied () {
 
     return
-      conduit.percept (
+      conduit.get (
         names[index++ % POOL_SIZE]
       );
 
@@ -149,7 +148,7 @@ public class ConduitOps
   public Pipe < Integer > get_varied_batch () {
     Pipe < Integer > result = null;
     for ( var i = 0; i < BATCH_SIZE; i++ ) {
-      result = conduit.percept ( names[index++ % POOL_SIZE] );
+      result = conduit.get ( names[index++ % POOL_SIZE] );
     }
     return result;
   }
@@ -162,13 +161,13 @@ public class ConduitOps
 
     conduit =
       circuit.conduit (
-        pipe ()
+        Integer.class
       );
 
     // Pre-populate conduit with all percepts for varied lookup benchmarks
     for ( final var n : names ) {
 
-      conduit.percept ( n );
+      conduit.get ( n );
 
     }
 
@@ -265,7 +264,7 @@ public class ConduitOps
 
     final var
       channel =
-      conduit.percept (
+      conduit.get (
         name
       );
 

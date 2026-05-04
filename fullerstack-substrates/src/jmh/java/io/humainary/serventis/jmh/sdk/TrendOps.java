@@ -32,7 +32,7 @@ public class TrendOps implements Substrates {
 
   private Cortex                  cortex;
   private Circuit                 circuit;
-  private Conduit < Trend, Sign > conduit;
+  private Conduit < Sign > conduit;
   private Trend                   trend;
   private Name                    name;
 
@@ -40,7 +40,7 @@ public class TrendOps implements Substrates {
   public Trend trend_from_conduit () {
 
     return
-      conduit.percept (
+      Trends.pool ( conduit ).get (
         name
       );
 
@@ -58,8 +58,8 @@ public class TrendOps implements Substrates {
       i++
     ) {
       result =
-        conduit.percept (
-          name
+        Trends.pool ( conduit ).get (
+        name
         );
     }
 
@@ -164,11 +164,11 @@ public class TrendOps implements Substrates {
 
     conduit =
       circuit.conduit (
-        Trends::composer
+        Sign.class
       );
 
     trend =
-      conduit.percept (
+      Trends.pool ( conduit ).get (
         name
       );
 

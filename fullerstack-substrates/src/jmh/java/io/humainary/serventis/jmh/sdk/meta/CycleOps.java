@@ -35,7 +35,7 @@ public class CycleOps implements Substrates {
 
   private Cortex                                                          cortex;
   private Circuit                                                         circuit;
-  private Conduit < Cycle < Resources.Sign >, Signal < Resources.Sign > > conduit;
+  private Conduit < Signal < Resources.Sign > > conduit;
   private Cycle < Resources.Sign >                                        cycle;
   private Name                                                            name;
 
@@ -47,7 +47,7 @@ public class CycleOps implements Substrates {
   public Cycle < Resources.Sign > cycle_from_conduit () {
 
     return
-      conduit.percept (
+      Cycles.pool ( Resources.Sign.class, conduit ).get (
         name
       );
 
@@ -69,8 +69,8 @@ public class CycleOps implements Substrates {
       i++
     ) {
       result =
-        conduit.percept (
-          name
+        Cycles.pool ( Resources.Sign.class, conduit ).get (
+        name
         );
     }
 
@@ -225,15 +225,15 @@ public class CycleOps implements Substrates {
     circuit =
       cortex.circuit ();
 
-    conduit =
-      circuit.conduit (
-        Cycles.composer (
-          Resources.Sign.class
-        )
+    @SuppressWarnings ( "unchecked" )
+    Conduit < Signal < Resources.Sign > > c =
+      (Conduit < Signal < Resources.Sign > >) (Conduit < ? >) circuit.conduit (
+        Signal.class
       );
+    conduit = c;
 
     cycle =
-      conduit.percept (
+      Cycles.pool ( Resources.Sign.class, conduit ).get (
         name
       );
 

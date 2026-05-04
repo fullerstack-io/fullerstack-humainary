@@ -1,352 +1,294 @@
 package io.fullerstack.substrates;
 
-import io.humainary.substrates.api.Substrates.Configurer;
+import io.fullerstack.substrates.FsOperators.Wrap;
+import io.humainary.substrates.api.Substrates.Fiber;
 import io.humainary.substrates.api.Substrates.Flow;
-import io.humainary.substrates.api.Substrates.Fluent;
-import io.humainary.substrates.api.Substrates.Name;
+import io.humainary.substrates.api.Substrates.New;
+import io.humainary.substrates.api.Substrates.NotNull;
 import io.humainary.substrates.api.Substrates.Pipe;
 import io.humainary.substrates.api.Substrates.Provided;
-import io.humainary.substrates.api.Substrates.Receptor;
-import io.humainary.substrates.api.Substrates.Sift;
 import io.humainary.substrates.api.Substrates.Subject;
 
-import java.util.Comparator;
 import java.util.Objects;
-import java.util.function.BiPredicate;
-import java.util.function.BinaryOperator;
 import java.util.function.Consumer;
-import java.util.function.Predicate;
-import java.util.function.UnaryOperator;
+import java.util.function.Function;
 
-/**
- * Flow implementation using concrete operator classes for better JIT inlining.
- */
+/// Immutable Flow<I,O> implementation for Substrates 2.3.
+///
+/// Flow carries type-changing composition: `map`, `flow`, `fiber`, `pipe`.
+/// Per-emission operators (diff, guard, limit, peek, etc.) live on Fiber<E>;
+/// their implementations are in {@link FsOperators}.
+///
+/// Operators are stored as a uniform {@code Wrap[]} array — `map` becomes
+/// a {@link MapWrap}, `fiber(...)` and `flow(...)` inline the source's Wraps
+/// directly into the destination's array. Materialise walks the array with
+/// no `instanceof` dispatch.
+///
+/// @param <I> input type (what {@code Pipe.pipe(Flow)} receives)
+/// @param <O> output type (what the target pipe emits)
 @Provided
-public final class FsFlow < E > implements Flow < E > {
+public final class FsFlow < I, O > implements Flow < I, O > {
 
-  // === Concrete operator classes ===
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Type-changing operator — Flow's own contribution
+  // ═══════════════════════════════════════════════════════════════════════════
 
-  static final class Guard < E > implements Consumer < E > {
-    final Predicate < ? super E > p;
-    final Consumer < E >          d;
+  /// Map operator — the only Flow-specific operator. Drops null results so
+  /// `map` can act as a filter when the function returns null. Type-erased
+  /// because operators travel through the {@code Wrap[]} alongside
+  /// type-preserving ones.
+  @SuppressWarnings ( { "unchecked", "rawtypes" } )
+  static final class MapWrap implements Wrap < Object > {
+    final Function < Object, Object > fn;
 
-    Guard ( Predicate < ? super E > p, Consumer < E > d ) { this.p = p; this.d = d; }
-
-    @Override
-    public void accept ( E v ) { if ( p.test ( v ) ) d.accept ( v ); }
-  }
-
-  static final class GuardStateful < E > implements Consumer < E > {
-    final BiPredicate < ? super E, ? super E > p;
-    final Consumer < E >                       d;
-    Object prev;
-
-    @SuppressWarnings ( "unchecked" )
-    GuardStateful ( E initial, BiPredicate < ? super E, ? super E > p, Consumer < E > d ) {
-      this.prev = initial; this.p = p; this.d = d;
-    }
+    MapWrap ( Function fn ) { this.fn = (Function < Object, Object >) fn; }
 
     @Override
-    @SuppressWarnings ( "unchecked" )
-    public void accept ( E v ) {
-      if ( p.test ( (E) prev, v ) ) { prev = v; d.accept ( v ); }
+    public Consumer < Object > wrap ( Consumer < Object > downstream ) {
+      final Function < Object, Object > f = fn;
+      return v -> {
+        Object r = f.apply ( v );
+        if ( r != null ) downstream.accept ( r );
+      };
     }
   }
 
-  static final class Diff < E > implements Consumer < E > {
-    final Consumer < E > d;
-    Object prev;
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Immutable state
+  // ═══════════════════════════════════════════════════════════════════════════
 
-    Diff ( Consumer < E > d )            { this.d = d; }
+  private static final Wrap < ? >[]    EMPTY        = new Wrap < ? >[0];
+  private static final FactoryEntry[]  NO_FACTORIES = null;
 
-    Diff ( E initial, Consumer < E > d ) { this.prev = initial; this.d = d; }
+  private final Wrap < ? >[]    operators;
+  private final int             count;
+  /// 2.4 per-attachment fiber factories. Null in common case (no
+  /// `fiber(Function)` call). Each entry records the value of `count` at
+  /// the time the factory was added; at `pipe(target)` time the factory is
+  /// invoked once with `target.subject()` and the resulting fiber's
+  /// operators are inlined at that recorded position.
+  private final FactoryEntry[]  factories;
 
-    @Override
-    public void accept ( E v ) {
-      if ( !Objects.equals ( v, prev ) ) { prev = v; d.accept ( v ); }
-    }
+  /// Records a per-attachment fiber factory and its insertion position.
+  private record FactoryEntry(
+    int position,
+    Function < ? super Subject < ? >, ? extends Fiber < ? > > factory
+  ) { }
+
+  /// Identity flow — no operators.
+  public FsFlow () {
+    this.operators = EMPTY;
+    this.count     = 0;
+    this.factories = NO_FACTORIES;
   }
 
-  // === Fused operator: Guard + Diff in single accept() ===
-
-  static final class GuardDiff < E > implements Consumer < E > {
-    final Predicate < ? super E > p;
-    final Consumer < E >          d;
-    Object prev;
-
-    GuardDiff ( Predicate < ? super E > p, Consumer < E > d ) { this.p = p; this.d = d; }
-
-    @Override
-    public void accept ( E v ) {
-      if ( p.test ( v ) && !Objects.equals ( v, prev ) ) { prev = v; d.accept ( v ); }
-    }
+  private FsFlow ( Wrap < ? >[] operators, int count, FactoryEntry[] factories ) {
+    this.operators = operators;
+    this.count     = count;
+    this.factories = factories;
   }
 
-  static final class Limit < E > implements Consumer < E > {
-    final Consumer < E > d;
-    final long           max;
-    long count;
-
-    Limit ( long max, Consumer < E > d ) { this.max = max; this.d = d; }
-
-    @Override
-    public void accept ( E v ) { if ( count++ < max ) d.accept ( v ); }
-  }
-
-  static final class Skip < E > implements Consumer < E > {
-    final Consumer < E > d;
-    final long           n;
-    long count;
-
-    Skip ( long n, Consumer < E > d ) { this.n = n; this.d = d; }
-
-    @Override
-    public void accept ( E v ) { if ( count++ >= n ) d.accept ( v ); }
-  }
-
-  static final class SampleN < E > implements Consumer < E > {
-    final Consumer < E > d;
-    final int            n;
-    int count;
-
-    SampleN ( int n, Consumer < E > d ) { this.n = n; this.d = d; }
-
-    @Override
-    public void accept ( E v ) { if ( ++count % n == 0 ) d.accept ( v ); }
-  }
-
-  static final class SampleP < E > implements Consumer < E > {
-    final Consumer < E > d;
-    final double         p;
-
-    SampleP ( double p, Consumer < E > d ) { this.p = p; this.d = d; }
-
-    @Override
-    public void accept ( E v ) { if ( Math.random () < p ) d.accept ( v ); }
-  }
-
-  static final class Replace < E > implements Consumer < E > {
-    final UnaryOperator < E > t;
-    final Consumer < E >      d;
-
-    Replace ( UnaryOperator < E > t, Consumer < E > d ) { this.t = t; this.d = d; }
-
-    @Override
-    public void accept ( E v ) { E r = t.apply ( v ); if ( r != null ) d.accept ( r ); }
-  }
-
-  static final class Reduce < E > implements Consumer < E > {
-    final BinaryOperator < E > op;
-    final Consumer < E >       d;
-    Object acc;
-
-    @SuppressWarnings ( "unchecked" )
-    Reduce ( E initial, BinaryOperator < E > op, Consumer < E > d ) {
-      this.acc = initial; this.op = op; this.d = d;
-    }
-
-    @Override
-    @SuppressWarnings ( "unchecked" )
-    public void accept ( E v ) {
-      E r = op.apply ( (E) acc, v ); acc = r; d.accept ( r );
-    }
-  }
-
-  static final class Peek < E > implements Consumer < E > {
-    final Receptor < ? super E > r;
-    final Consumer < E >         d;
-
-    Peek ( Receptor < ? super E > r, Consumer < E > d ) { this.r = r; this.d = d; }
-
-    @Override
-    public void accept ( E v ) { r.receive ( v ); d.accept ( v ); }
-  }
-
-  // === Wrapper interface ===
-
-  @FunctionalInterface
-  interface Wrap < E > {
-    Consumer < E > wrap ( Consumer < E > d );
-  }
-
-  // === Flow state ===
-
-  private final Name       name;
-  private final FsCircuit  circuit;
-  private final Pipe < E > target;
-
-  private Wrap < E >[]   wrappers;
-  private int            count;
-  private Consumer < E > cached;
-
-  public FsFlow ( Name name, FsCircuit circuit, Pipe < E > target ) {
-    this.name = name;
-    this.circuit = circuit;
-    this.target = target;
-  }
-
-  FsFlow ( Subject < Pipe < E > > subject, FsCircuit circuit, Pipe < E > target ) {
-    this.name = subject.name ();
-    this.circuit = circuit;
-    this.target = target;
-  }
-
+  /// Returns a new FsFlow with the given operator appended.
   @SuppressWarnings ( "unchecked" )
-  private void add ( Wrap < E > w ) {
-    if ( wrappers == null ) {
-      wrappers = new Wrap[4];
-    } else if ( count == wrappers.length ) {
-      Wrap < E >[] arr = new Wrap[count * 2];
-      System.arraycopy ( wrappers, 0, arr, 0, count );
-      wrappers = arr;
-    }
-    wrappers[count++] = w;
+  private < X, Y > FsFlow < X, Y > append ( Wrap < ? > op ) {
+    Wrap < ? >[] newOps = new Wrap < ? >[count + 1];
+    System.arraycopy ( operators, 0, newOps, 0, count );
+    newOps[count] = op;
+    return new FsFlow <> ( newOps, count + 1, factories );
   }
 
-  @SuppressWarnings ( "unchecked" )
-  Consumer < E > consumer () {
-    if ( cached != null ) return cached;
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Materialisation
+  // ═══════════════════════════════════════════════════════════════════════════
 
-    // Extract receiver directly from FsPipe to avoid double-queue
-    // (bypass emit() which would route through transit queue)
-    Consumer < E > c;
-    if ( target instanceof FsPipe < E > fsPipe ) {
-      c = (Consumer < E >) fsPipe.receiver ();
-    } else {
-      c = target::emit;  // Fallback for non-FsPipe targets
-    }
-
-    // Fuse adjacent Guard+Diff into single GuardDiff operator
-    // (saves one virtual dispatch per emission)
-    for ( int i = count - 1; i >= 0; i-- ) {
-      if ( i > 0 ) {
-        Consumer < E > probe = wrappers[i].wrap ( c );
-        Consumer < E > outer = wrappers[i - 1].wrap ( probe );
-        if ( outer instanceof Guard < E > g && probe instanceof Diff < E > ) {
-          c = new GuardDiff <> ( g.p, c );
-          i--;  // skip the Guard wrapper (already fused)
-          continue;
-        }
-      }
-      c = wrappers[i].wrap ( c );
-    }
-    cached = c;
+  /// Materialises this flow into a concrete consumer chain.
+  /// Each call produces independent state for stateful operators.
+  ///
+  /// operators[0] = first-added = innermost (closest to target)
+  /// operators[n-1] = last-added = outermost (closest to input)
+  @SuppressWarnings ( { "unchecked", "rawtypes" } )
+  Consumer < I > materialise ( Consumer < O > target ) {
+    Consumer c = target;
+    for ( int i = 0; i < count; i++ ) c = ( (Wrap) operators[i] ).wrap ( c );
     return c;
   }
 
+  /// 2.4 — materialise an effective Wrap[] (factories already resolved).
+  /// Used by `pipe(target)` when factories are present.
+  @SuppressWarnings ( { "unchecked", "rawtypes" } )
+  private Consumer < I > materialiseFrom ( Wrap < ? >[] effective, int effectiveCount, Consumer < O > target ) {
+    Consumer c = target;
+    for ( int i = 0; i < effectiveCount; i++ ) c = ( (Wrap) effective[i] ).wrap ( c );
+    return c;
+  }
+
+  /// Resolves all per-attachment factories against `targetSubject` and
+  /// builds the effective Wrap[] for materialisation.
+  private Wrap < ? >[] resolveFactories ( Subject < ? > targetSubject ) {
+    // Resolve each factory and compute total size
+    Wrap < ? >[][] resolved = new Wrap < ? >[factories.length][];
+    int totalExtra = 0;
+    for ( int i = 0; i < factories.length; i++ ) {
+      Fiber < ? > f = factories[i].factory.apply ( targetSubject );
+      Objects.requireNonNull ( f, "factory must not return null" );
+      if ( !( f instanceof FsFiber < ? > fsFiber ) ) {
+        throw new IllegalArgumentException ( "factory must produce an FsFiber instance" );
+      }
+      Wrap < ? >[] ops = fsFiber.operators ();
+      int fc = fsFiber.operatorCount ();
+      Wrap < ? >[] copy = new Wrap < ? >[fc];
+      System.arraycopy ( ops, 0, copy, 0, fc );
+      resolved[i] = copy;
+      totalExtra += fc;
+    }
+    // Build merged array: walk positions 0..count, inline factories at each position
+    Wrap < ? >[] merged = new Wrap < ? >[count + totalExtra];
+    int w = 0;
+    for ( int p = 0; p <= count; p++ ) {
+      for ( int i = 0; i < factories.length; i++ ) {
+        if ( factories[i].position == p ) {
+          Wrap < ? >[] r = resolved[i];
+          System.arraycopy ( r, 0, merged, w, r.length );
+          w += r.length;
+        }
+      }
+      if ( p < count ) merged[w++] = operators[p];
+    }
+    return merged;
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Flow<I,O> API (2.3) — only map/flow/fiber/pipe
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  @NotNull
+  @Override
+  public < P > Flow < I, P > map ( @NotNull Function < ? super O, ? extends P > fn ) {
+    Objects.requireNonNull ( fn );
+    return append ( new MapWrap ( fn ) );
+  }
+
+  @NotNull
+  @Override
   @SuppressWarnings ( "unchecked" )
-  public Pipe < E > pipe () {
-    // Wrap consumer chain in ReceptorReceiver so drain loop stays monomorphic.
-    // Without this, the flow operator class (Guard, Diff, etc.) pollutes the
-    // drain loop's r.accept(v) type profile, causing bimorphic dispatch.
-    Receptor < E > r = consumer ()::accept;
-    return circuit.createPipe ( name, (FsSubject < ? >) circuit.subject (),
-      new FsCircuit.ReceptorReceiver <> ( r ) );
+  public Flow < I, O > fiber ( @NotNull Fiber < O > fiber ) {
+    Objects.requireNonNull ( fiber );
+    if ( !( fiber instanceof FsFiber < ? > fsFiber ) ) {
+      throw new IllegalArgumentException ( "fiber must be an FsFiber instance" );
+    }
+    int fc = fsFiber.operatorCount ();
+    if ( fc == 0 ) return this;
+    // Inline the fiber's Wraps directly. Fiber operators are type-preserving
+    // (E→E with E ≡ O at this position), so they slot into the flow's array.
+    Wrap < ? >[] merged = new Wrap < ? >[count + fc];
+    System.arraycopy ( operators, 0, merged, 0, count );
+    System.arraycopy ( fsFiber.operators (), 0, merged, count, fc );
+    return new FsFlow <> ( merged, count + fc, factories );
   }
 
-  // === Fluent API ===
-
-  @Fluent
+  /// 2.4: Per-attachment fiber factory. The factory is invoked once per
+  /// `pipe(target)` call with `target.subject()`, and its returned fiber's
+  /// operators are inlined at the position the factory was added.
+  @NotNull
   @Override
-  public Flow < E > guard ( Predicate < ? super E > p ) {
-    Objects.requireNonNull ( p, "predicate must not be null" );
-    add ( d -> new Guard <> ( p, d ) );
-    return this;
+  public Flow < I, O > fiber ( @NotNull Function < ? super Subject < ? >, ? extends Fiber < O > > factory ) {
+    Objects.requireNonNull ( factory );
+    FactoryEntry entry = new FactoryEntry ( count, factory );
+    FactoryEntry[] newFactories;
+    if ( factories == null ) {
+      newFactories = new FactoryEntry[]{entry};
+    } else {
+      newFactories = new FactoryEntry[factories.length + 1];
+      System.arraycopy ( factories, 0, newFactories, 0, factories.length );
+      newFactories[factories.length] = entry;
+    }
+    return new FsFlow <> ( operators, count, newFactories );
   }
 
-  @Fluent
+  @NotNull
   @Override
-  public Flow < E > guard ( E initial, BiPredicate < ? super E, ? super E > p ) {
-    Objects.requireNonNull ( p, "predicate must not be null" );
-    add ( d -> new GuardStateful <> ( initial, p, d ) );
-    return this;
+  @SuppressWarnings ( "unchecked" )
+  public < P > Flow < I, P > flow ( @NotNull Flow < ? super O, ? extends P > next ) {
+    Objects.requireNonNull ( next );
+    if ( !( next instanceof FsFlow < ?, ? > nextFlow ) ) {
+      throw new IllegalArgumentException ( "next flow must be an FsFlow instance" );
+    }
+    if ( nextFlow.count == 0 && nextFlow.factories == null ) return (Flow < I, P >) (Flow < ?, ? >) this;
+    Wrap < ? >[] merged = new Wrap < ? >[count + nextFlow.count];
+    // operators[0..count) of `this` — innermost at index 0 — must remain innermost.
+    // next's operators run after `this`, so they wrap further out (higher indices).
+    System.arraycopy ( operators, 0, merged, 0, count );
+    System.arraycopy ( nextFlow.operators, 0, merged, count, nextFlow.count );
+    // Translate next's factories: each next factory at position p shifts to position count+p.
+    FactoryEntry[] mergedFactories = factories;
+    if ( nextFlow.factories != null ) {
+      int existing = factories == null ? 0 : factories.length;
+      mergedFactories = new FactoryEntry[existing + nextFlow.factories.length];
+      if ( existing > 0 ) System.arraycopy ( factories, 0, mergedFactories, 0, existing );
+      for ( int i = 0; i < nextFlow.factories.length; i++ ) {
+        FactoryEntry fe = nextFlow.factories[i];
+        mergedFactories[existing + i] = new FactoryEntry ( count + fe.position, fe.factory );
+      }
+    }
+    return new FsFlow <> ( merged, count + nextFlow.count, mergedFactories );
   }
 
-  @Fluent
+  /// When target is a same-circuit FsPipe, the flow's terminal submits to
+  /// transit directly — bypassing target.emit's checks. If target's receiver
+  /// is an FsChannel, submit channel.dispatch instead of channel itself,
+  /// skipping the channel's version check on the cascade hot path (spec
+  /// §5.4.1 + §7.6.2 — subscriber state cannot change mid-cascade).
+  @New
+  @NotNull
   @Override
-  public Flow < E > diff () {
-    add ( Diff::new );
-    return this;
-  }
+  @SuppressWarnings ( "unchecked" )
+  public Pipe < I > pipe ( @NotNull Pipe < O > target ) {
+    Objects.requireNonNull ( target );
+    // Empty flow elision — no operators AND no pending factories means I == O.
+    if ( count == 0 && factories == null ) return (Pipe < I >) (Pipe < ? >) target;
 
-  @Fluent
-  @Override
-  public Flow < E > diff ( E initial ) {
-    Objects.requireNonNull ( initial, "initial value must not be null" );
-    add ( d -> new Diff <> ( initial, d ) );
-    return this;
-  }
+    // Resolve per-attachment factories (if any) against target.subject(). Each
+    // factory is invoked once at attachment time per spec §6.2 / 2.4.
+    final Wrap < ? >[] effective;
+    final int          effectiveCount;
+    if ( factories == null ) {
+      effective      = operators;
+      effectiveCount = count;
+    } else {
+      effective      = resolveFactories ( target.subject () );
+      effectiveCount = effective.length;
+    }
+    if ( effectiveCount == 0 ) return (Pipe < I >) (Pipe < ? >) target;
 
-  @Fluent
-  @Override
-  public Flow < E > limit ( int n ) { return limit ( (long) n ); }
-
-  @Fluent
-  @Override
-  public Flow < E > limit ( long n ) {
-    if ( n < 0 ) throw new IllegalArgumentException ( "count must not be negative" );
-    add ( d -> new Limit <> ( n, d ) );
-    return this;
-  }
-
-  @Fluent
-  @Override
-  public Flow < E > skip ( long n ) {
-    if ( n < 0 ) throw new IllegalArgumentException ( "count must not be negative" );
-    add ( d -> new Skip <> ( n, d ) );
-    return this;
-  }
-
-  @Fluent
-  @Override
-  public Flow < E > sample ( int n ) {
-    if ( n <= 0 ) throw new IllegalArgumentException ( "sample count must be positive" );
-    add ( d -> new SampleN <> ( n, d ) );
-    return this;
-  }
-
-  @Fluent
-  @Override
-  public Flow < E > sample ( double p ) {
-    if ( Double.isNaN ( p ) || p < 0.0 || p > 1.0 ) throw new IllegalArgumentException ( "sample must be in range [0.0,1.0]" );
-    if ( p == 0.0 || p == 1.0 ) return this;
-    add ( d -> new SampleP <> ( p, d ) );
-    return this;
-  }
-
-  @Fluent
-  @Override
-  public Flow < E > sift ( Comparator < ? super E > cmp, Configurer < ? super Sift < E > > cfg ) {
-    Objects.requireNonNull ( cmp, "comparator must not be null" );
-    Objects.requireNonNull ( cfg, "configurer must not be null" );
-    FsSift < E > s = new FsSift <> ( cmp );
-    cfg.configure ( s );
-    Predicate < E > pred = s.predicate ();
-    add ( d -> new Guard <> ( pred, d ) );
-    return this;
-  }
-
-  @Fluent
-  @Override
-  public Flow < E > replace ( UnaryOperator < E > t ) {
-    Objects.requireNonNull ( t, "transformer must not be null" );
-    add ( d -> new Replace <> ( t, d ) );
-    return this;
-  }
-
-  @Fluent
-  @Override
-  public Flow < E > reduce ( E initial, BinaryOperator < E > op ) {
-    Objects.requireNonNull ( op, "operator must not be null" );
-    add ( d -> new Reduce <> ( initial, op, d ) );
-    return this;
-  }
-
-  @Fluent
-  @Override
-  public Flow < E > peek ( Receptor < ? super E > r ) {
-    Objects.requireNonNull ( r, "receptor must not be null" );
-    add ( d -> new Peek <> ( r, d ) );
-    return this;
+    final Consumer < I > chain;
+    if ( target instanceof FsPipe < ? > fp ) {
+      final FsCircuit c = fp.circuit ();
+      final Consumer < Object > targetReceiver = fp.receiver ();
+      if ( targetReceiver instanceof FsChannel < ? > channel ) {
+        // Submit channel.cascadeDispatch directly — receptors + STEM, no
+        // version check. Falls back to channel before first rebuild.
+        chain = materialiseFrom ( effective, effectiveCount, (Consumer < O >) v -> {
+          Consumer < Object > d = channel.cascadeDispatch;
+          c.submitTransit ( d != null ? d : channel, v );
+        } );
+      } else {
+        chain = materialiseFrom ( effective, effectiveCount, (Consumer < O >) v -> c.submitTransit ( targetReceiver, v ) );
+      }
+      return new FsPipe <> ( (Consumer < Object >) (Consumer < ? >) chain, c );
+    }
+    // Foreign Pipe — fall through to wrapped emit
+    chain = materialiseFrom ( effective, effectiveCount, target::emit );
+    return new Pipe <> () {
+      @Override
+      public void emit ( @NotNull I emission ) {
+        chain.accept ( emission );
+      }
+      @Override
+      public Subject < Pipe < I > > subject () {
+        @SuppressWarnings ( "unchecked" )
+        var s = (Subject < Pipe < I > >) (Subject < ? >) target.subject ();
+        return s;
+      }
+    };
   }
 }

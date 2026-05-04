@@ -17,6 +17,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
+import static java.util.Objects.requireNonNull;
+
 /// A container for grouping resources with coordinated lifecycle management.
 ///
 /// Scope provides structured resource management - resources registered with
@@ -44,8 +46,10 @@ final class FsScope implements Scope {
   /// Parent scope (for hierarchy).
   private final FsScope parent;
 
-  /// Lazily-initialized subject (benign race - multiple creates are harmless).
-  private volatile Subject < Scope > subject;
+  /// Eagerly created subject — avoids the unsynchronised lazy race (FsSubject
+  /// constructor calls ID_COUNTER.getAndIncrement() so concurrent racing
+  /// creators would assign distinct ids and one would orphan).
+  private final Subject < Scope > subject;
 
   /// Registered resources (closed in reverse order). Lazily initialized.
   private List < Resource > resources;
@@ -63,12 +67,14 @@ final class FsScope implements Scope {
   FsScope ( Name name ) {
     this.name = name;
     this.parent = null;
+    this.subject = new FsSubject <> ( effectiveName (), null, Scope.class );
   }
 
   /// Creates a new child scope with the given name and parent.
   FsScope ( Name name, FsScope parent ) {
     this.name = name;
     this.parent = parent;
+    this.subject = new FsSubject <> ( effectiveName (), (FsSubject < ? >) parent.subject (), Scope.class );
   }
 
   boolean isClosed () {
@@ -85,13 +91,7 @@ final class FsScope implements Scope {
 
   @Override
   public Subject < Scope > subject () {
-    Subject < Scope > s = subject;
-    if ( s == null ) {
-      FsSubject < ? > parentSubject = parent != null ? (FsSubject < ? >) parent.subject () : null;
-      s = new FsSubject <> ( effectiveName (), parentSubject, Scope.class );
-      subject = s;
-    }
-    return s;
+    return subject;
   }
 
   /// Returns the effective name for this scope.
@@ -113,7 +113,7 @@ final class FsScope implements Scope {
   /// using default Extent.within() which allocates Optional per level.
   @Override
   public boolean within ( final Extent < ?, ? > enclosure ) {
-    java.util.Objects.requireNonNull ( enclosure, "enclosure must not be null" );
+    requireNonNull ( enclosure, "enclosure must not be null" );
     for ( FsScope current = parent; current != null; current = current.parent ) {
       if ( current == enclosure ) {
         return true;
@@ -122,12 +122,11 @@ final class FsScope implements Scope {
     return false;
   }
 
-  @New
   @NotNull
   @Override
   @SuppressWarnings ( "unchecked" )
-  public < R extends Resource > Closure < R > closure ( @NotNull R resource ) {
-    java.util.Objects.requireNonNull ( resource, "resource must not be null" );
+  public < R extends Resource < R > > Closure < R > closure ( @NotNull R resource ) {
+    requireNonNull ( resource, "resource must not be null" );
     if ( closed ) {
       throw new IllegalStateException ( "Scope is closed" );
     }
@@ -154,8 +153,8 @@ final class FsScope implements Scope {
 
   @NotNull
   @Override
-  public < R extends Resource > R register ( @NotNull R resource ) {
-    java.util.Objects.requireNonNull ( resource, "resource must not be null" );
+  public < R extends Resource < R > > R register ( @NotNull R resource ) {
+    requireNonNull ( resource, "resource must not be null" );
     if ( closed ) {
       throw new IllegalStateException ( "Scope is closed" );
     }
@@ -171,7 +170,6 @@ final class FsScope implements Scope {
     return resource;
   }
 
-  @New
   @NotNull
   @Override
   public Scope scope () {
@@ -187,11 +185,10 @@ final class FsScope implements Scope {
     return child;
   }
 
-  @New
   @NotNull
   @Override
   public Scope scope ( @NotNull Name childName ) {
-    java.util.Objects.requireNonNull ( childName, "name must not be null" );
+    requireNonNull ( childName, "name must not be null" );
     if ( closed ) {
       throw new IllegalStateException ( "Scope is closed" );
     }
@@ -212,23 +209,26 @@ final class FsScope implements Scope {
     }
     closed = true;
 
-    // Close children first (if any)
-    if ( children != null ) {
-      for ( FsScope child : children ) {
+    // Spec order (Substrates 4598-4630):
+    //   1. Closes all registered resources (reverse registration order)
+    //   2. Closes all child scopes (if not already closed)
+    // Exceptions are suppressed; remaining cleanup proceeds.
+
+    if ( resources != null ) {
+      for ( int i = resources.size () - 1; i >= 0; i-- ) {
         try {
-          child.close ();
-        } catch ( java.lang.Exception e ) {
+          resources.get ( i ).close ();
+        } catch ( Exception e ) {
           // Suppress and continue
         }
       }
     }
 
-    // Close resources in reverse order (LIFO) (if any)
-    if ( resources != null ) {
-      for ( int i = resources.size () - 1; i >= 0; i-- ) {
+    if ( children != null ) {
+      for ( FsScope child : children ) {
         try {
-          resources.get ( i ).close ();
-        } catch ( java.lang.Exception e ) {
+          child.close ();
+        } catch ( Exception e ) {
           // Suppress and continue
         }
       }

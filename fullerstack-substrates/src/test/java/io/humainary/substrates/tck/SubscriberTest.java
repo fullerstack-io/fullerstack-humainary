@@ -10,7 +10,6 @@ import org.junit.jupiter.api.Test;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
-import static io.humainary.substrates.api.Substrates.Composer.pipe;
 import static org.junit.jupiter.api.Assertions.*;
 
 /// Tests to verify that the rebuild mechanism works correctly
@@ -81,13 +80,13 @@ final class SubscriberTest
 
     final var conduit =
       circuit.conduit (
-        pipe ( Long.class )
+        Long.class
       );
 
     final var counter = new AtomicInteger ( 0 );
 
     final var pipe =
-      conduit.percept (
+      conduit.get (
         cortex.name ( "test" )
       );
 
@@ -164,7 +163,7 @@ final class SubscriberTest
 
     final var conduit =
       circuit.conduit (
-        pipe ( Long.class )
+        Long.class
       );
 
     final var counter = new AtomicInteger ( 0 );
@@ -181,7 +180,7 @@ final class SubscriberTest
       );
 
     final var pipe =
-      conduit.percept (
+      conduit.get (
         cortex.name ( "test" )
       );
 
@@ -216,7 +215,7 @@ final class SubscriberTest
 
     final var conduit =
       circuit.conduit (
-        pipe ( Long.class )
+        Long.class
       );
 
     final var counter = new AtomicInteger ( 0 );
@@ -233,7 +232,7 @@ final class SubscriberTest
       );
 
     final var pipe =
-      conduit.percept (
+      conduit.get (
         cortex.name ( "test" )
       );
 
@@ -300,11 +299,11 @@ final class SubscriberTest
 
     final var conduit =
       circuit.conduit (
-        pipe ( Long.class )
+        Long.class
       );
 
     final var pipe =
-      conduit.percept (
+      conduit.get (
         cortex.name ( "test" )
       );
 
@@ -374,7 +373,7 @@ final class SubscriberTest
 
     final var conduit =
       circuit.conduit (
-        pipe ( Long.class )
+        Long.class
       );
 
     final var counter1 = new AtomicInteger ( 0 );
@@ -401,7 +400,7 @@ final class SubscriberTest
     );
 
     final var pipe =
-      conduit.percept (
+      conduit.get (
         cortex.name ( "test" )
       );
 
@@ -434,7 +433,7 @@ final class SubscriberTest
   /// The check happens at subscription time (fail-fast) rather than at emit time,
   /// making the error immediately obvious during development.
   ///
-  /// Expected: Substrates.Exception thrown with descriptive message
+  /// Expected: Substrates.Fault thrown with descriptive message
   @Test
   void testCrossCircuitSubscriptionRejected () {
 
@@ -444,7 +443,7 @@ final class SubscriberTest
 
       final var conduit =
         circuit.conduit (
-          pipe ( Long.class )
+          Long.class
         );
 
       // Create subscriber from circuit2
@@ -452,7 +451,7 @@ final class SubscriberTest
       // Attempt to subscribe to conduit from circuit1
       final var exception =
         assertThrows (
-          Substrates.Exception.class,
+          Substrates.Fault.class,
           () -> conduit.subscribe (
             circuit2.subscriber (
               cortex.name ( "cross-circuit" ),
@@ -488,7 +487,7 @@ final class SubscriberTest
 
     final var conduit =
       circuit.conduit (
-        pipe ( Long.class )
+        Long.class
       );
 
     final var counter = new AtomicInteger ( 0 );
@@ -507,7 +506,7 @@ final class SubscriberTest
     );
 
     final var pipe =
-      conduit.percept (
+      conduit.get (
         cortex.name ( "test" )
       );
 
@@ -528,7 +527,7 @@ final class SubscriberTest
   /// to the circuit to receive state change notifications. This test verifies
   /// that the valve check also applies to circuit-level subscriptions.
   ///
-  /// Expected: Substrates.Exception thrown when subscribing to circuit with
+  /// Expected: Substrates.Fault thrown when subscribing to circuit with
   /// a subscriber from a different circuit
   @Test
   void testCrossCircuitSubscriptionRejectedForCircuitSource () {
@@ -549,7 +548,7 @@ final class SubscriberTest
       // Attempt to subscribe to circuit1's state source
       final var exception =
         assertThrows (
-          Substrates.Exception.class,
+          Substrates.Fault.class,
           () -> circuit.subscribe ( subscriber )
         );
 
@@ -603,12 +602,12 @@ final class SubscriberTest
 
     final var conduit1 =
       circuit.conduit (
-        pipe ( Long.class )
+        Long.class
       );
 
     final var conduit2 =
       circuit.conduit (
-        pipe ( Long.class )
+        Long.class
       );
 
     final var counter = new AtomicInteger ( 0 );
@@ -627,12 +626,12 @@ final class SubscriberTest
     conduit2.subscribe ( subscriber );
 
     final var pipe1 =
-      conduit1.percept (
+      conduit1.get (
         cortex.name ( "test1" )
       );
 
     final var pipe2 =
-      conduit2.percept (
+      conduit2.get (
         cortex.name ( "test2" )
       );
 
@@ -678,7 +677,7 @@ final class SubscriberTest
 
     final var conduit =
       circuit.conduit (
-        pipe ( Long.class )
+        Long.class
       );
 
     final var counter = new AtomicInteger ( 0 );
@@ -695,7 +694,7 @@ final class SubscriberTest
     conduit.subscribe ( subscriber );
 
     final var pipe =
-      conduit.percept (
+      conduit.get (
         cortex.name ( "test" )
       );
 
@@ -754,12 +753,12 @@ final class SubscriberTest
 
     final var conduit1 =
       circuit.conduit (
-        pipe ( Long.class )
+        Long.class
       );
 
     final var conduit2 =
       circuit.conduit (
-        pipe ( Long.class )
+        Long.class
       );
 
     final var counter = new AtomicInteger ( 0 );
@@ -777,12 +776,12 @@ final class SubscriberTest
     conduit2.subscribe ( subscriber );
 
     final var pipe1 =
-      conduit1.percept (
+      conduit1.get (
         cortex.name ( "test1" )
       );
 
     final var pipe2 =
-      conduit2.percept (
+      conduit2.get (
         cortex.name ( "test2" )
       );
 
@@ -877,7 +876,7 @@ final class SubscriberTest
 
     final var conduit =
       circuit.conduit (
-        pipe ( Long.class )
+        Long.class
       );
 
     final var counter1 = new AtomicInteger ( 0 );
@@ -905,7 +904,7 @@ final class SubscriberTest
     conduit.subscribe ( subscriber2 );
 
     final var pipe =
-      conduit.percept (
+      conduit.get (
         cortex.name ( "test" )
       );
 
@@ -975,16 +974,16 @@ final class SubscriberTest
       );
 
     // Create 10 conduits and subscribe to each
-    final Conduit < Pipe < Long >, Long >[] conduits =
+    final Conduit < Long >[] conduits =
       new Conduit[10];
 
     final Pipe < Long >[] pipes =
       new Pipe[10];
 
     for ( int i = 0; i < 10; i++ ) {
-      conduits[i] = circuit.conduit ( pipe ( Long.class ) );
+      conduits[i] = circuit.conduit ( Long.class );
       conduits[i].subscribe ( subscriber );
-      pipes[i] = conduits[i].percept ( cortex.name ( "test" + i ) );
+      pipes[i] = conduits[i].get ( cortex.name ( "test" + i ) );
     }
 
     // Emit to all conduits
@@ -1031,7 +1030,7 @@ final class SubscriberTest
 
     final var conduit =
       circuit.conduit (
-        pipe ( Long.class )
+        Long.class
       );
 
     final var captured =
@@ -1049,7 +1048,7 @@ final class SubscriberTest
     );
 
     final var pipe =
-      conduit.percept (
+      conduit.get (
         cortex.name ( "test" )
       );
 

@@ -345,7 +345,7 @@ final class NameTest
   // ===========================
 
   @Test
-  void testCreateNameFromMember () throws java.lang.Exception {
+  void testCreateNameFromMember () throws Exception {
 
     final var method = String.class.getMethod ( "length" );
     final var name = cortex.name ( method );
@@ -726,7 +726,7 @@ final class NameTest
   }
 
   @Test
-  void testExtendNameWithMember () throws java.lang.Exception {
+  void testExtendNameWithMember () throws Exception {
 
     final var root = cortex.name ( "methods" );
     final var method = String.class.getMethod ( "isEmpty" );
