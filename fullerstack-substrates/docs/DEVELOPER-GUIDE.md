@@ -63,7 +63,7 @@ var everything = circuit.conduit(cortex().name("all"), Object.class);
 
 ### Apply per-emission operators with a Fiber
 
-In Substrates 2.3 per-emission operators (`guard`, `diff`, `limit`, `peek`, `replace`, `every`, `hysteresis`, ...) live on `Fiber<E>`, not on `Flow`. Build a fiber once, then attach it where the data enters the system:
+Per-emission operators (`guard`, `diff`, `limit`, `peek`, `replace`, `every`, `hysteresis`, ...) live on `Fiber<E>`, not on `Flow`. Build a fiber once, then attach it where the data enters the system:
 
 ```java
 // Fiber is reusable and immutable — operators return new fibers

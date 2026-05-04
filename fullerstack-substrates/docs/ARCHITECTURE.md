@@ -25,7 +25,7 @@ The spec is language-independent. These are our Java 26 projection choices:
 
 ## Class Map
 
-28 classes in `io.fullerstack.substrates`:
+26 classes in `io.fullerstack.substrates`:
 
 ```
 FsCortexProvider (SPI entry point)
@@ -40,8 +40,8 @@ FsCortexProvider (SPI entry point)
               │     │     └── FsPipe (async emission carrier — emit only)
               │     └── FsDerivedPool (derived view: pool(Function), pool(Flow), pool(Fiber))
               ├── FsFlow (type-changing composition: map / fiber / flow / pipe — uniform Wrap[] storage)
-              ├── FsFiber (per-emission operators: ~32 — guard, diff, limit, peek, ...,
-              │           plus 2.3 ops chance, change, deadband, delay, edge, every,
+              ├── FsFiber (per-emission operators: ~35 — guard, diff, limit, peek, replace, ...,
+              │           plus chance, change, deadband, delay, edge, every,
               │           hysteresis, inhibit, pulse, rolling, steady, tumble)
               ├── FsOperators (shared operator implementations consumed by FsFiber and FsFlow)
               ├── FsSubscriber (emission observer with lazy callback)
@@ -57,10 +57,9 @@ FsState (slot-based state container)
 FsScope (structured resource lifecycle)
   └── FsClosure (block-scoped resource management)
 FsCurrent (circuit execution context)
-FsFault (provider error handling)
 ```
 
-Every Substrate impl uses an **eager-final `Subject` field built in the constructor** — there is no shared abstract base or lazy DCL pattern. (An earlier `FsSubstrate` helper was removed once the `subject()` race in two impls was uncovered during the spec audit.)
+Every Substrate impl uses an **eager-final `Subject` field built in the constructor** — there is no shared abstract base or lazy DCL pattern. (An earlier `FsSubstrate` helper was removed during the spec audit; an `FsFault` was removed in 2.4 once the API made `Fault` a `final class`.)
 
 ## Queue Architecture
 
@@ -103,7 +102,7 @@ Subsequent calls to `cortex.name("kafka.broker.1")` return the same `FsName` ins
 
 ## Flow and Fiber
 
-In Substrates 2.3 the per-emission processing surface lives on `Fiber<E>`; `Flow<I,O>` is reduced to type transformation only.
+Per-emission processing lives on `Fiber<E>` (since 2.3); `Flow<I,O>` is reduced to type transformation. 2.4 adds `Flow.fiber(Function<Subject<?>, Fiber<O>>)` — a per-attachment factory invoked once per `pipe(target)` call, materialised inline in `FsFlow.pipe`.
 
 ### `FsFiber` — per-emission operators
 
@@ -120,7 +119,7 @@ Carryover operators (state classes shared with `FsFlow`):
 - **takeWhile / dropWhile** — predicate-based windowing
 - **above / below / clamp / range / max / min / high / low** — comparator-based sift
 
-New 2.3 operators (defined in `FsFiber`):
+2.3-introduced operators (defined in `FsFiber`):
 
 - **chance, change, deadband, delay, edge, every, hysteresis, inhibit, pulse, rolling, steady, tumble**
 
