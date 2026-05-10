@@ -154,6 +154,8 @@ private void workerLoop() {
 
 **Self-waking design:** The worker uses `parkNanos` instead of `park`. Producers never call `unpark` — the worker wakes itself after the timeout. This eliminates the cost of producer-side park/unpark coordination on the hot path. The only explicit `unpark` calls are from `await()` and `close()` (cold paths).
 
+**Callback isolation (spec §15.4):** `IngressQueue.drainBatchLoop` and `TransitQueueRing.drain` each wrap their `r.accept(v)` dispatch in a `try { … } catch (Throwable ignored) { }` so an uncaught client-callback exception cannot terminate the worker. `FsChannel`'s multi-consumer dispatch lambda wraps each sibling receptor invocation the same way — a throwing receptor doesn't block siblings on the same channel from receiving the emission (§16.1 #14). The subscriber callback in `FsChannel.rebuild` is similarly guarded and records an empty consumer list on throw so the callback is never retried for that subscription/channel pair (§16.1 #15).
+
 ### Marker Class Split — JIT Monomorphism
 
 User receptors flow through a single concrete class so the hot-path `r.accept(v)` site stays monomorphic:
@@ -181,11 +183,18 @@ The drain loop splits the call site: an `isMarker()` identity check (compares ag
 
 ### Await Implementation
 
+The thread-identity check that prevents worker-thread callers from deadlocking is centralised in `checkExternalCaller(op)` and reused by `await()`, `pulse()`, and every `closeAwait()` (2.5). `closeAwait()` calls `checkExternalCaller` *before* any close side-effect, so an illegal call fails fast with no partial state change (spec §16.1 #13).
+
 ```java
 public void await() {
-  if (Thread.currentThread() == worker) throw new IllegalStateException();
+  checkExternalCaller("await");
   if (closed) return;
   awaitImpl();
+}
+
+void checkExternalCaller(String op) {
+  if (Thread.currentThread() == worker)
+    throw new IllegalStateException("Cannot call Circuit::" + op + " from within a circuit's thread");
 }
 
 private void awaitImpl() {

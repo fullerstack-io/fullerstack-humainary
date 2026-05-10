@@ -195,6 +195,8 @@ final class FsTap < T > implements Tap < T > {
     requireNonNull ( subscriber );
     requireNonNull ( onClose );
 
+    requireOpen ( "subscribe" );
+
     // SPEC §7.2 — cross-circuit subscriber detected synchronously on the
     // caller thread, signalled before any side effects. No registration,
     // no subscription handle, no callback invocation on rejection.
@@ -205,9 +207,11 @@ final class FsTap < T > implements Tap < T > {
       }
     }
 
-    if ( closed ) throw new IllegalStateException ( "Tap is closed" );
-
     FsSubscriber < T > fs = (FsSubscriber < T >) subscriber;
+    // §9.1 closed-substrate-argument
+    if ( fs.isClosed () ) {
+      throw new Fault ( subscriber.subject (), "subscribe", "subscriber is closed" );
+    }
 
     synchronized ( subscriberLock ) {
       if ( subscribersList == null ) subscribersList = new ArrayList <> ();
@@ -217,7 +221,7 @@ final class FsTap < T > implements Tap < T > {
     version++;
 
     return new FsSubscription ( subscriber.subject ().name (),
-      (FsSubject < ? >) subject, () -> unsubscribe ( fs ), onClose );
+      (FsSubject < ? >) subject, circuit, () -> unsubscribe ( fs ), onClose );
   }
 
   private void unsubscribe ( FsSubscriber < T > subscriber ) {
@@ -234,6 +238,7 @@ final class FsTap < T > implements Tap < T > {
   @NotNull
   @Override
   public Reservoir < T > reservoir () {
+    requireOpen ( "reservoir" );
     FsSubject < Reservoir < T > > resSubject = new FsSubject <> ( cortex ().name ( "reservoir" ), (FsSubject < ? >) subject,
       Reservoir.class );
     FsReservoir < T > reservoir = new FsReservoir <> ( resSubject );
@@ -247,7 +252,15 @@ final class FsTap < T > implements Tap < T > {
   @Override
   public < U > Tap < U > tap ( @NotNull Function < Pipe < U >, Pipe < T > > fn ) {
     requireNonNull ( fn );
+    requireOpen ( "tap" );
     return new FsTap <> ( (FsSubject < ? >) subject, cortex ().name ( "tap" ), this, circuit, fn );
+  }
+
+  /// §9.1 open-required guard. Tap rejects if this tap, the source's circuit,
+  /// or the source itself has accepted close.
+  private void requireOpen ( String op ) {
+    if ( closed || circuit.isClosed () )
+      throw new Fault ( subject, op, "tap is closed" );
   }
 
   @Override
@@ -269,5 +282,13 @@ final class FsTap < T > implements Tap < T > {
     if ( closed ) return;
     closed = true;
     sourceSubscription.close ();
+  }
+
+  @Idempotent
+  @Override
+  public void closeAwait () {
+    circuit.checkExternalCaller ( "closeAwait" );
+    close ();
+    circuit.await ();
   }
 }

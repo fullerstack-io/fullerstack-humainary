@@ -78,7 +78,13 @@ final class TransitQueueRing {
       receivers[i] = null;
       values[i] = null;
       head++;
-      r.accept ( v );
+      // §15.4 isolation: cascade hot path also reaches user code via fiber/flow
+      // operator functions. Same guard as ingress drainBatchLoop.
+      try {
+        r.accept ( v );
+      } catch ( Throwable ignored ) {
+        // §15.4 #4: silently dropped; observability is impl-defined.
+      }
     } while ( head != tail );
     // After draining, reset cursors so the ring stays at home position.
     // This is a same-thread operation; no synchronization needed.

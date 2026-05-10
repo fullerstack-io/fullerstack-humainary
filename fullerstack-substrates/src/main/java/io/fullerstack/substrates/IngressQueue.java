@@ -134,7 +134,16 @@ public final class IngressQueue {
       if ( circuit.isMarker ( r ) ) {
         circuit.fireMarker ( r, v );                       // cold: separate type profile
       } else {
-        r.accept ( v );                                    // hot: monomorphic receptor
+        // §15.4 isolation: user-supplied callbacks may throw. Catch here so a
+        // failing receptor cannot terminate the worker loop. Engine paths
+        // (FsChannel, CircuitJob, ReceptorAdapter) all eventually call user
+        // code — this is the trust boundary at the dispatcher.
+        try {
+          r.accept ( v );                                  // hot: monomorphic receptor
+        } catch ( Throwable ignored ) {
+          // §15.4 #4: observability is implementation-defined. Silently drop
+          // for now — recovery strategies belong to extension layers (§15.4).
+        }
         if ( circuit.transitHasWork () ) {                 // guard: plain field read
           circuit.drainTransit ();                         // drain all transit (drain() loops internally)
         }

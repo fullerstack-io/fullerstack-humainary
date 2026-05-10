@@ -3,8 +3,10 @@ package io.fullerstack.substrates;
 import static io.humainary.substrates.api.Substrates.cortex;
 import static java.util.Objects.requireNonNull;
 
+import io.humainary.substrates.api.Substrates.Bank;
 import io.humainary.substrates.api.Substrates.Circuit;
 import io.humainary.substrates.api.Substrates.Conduit;
+import io.humainary.substrates.api.Substrates.Fault;
 import io.humainary.substrates.api.Substrates.Current;
 import io.humainary.substrates.api.Substrates.Fiber;
 import io.humainary.substrates.api.Substrates.Flow;
@@ -388,15 +390,36 @@ public final class FsCircuit implements Circuit {
 
   @Override
   public void await () {
-    // Don't allow await from circuit thread (would deadlock)
-    if ( Thread.currentThread () == worker ) {
-      throw new IllegalStateException ( "Cannot call Circuit::await from within a circuit's thread" );
-    }
+    checkExternalCaller ( "await" );
     if ( closed ) {
       awaitClosed ();
       return;
     }
     awaitImpl ();
+  }
+
+  /// Conformance §16.1 #13: await / pulse / closeAwait MUST signal illegal
+  /// context use when called from within the circuit's worker thread.
+  /// Used by callers that need to fail-fast before any side effect runs.
+  void checkExternalCaller ( String op ) {
+    if ( Thread.currentThread () == worker ) {
+      throw new IllegalStateException (
+        "Cannot call Circuit::" + op + " from within a circuit's thread" );
+    }
+  }
+
+  /// Conformance §9.1 + §16.1 #9: open-required synchronous operations
+  /// (conduit, bank, subscriber, subscribe, reservoir, tap, Bank.get, Reservoir.drain)
+  /// MUST signal a closed-resource Fault when the receiver has accepted close.
+  void requireOpen ( String op ) {
+    if ( closed ) throw new Fault ( subject, op, "circuit is closed" );
+  }
+
+  /// Whether this circuit has accepted close. Used by owned resources
+  /// (Conduit/Tap) to propagate the open-required guard through to their
+  /// own open-required ops.
+  boolean isClosed () {
+    return closed;
   }
 
   /// 2.4: Submits a no-op probe through the circuit and returns its timing
@@ -407,9 +430,7 @@ public final class FsCircuit implements Circuit {
   @NotNull
   @Override
   public Optional < Pulse > pulse () {
-    if ( Thread.currentThread () == worker ) {
-      throw new IllegalStateException ( "Cannot call Circuit::pulse from within a circuit's thread" );
-    }
+    checkExternalCaller ( "pulse" );
     if ( !worker.isAlive () ) return Optional.empty ();
 
     PulseProbe probe = new PulseProbe ( Thread.currentThread () );
@@ -521,6 +542,17 @@ public final class FsCircuit implements Circuit {
     if ( awaiter != null ) LockSupport.unpark ( awaiter );
   }
 
+  @Idempotent
+  @Override
+  public void closeAwait () {
+    // §16.1 #13 — fail-fast before any side effect when called from the circuit thread.
+    checkExternalCaller ( "closeAwait" );
+    close ();
+    // await() routes to awaitClosed() once `closed` is set, which joins the worker
+    // thread — that's exactly the "close job fully executed" guarantee.
+    await ();
+  }
+
 
   // ===================================================================================
   // Factory Methods - Conduit (2.0: conduit(Name, Class<E>) — no Composer/Configurer)
@@ -530,6 +562,7 @@ public final class FsCircuit implements Circuit {
   @NotNull
   @Override
   public < E > Conduit < E > conduit () {
+    requireOpen ( "conduit" );
     // 2.3: no-arg conduit uses the circuit's own subject name.
     return new FsConduit <> ( (FsSubject < ? >) subject, subject.name (), this );
   }
@@ -540,6 +573,7 @@ public final class FsCircuit implements Circuit {
   public < E > Conduit < E > conduit ( @NotNull Name name, @NotNull Class < E > type ) {
     requireNonNull ( name );
     requireNonNull ( type );
+    requireOpen ( "conduit" );
     return new FsConduit <> ( (FsSubject < ? >) subject, name, this );
   }
 
@@ -551,7 +585,22 @@ public final class FsCircuit implements Circuit {
     requireNonNull ( name );
     requireNonNull ( type );
     requireNonNull ( routing );
+    requireOpen ( "conduit" );
     return new FsConduit <> ( (FsSubject < ? >) subject, name, this, routing );
+  }
+
+  // ===================================================================================
+  // Factory Methods - Bank (2.5)
+  // ===================================================================================
+
+  @New
+  @NotNull
+  @Override
+  public < E > Bank < Conduit < E > > bank ( @NotNull Class < E > type, @NotNull Routing routing ) {
+    requireNonNull ( type );
+    requireNonNull ( routing );
+    requireOpen ( "bank" );
+    return new FsBank <> ( (FsSubject < ? >) subject, cortex ().name ( "bank" ), this, routing );
   }
 
   // ===================================================================================
@@ -666,6 +715,7 @@ public final class FsCircuit implements Circuit {
     @NotNull Name name, @NotNull @Queued BiConsumer < ? super Subject < Pipe < E > >, ? super Registrar < E > > callback ) {
     requireNonNull ( name );
     requireNonNull ( callback );
+    requireOpen ( "subscriber" );
     return new FsSubscriber <> (
       new FsSubject <> ( name, (FsSubject < ? >) subject, Subscriber.class ), callback );
   }

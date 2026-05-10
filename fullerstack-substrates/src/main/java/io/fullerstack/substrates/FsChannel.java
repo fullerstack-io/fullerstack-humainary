@@ -139,8 +139,16 @@ final class FsChannel < E > implements Receptor < E >, Consumer < Object > {
     for ( FsSubscriber < E > subscriber : currentSubs ) {
       if ( !subscriberReceptors.containsKey ( subscriber ) ) {
         FsRegistrar < E > registrar = new FsRegistrar <> ();
-        subscriber.activate ( subject, registrar );
-        subscriberReceptors.put ( subscriber, registrar.consumers () );
+        try {
+          subscriber.activate ( subject, registrar );
+          subscriberReceptors.put ( subscriber, registrar.consumers () );
+        } catch ( Throwable ignored ) {
+          // §15.4 + §16.1 #15: subscriber callback still counts as consumed
+          // even on throw — record empty consumer list so we never retry.
+          // Per the API doc, whether partial registrations are retained or
+          // discarded is implementation-defined; we discard for simplicity.
+          subscriberReceptors.put ( subscriber, Collections.emptyList () );
+        }
       }
     }
 
@@ -157,8 +165,13 @@ final class FsChannel < E > implements Receptor < E >, Consumer < Object > {
       dispatch = all.getFirst ();
     } else {
       Consumer < Object >[] arr = all.toArray ( new Consumer[0] );
+      // §15.4 #2 liveness: per-consumer try/catch so a failing receptor
+      // does not block siblings on the same channel from receiving.
       dispatch = v -> {
-        for ( int i = 0, len = arr.length; i < len; i++ ) arr[i].accept ( v );
+        for ( int i = 0, len = arr.length; i < len; i++ ) {
+          try { arr[i].accept ( v ); }
+          catch ( Throwable ignored ) { /* §15.4 — continue with next sibling */ }
+        }
       };
     }
 

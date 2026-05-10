@@ -38,6 +38,10 @@ public final class FsSubscription implements Subscription {
   /// User-supplied close callback — fires exactly once when subscription terminates.
   private final Consumer < ? super Subscription > onCloseCallback;
 
+  /// Circuit reference — needed by closeAwait() to block until the
+  /// queued unsubscribe job has been processed.
+  private final FsCircuit circuit;
+
   /// Whether this subscription has been closed.
   private volatile boolean closed;
 
@@ -45,21 +49,24 @@ public final class FsSubscription implements Subscription {
   ///
   /// @param name   the name for the subscription subject
   /// @param parent the parent subject for hierarchy
+  /// @param circuit the owning circuit, used for [#closeAwait()]
   /// @param onClose action to run when subscription is closed (internal cleanup)
-  FsSubscription ( Name name, FsSubject < ? > parent, Runnable onClose ) {
-    this ( name, parent, onClose, null );
+  FsSubscription ( Name name, FsSubject < ? > parent, FsCircuit circuit, Runnable onClose ) {
+    this ( name, parent, circuit, onClose, null );
   }
 
   /// Creates a new subscription with lazy subject creation and an onClose callback.
   ///
   /// @param name            the name for the subscription subject
   /// @param parent          the parent subject for hierarchy
+  /// @param circuit         the owning circuit, used for [#closeAwait()]
   /// @param onClose         action to run when subscription is closed (internal cleanup)
   /// @param onCloseCallback user-supplied callback fired exactly once on termination, or null
-  FsSubscription ( Name name, FsSubject < ? > parent, Runnable onClose,
+  FsSubscription ( Name name, FsSubject < ? > parent, FsCircuit circuit, Runnable onClose,
                    Consumer < ? super Subscription > onCloseCallback ) {
     this.name = name;
     this.parent = parent;
+    this.circuit = circuit;
     this.onClose = onClose;
     this.onCloseCallback = onCloseCallback;
   }
@@ -100,6 +107,20 @@ public final class FsSubscription implements Subscription {
         }
       }
     }
+  }
+
+  @Idempotent
+  @Override
+  public void closeAwait () {
+    circuit.checkExternalCaller ( "closeAwait" );
+    close ();
+    circuit.await ();
+  }
+
+  /// Package-internal accessor for the owning circuit, used by FsSubscriber
+  /// to thread an await through closeAwait().
+  FsCircuit awaitCircuit () {
+    return circuit;
   }
 
 }

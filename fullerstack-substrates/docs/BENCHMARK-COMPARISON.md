@@ -1,6 +1,13 @@
 # Benchmark Comparison: Fullerstack vs Humainary Substrates
 
-**Substrates/Serventis 2.4.0** · `io.fullerstack:fullerstack-substrates:2.4.0-RC1`
+**Substrates/Serventis 2.5.0** · `io.fullerstack:fullerstack-substrates:2.5.0-RC1`
+
+> **2.5 status:** the tables below are the post-2.4 measurements. 2.5 added new API
+> surface (Bank, closeAwait, 6 new Fiber operators) and tightened spec conformance with
+> §15.4 callback-isolation guards (try/catch on `IngressQueue.drainBatchLoop` and
+> `TransitQueueRing.drain`, plus per-sibling guards in `FsChannel`'s multi-consumer
+> dispatch). The exception edges should fold to near-zero in the no-throw case but the
+> canary `PipeOps.async_emit_batch_await` is due for re-measurement.
 
 Full pre-2.3 → post-2.4 comparison for every JMH benchmark. Measured on a Codespaces 2-vCPU host with `-f 1 -wi 3 -i 5 -w 2s -r 2s -tu ns -bm avgt`. Numbers vary ±10-30% iteration-to-iteration on this host — group-level patterns and large deltas are more meaningful than any single number.
 

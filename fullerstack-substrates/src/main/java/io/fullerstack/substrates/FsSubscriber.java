@@ -30,6 +30,10 @@ public final class FsSubscriber < E > implements Subscriber < E > {
 
   private List < Subscription > subscriptions;
 
+  /// Circuit captured on first trackSubscription, used by [#closeAwait()].
+  /// All subscriptions of a subscriber share the same circuit (spec invariant).
+  private FsCircuit awaitCircuit;
+
   public FsSubscriber ( Subject < Subscriber < E > > subject, BiConsumer < ? super Subject < Pipe < E > >, ? super Registrar < E > > callback ) {
     this.subject  = subject;
     this.callback = callback;
@@ -38,6 +42,12 @@ public final class FsSubscriber < E > implements Subscriber < E > {
   @Override
   public Subject < Subscriber < E > > subject () {
     return subject;
+  }
+
+  /// Package-internal accessor for the closed flag, used by FsConduit/FsTap
+  /// when checking the closed-substrate-argument rule on subscribe (§9.1).
+  boolean isClosed () {
+    return closed;
   }
 
   /// Invokes the callback for a pipe activation.
@@ -56,6 +66,9 @@ public final class FsSubscriber < E > implements Subscriber < E > {
       subscriptions = new ArrayList <> ();
     }
     subscriptions.add ( subscription );
+    if ( awaitCircuit == null && subscription instanceof FsSubscription fs ) {
+      awaitCircuit = fs.awaitCircuit ();
+    }
   }
 
   @Idempotent
@@ -69,6 +82,15 @@ public final class FsSubscriber < E > implements Subscriber < E > {
       }
       subscriptions = null;
     }
+  }
+
+  @Idempotent
+  @Override
+  public void closeAwait () {
+    FsCircuit c = awaitCircuit;
+    if ( c != null ) c.checkExternalCaller ( "closeAwait" );
+    close ();
+    if ( c != null ) c.await ();
   }
 
 }

@@ -1,9 +1,13 @@
 package io.fullerstack.substrates;
 
+import io.humainary.substrates.api.Substrates.Pipe;
 import io.humainary.substrates.api.Substrates.Receptor;
 
 import java.util.Arrays;
 import java.util.Comparator;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.LinkedHashSet;
 import java.util.Objects;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.BiPredicate;
@@ -447,6 +451,127 @@ final class FsOperators {
         acc    = identity;
         filled = 0;
       }
+    }
+  }
+
+  // ─── 2.5 operators ─────────────────────────────────────────────────────────
+
+  /// Distinct (unbounded): suppresses any value previously seen. Memory grows
+  /// with stream cardinality. Spec §6.2.3.
+  static final class Distinct < E > implements Consumer < E > {
+    final Consumer < E > d;
+    final HashSet < E >  seen = new HashSet <> ();
+
+    Distinct ( Consumer < E > d ) { this.d = d; }
+
+    @Override
+    public void accept ( E v ) { if ( seen.add ( v ) ) d.accept ( v ); }
+  }
+
+  /// Distinct (capacity): FIFO-windowed duplicate suppression. LinkedHashSet
+  /// gives O(1) contains/add plus insertion order for FIFO eviction. Suppressed
+  /// duplicates do NOT refresh window position. Spec §6.2.3.
+  static final class DistinctCapacity < E > implements Consumer < E > {
+    final int                 capacity;
+    final Consumer < E >      d;
+    final LinkedHashSet < E > window;
+
+    DistinctCapacity ( int capacity, Consumer < E > d ) {
+      this.capacity = capacity;
+      this.d        = d;
+      this.window   = new LinkedHashSet <> ();
+    }
+
+    @Override
+    public void accept ( E v ) {
+      if ( window.contains ( v ) ) return;
+      window.add ( v );
+      if ( window.size () > capacity ) {
+        Iterator < E > it = window.iterator ();
+        it.next ();
+        it.remove ();
+      }
+      d.accept ( v );
+    }
+  }
+
+  /// Route: predicate-matched values are diverted to `side` and dropped from
+  /// the main pipeline; non-matching values pass through. Stateless. Spec §6.2.2.
+  static final class Route < E > implements Consumer < E > {
+    final Predicate < ? super E > p;
+    final Pipe < E >              side;
+    final Consumer < E >          d;
+
+    Route ( Predicate < ? super E > p, Pipe < E > side, Consumer < E > d ) {
+      this.p = p; this.side = side; this.d = d;
+    }
+
+    @Override
+    public void accept ( E v ) {
+      if ( p.test ( v ) ) side.emit ( v );
+      else                d.accept ( v );
+    }
+  }
+
+  /// Tee: fan-out to `side` then continue downstream. Stateless. Spec §6.2.2.
+  static final class Tee < E > implements Consumer < E > {
+    final Pipe < E >     side;
+    final Consumer < E > d;
+
+    Tee ( Pipe < E > side, Consumer < E > d ) { this.side = side; this.d = d; }
+
+    @Override
+    public void accept ( E v ) {
+      side.emit ( v );
+      d.accept ( v );
+    }
+  }
+
+  /// Streak: emit the Nth consecutive matching emission, then reset.
+  /// Non-matching emissions reset the counter and are dropped. Spec §6.2.3.
+  /// (required == 1 is handled at FsFiber level — degenerates to Guard.)
+  static final class Streak < E > implements Consumer < E > {
+    final int                     required;
+    final Predicate < ? super E > matches;
+    final Consumer < E >          d;
+    int count;
+
+    Streak ( int required, Predicate < ? super E > matches, Consumer < E > d ) {
+      this.required = required; this.matches = matches; this.d = d;
+    }
+
+    @Override
+    public void accept ( E v ) {
+      if ( matches.test ( v ) ) {
+        if ( ++count >= required ) {
+          count = 0;
+          d.accept ( v );
+        }
+      } else {
+        count = 0;
+      }
+    }
+  }
+
+  /// When: predicate-matched values traverse a pre-materialised sub-fiber that
+  /// terminates at `d`; non-matching values pass through directly. Stateless
+  /// at this stage — the sub-fiber's per-materialization state is materialised
+  /// here (once per outer materialization). Spec §6.2.2.
+  static final class When < E > implements Consumer < E > {
+    final Predicate < ? super E > p;
+    final Consumer < E >          matched;
+    final Consumer < E >          d;
+
+    When ( Predicate < ? super E > p, FsFiber < E > sub, Consumer < E > d ) {
+      this.p       = p;
+      this.d       = d;
+      this.matched = sub.materialise ( d );
+    }
+
+    @Override
+    public void accept ( E v ) {
+      if ( p.test ( v ) ) matched.accept ( v );
+      else                d.accept ( v );
     }
   }
 }

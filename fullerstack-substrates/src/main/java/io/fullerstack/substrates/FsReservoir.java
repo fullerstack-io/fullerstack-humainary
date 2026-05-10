@@ -1,6 +1,7 @@
 package io.fullerstack.substrates;
 
 import io.humainary.substrates.api.Substrates.Capture;
+import io.humainary.substrates.api.Substrates.Fault;
 import io.humainary.substrates.api.Substrates.Pipe;
 import io.humainary.substrates.api.Substrates.Idempotent;
 import io.humainary.substrates.api.Substrates.Provided;
@@ -59,6 +60,7 @@ public final class FsReservoir < E > implements Reservoir < E > {
   /// @return A stream consisting of stored events captured from channels.
   /// @see Capture
   public Stream < Capture < E > > drain () {
+    if ( closed ) throw new Fault ( subject, "drain", "reservoir is closed" );
     // Optimized: use buffer snapshot instead of toArray allocation
     List < Cap < E > > snapshot = new ArrayList <> ( buffer );
     buffer.clear ();
@@ -77,6 +79,14 @@ public final class FsReservoir < E > implements Reservoir < E > {
     if ( closed ) return;
     closed = true;
     buffer.clear ();
+  }
+
+  /// Reservoir.close() is fully synchronous (buffer clear, no queued work),
+  /// so closeAwait() reduces to close() — the "await" has nothing to wait on.
+  @Idempotent
+  @Override
+  public void closeAwait () {
+    close ();
   }
 
 }

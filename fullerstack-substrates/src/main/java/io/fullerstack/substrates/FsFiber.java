@@ -426,4 +426,60 @@ public final class FsFiber < E > implements Fiber < E > {
     Objects.requireNonNull ( identity );
     return append ( d -> new FsOperators.Tumble <> ( size, combiner, identity, d ) );
   }
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // 2.5 operators
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  @NotNull
+  @Override
+  public Fiber < E > distinct () {
+    return append ( FsOperators.Distinct::new );
+  }
+
+  @NotNull
+  @Override
+  public Fiber < E > distinct ( int capacity ) {
+    if ( capacity < 1 ) throw new IllegalArgumentException ( "capacity must be >= 1" );
+    return append ( d -> new FsOperators.DistinctCapacity <> ( capacity, d ) );
+  }
+
+  @NotNull
+  @Override
+  public Fiber < E > route ( @NotNull Predicate < ? super E > predicate, @NotNull Pipe < E > pipe ) {
+    Objects.requireNonNull ( predicate );
+    Objects.requireNonNull ( pipe );
+    return append ( d -> new FsOperators.Route <> ( predicate, pipe, d ) );
+  }
+
+  @NotNull
+  @Override
+  public Fiber < E > streak ( int required, @NotNull Predicate < ? super E > matches ) {
+    if ( required <= 0 ) throw new IllegalArgumentException ( "required must be positive" );
+    Objects.requireNonNull ( matches );
+    // Spec §6.2.3: required == 1 degenerates to Guard — no carried state needed.
+    if ( required == 1 ) return guard ( matches );
+    return append ( d -> new FsOperators.Streak <> ( required, matches, d ) );
+  }
+
+  @NotNull
+  @Override
+  public Fiber < E > tee ( @NotNull Pipe < E > pipe ) {
+    Objects.requireNonNull ( pipe );
+    return append ( d -> new FsOperators.Tee <> ( pipe, d ) );
+  }
+
+  @NotNull
+  @Override
+  public Fiber < E > when ( @NotNull Predicate < ? super E > predicate, @NotNull Fiber < E > fiber ) {
+    Objects.requireNonNull ( predicate );
+    Objects.requireNonNull ( fiber );
+    if ( !( fiber instanceof FsFiber < E > sub ) ) {
+      throw new IllegalArgumentException ( "fiber must be an FsFiber instance" );
+    }
+    // Empty sub-fiber → matched path is identity (= downstream) → both branches
+    // pass-through unchanged → this stage is a no-op.
+    if ( sub.count == 0 ) return this;
+    return append ( d -> new FsOperators.When <> ( predicate, sub, d ) );
+  }
 }

@@ -174,6 +174,8 @@ public final class FsConduit < E > implements Conduit < E > {
     @NotNull Subscriber < E > subscriber,
     @NotNull @Queued Consumer < ? super Subscription > onClose ) {
 
+    requireOpen ( "subscribe" );
+
     FsSubject < ? > subSubject = (FsSubject < ? >) subscriber.subject ();
     FsSubject < ? > subscriberCircuit = subSubject.findCircuitAncestor ();
     if ( subscriberCircuit != null && subscriberCircuit != circuit.subject () ) {
@@ -181,9 +183,14 @@ public final class FsConduit < E > implements Conduit < E > {
     }
 
     FsSubscriber < E > fs = (FsSubscriber < E >) subscriber;
+    // §9.1 closed-substrate-argument: reject sync if the subscriber arg is closed,
+    // identifying the subscriber's subject so callers know which arg caused it.
+    if ( fs.isClosed () ) {
+      throw new Fault ( subscriber.subject (), "subscribe", "subscriber is closed" );
+    }
 
     Subscription subscription = new FsSubscription ( subscriber.subject ().name (),
-      (FsSubject < ? >) subject, () -> enqueueUnsubscribe ( fs ), onClose );
+      (FsSubject < ? >) subject, circuit, () -> enqueueUnsubscribe ( fs ), onClose );
 
     fs.trackSubscription ( subscription );
 
@@ -202,6 +209,14 @@ public final class FsConduit < E > implements Conduit < E > {
   /// Closes the conduit. Sets the closed flag so any pending or future
   /// subscribe jobs are silently dropped on the circuit thread, and queues
   /// a job to release the subscriber list. Idempotent (Resource §9.1).
+  /// §9.1 open-required guard. Rejects if either this conduit or its owning
+  /// circuit has accepted close — circuit-closed leaves work undrainable, so
+  /// the conduit is effectively closed too.
+  private void requireOpen ( String op ) {
+    if ( closed || circuit.isClosed () )
+      throw new Fault ( subject, op, "conduit is closed" );
+  }
+
   @Idempotent
   @Queued
   @Override
@@ -219,6 +234,14 @@ public final class FsConduit < E > implements Conduit < E > {
     );
   }
 
+  @Idempotent
+  @Override
+  public void closeAwait () {
+    circuit.checkExternalCaller ( "closeAwait" );
+    close ();
+    circuit.await ();
+  }
+
   private void enqueueUnsubscribe ( FsSubscriber < E > subscriber ) {
     circuit.submitIngress ( new FsCircuit.CircuitJob ( () -> hub.removeSubscriber ( subscriber ) ), null );
   }
@@ -227,6 +250,7 @@ public final class FsConduit < E > implements Conduit < E > {
   @NotNull
   @Override
   public Reservoir < E > reservoir () {
+    requireOpen ( "reservoir" );
     FsSubject < Reservoir < E > > resSubject = new FsSubject <> ( cortex ().name ( "reservoir" ),
       (FsSubject < ? >) subject, Reservoir.class );
     FsReservoir < E > reservoir = new FsReservoir <> ( resSubject );
@@ -244,6 +268,7 @@ public final class FsConduit < E > implements Conduit < E > {
   @Override
   public < T > Tap < T > tap ( @NotNull Function < Pipe < T >, Pipe < E > > fn ) {
     requireNonNull ( fn, "fn must not be null" );
+    requireOpen ( "tap" );
     return new FsTap <> ( (FsSubject < ? >) subject, cortex ().name ( "tap" ), this, circuit, fn );
   }
 

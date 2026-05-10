@@ -25,7 +25,7 @@ The spec is language-independent. These are our Java 26 projection choices:
 
 ## Class Map
 
-26 classes in `io.fullerstack.substrates`:
+27 classes in `io.fullerstack.substrates`:
 
 ```
 FsCortexProvider (SPI entry point)
@@ -39,10 +39,12 @@ FsCortexProvider (SPI entry point)
               │     ├── FsChannel (per-name dispatch — split: dispatch vs cascadeDispatch)
               │     │     └── FsPipe (async emission carrier — emit only)
               │     └── FsDerivedPool (derived view: pool(Function), pool(Flow), pool(Fiber))
+              ├── FsBank (2.5 — closeable name-indexed conduit factory)
               ├── FsFlow (type-changing composition: map / fiber / flow / pipe — uniform Wrap[] storage)
-              ├── FsFiber (per-emission operators: ~35 — guard, diff, limit, peek, replace, ...,
+              ├── FsFiber (per-emission operators: ~41 — guard, diff, limit, peek, replace, ...,
               │           plus chance, change, deadband, delay, edge, every,
-              │           hysteresis, inhibit, pulse, rolling, steady, tumble)
+              │           hysteresis, inhibit, pulse, rolling, steady, tumble,
+              │           plus 2.5: distinct, distinct(int), route, streak, tee, when)
               ├── FsOperators (shared operator implementations consumed by FsFiber and FsFlow)
               ├── FsSubscriber (emission observer with lazy callback)
               │     └── FsSubscription (subscriber lifecycle handle)
@@ -106,7 +108,7 @@ Per-emission processing lives on `Fiber<E>` (since 2.3); `Flow<I,O>` is reduced 
 
 ### `FsFiber` — per-emission operators
 
-`FsFiber` is an immutable, reusable composition of operators (~35) that act on emissions of a single type. Each operator method returns a new fiber with the operator appended; the fiber value is reusable and may be materialised against multiple pipes, with each materialisation producing independent state.
+`FsFiber` is an immutable, reusable composition of operators (~41) that act on emissions of a single type. Each operator method returns a new fiber with the operator appended; the fiber value is reusable and may be materialised against multiple pipes, with each materialisation producing independent state.
 
 Carryover operators (state classes shared with `FsFlow`):
 
@@ -122,6 +124,15 @@ Carryover operators (state classes shared with `FsFlow`):
 2.3-introduced operators (defined in `FsFiber`):
 
 - **chance, change, deadband, delay, edge, every, hysteresis, inhibit, pulse, rolling, steady, tumble**
+
+2.5-introduced operators (defined in `FsFiber`, classes in `FsOperators`):
+
+- **distinct()** — unbounded duplicate suppression via `HashSet`
+- **distinct(capacity)** — FIFO-windowed duplicate suppression via `LinkedHashSet`; suppressed duplicates do not refresh position
+- **route(predicate, pipe)** — predicate-matched values diverted to a side pipe, non-matching pass through (demux)
+- **streak(required, matches)** — emit Nth consecutive match, then re-arm; non-match resets counter. `required == 1` short-circuits to `guard(matches)` (no carried state)
+- **tee(pipe)** — fan-out: side-pipe receives, value continues downstream
+- **when(predicate, fiber)** — matching values traverse a pre-materialised sub-fiber chain that terminates at the same downstream; non-matching pass through unchanged. Empty sub-fiber → stage is identity (returned as-is)
 
 ### `FsFlow` — type transformation
 
@@ -147,8 +158,9 @@ This avoids locking during subscription changes — the spec's "eventual consist
 | `pipe.emit()` | Thread-safe (any thread) | Enqueues to IngressQueue via atomic getAndAdd |
 | Flow operators | Circuit-thread only | State accessed only from circuit thread |
 | Subscriber callbacks | Circuit-thread only | Invoked during circuit drain |
-| `circuit.await()` | Thread-safe (any caller thread) | VarHandle park/unpark coordination |
+| `circuit.await()` | Thread-safe (any caller thread) | VarHandle park/unpark coordination; fails fast if called from worker |
 | `circuit.close()` | Thread-safe, idempotent | Atomic flag + unpark |
+| `resource.closeAwait()` (2.5) | Thread-safe; rejects worker thread | Fails fast via `checkExternalCaller` before any side effect, then close + await |
 | `cortex.name()` | Thread-safe | ConcurrentHashMap interning |
 | `scope.close()` | Not thread-safe | Close from owning thread only |
 
