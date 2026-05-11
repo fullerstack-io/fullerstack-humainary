@@ -63,12 +63,16 @@ public final class FsFiber < E > implements Fiber < E > {
   /// Materialise this fiber into a concrete consumer chain that delivers to `target`.
   /// Each call produces independent state for stateful operators.
   ///
-  /// operators[0] = first-added = innermost (closest to target)
-  /// operators[n-1] = last-added = outermost (closest to input)
+  /// operators[0] = first-added = outermost (closest to input, applied first)
+  /// operators[n-1] = last-added = innermost (closest to target, applied last)
+  ///
+  /// Iterate from high to low so the last-added op wraps target first
+  /// (innermost) and the first-added op ends up outermost. Runtime data
+  /// flow then matches user reading order per SPEC §6.2.5.
   @SuppressWarnings ( { "unchecked", "rawtypes" } )
   Consumer < E > materialise ( Consumer < E > target ) {
     Consumer c = target;
-    for ( int i = 0; i < count; i++ ) c = ( (Wrap) operators[i] ).wrap ( c );
+    for ( int i = count - 1; i >= 0; i-- ) c = ( (Wrap) operators[i] ).wrap ( c );
     return c;
   }
 
@@ -364,10 +368,11 @@ public final class FsFiber < E > implements Fiber < E > {
     }
     if ( nextFiber.count == 0 ) return this;
     Wrap < ? >[] merged = new Wrap < ? >[count + nextFiber.count];
-    // next runs after this — its operators are wrapped first (innermost),
-    // then ours wrap that. So merged[0..nextCount) = next, merged[nextCount..) = this.
-    System.arraycopy ( nextFiber.operators, 0, merged, 0, nextFiber.count );
-    System.arraycopy ( operators, 0, merged, nextFiber.count, count );
+    // FIXED convention: low index = outermost = first applied to input.
+    // this.fiber(next) reads "this then next" — so this goes first (low),
+    // next goes last (high = innermost = applied last just before target).
+    System.arraycopy ( operators, 0, merged, 0, count );
+    System.arraycopy ( nextFiber.operators, 0, merged, count, nextFiber.count );
     return new FsFiber <> ( merged, count + nextFiber.count );
   }
 

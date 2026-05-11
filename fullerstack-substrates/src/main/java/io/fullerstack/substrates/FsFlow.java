@@ -104,12 +104,17 @@ public final class FsFlow < I, O > implements Flow < I, O > {
   /// Materialises this flow into a concrete consumer chain.
   /// Each call produces independent state for stateful operators.
   ///
-  /// operators[0] = first-added = innermost (closest to target)
-  /// operators[n-1] = last-added = outermost (closest to input)
+  /// operators[0] = first-added = outermost (closest to input, applied first)
+  /// operators[n-1] = last-added = innermost (closest to target, applied last)
+  ///
+  /// Iterating from highest to lowest index wraps the last-added op around
+  /// target first (making it innermost) and the first-added op last (making
+  /// it outermost). Runtime data flow then matches the user's left-to-right
+  /// reading order per SPEC §6.2.5.
   @SuppressWarnings ( { "unchecked", "rawtypes" } )
   Consumer < I > materialise ( Consumer < O > target ) {
     Consumer c = target;
-    for ( int i = 0; i < count; i++ ) c = ( (Wrap) operators[i] ).wrap ( c );
+    for ( int i = count - 1; i >= 0; i-- ) c = ( (Wrap) operators[i] ).wrap ( c );
     return c;
   }
 
@@ -118,7 +123,7 @@ public final class FsFlow < I, O > implements Flow < I, O > {
   @SuppressWarnings ( { "unchecked", "rawtypes" } )
   private Consumer < I > materialiseFrom ( Wrap < ? >[] effective, int effectiveCount, Consumer < O > target ) {
     Consumer c = target;
-    for ( int i = 0; i < effectiveCount; i++ ) c = ( (Wrap) effective[i] ).wrap ( c );
+    for ( int i = effectiveCount - 1; i >= 0; i-- ) c = ( (Wrap) effective[i] ).wrap ( c );
     return c;
   }
 

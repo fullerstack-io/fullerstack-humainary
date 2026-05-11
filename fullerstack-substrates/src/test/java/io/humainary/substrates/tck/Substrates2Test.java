@@ -824,13 +824,13 @@ class Substrates2Test implements Substrates {
           received.add ( v );
           latch.countDown ();
         } );
-        // Materialisation wraps right-to-left: guard is outermost (applied first),
-        // then replace, then limit (innermost, closest to target).
+        // Per SPEC §6.2.5: left-to-right reading order is execution order.
+        // Chain reads: guard first, then replace, then limit.
         final var source =
           cortex.fiber ( Integer.class )
-            .limit ( 2 )                 // innermost: take first 2 that reach here
-            .replace ( v -> v * 10 )     // middle: multiply by 10
-            .guard ( v -> v > 0 )        // outermost: filter negatives
+            .guard ( v -> v > 0 )        // first: filter negatives
+            .replace ( v -> v * 10 )     // second: multiply by 10
+            .limit ( 2 )                 // last: take first 2 that survive
             .pipe ( target );
 
         source.emit ( -1 ); // filtered by guard
@@ -1591,11 +1591,13 @@ class Substrates2Test implements Substrates {
             ( subject, registrar ) -> {
               callbackCount.incrementAndGet ();
               registrar.register (
+                // Order matters per SPEC §6.2.5: limit first so the counter
+                // only fires for values that survive the limit cap.
                 cortex.fiber ( Integer.class )
+                  .limit ( 100 )
                   .peek ( v -> {
                     if ( emissionCount.incrementAndGet () >= 100 ) latch.countDown ();
                   } )
-                  .limit ( 100 )
                   .pipe ( conduit.get ( subject ) )
               );
             }

@@ -506,6 +506,64 @@ class Substrates25Test implements Substrates {
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
+  // SPEC §6.2.5 — Operator execution order (regression suite for FsFlow/FsFiber)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  @Nested
+  @DisplayName ( "Operator execution order — SPEC §6.2.5" )
+  class OperatorOrderContracts {
+
+    @Test
+    @DisplayName ( "fiber: .replace(+1).replace(*10) on 2 → 30 (left-to-right)" )
+    void fiberMultiReplaceOrder () {
+      final List < Integer > seen = runFiber (
+        Substrates.cortex ().fiber ( Integer.class )
+          .replace ( (Integer v) -> v + 1 )
+          .replace ( (Integer v) -> v * 10 ),
+        List.of ( 2 ) );
+      assertEquals ( List.of ( 30 ), seen );
+    }
+
+    @Test
+    @DisplayName ( "fiber: .guard(>0).replace(*10) drops then transforms" )
+    void fiberGuardThenReplace () {
+      final List < Integer > seen = runFiber (
+        Substrates.cortex ().fiber ( Integer.class )
+          .guard ( (Integer v) -> v > 0 )
+          .replace ( (Integer v) -> v * 10 ),
+        List.of ( -1, 3, 5 ) );
+      assertEquals ( List.of ( 30, 50 ), seen );
+    }
+
+    @Test
+    @DisplayName ( "flow: .map(/10).fiber(diff) suppresses duplicate buckets" )
+    void flowMapThenFiberDiff () throws Exception {
+      final var cortex  = Substrates.cortex ();
+      final var circuit = cortex.circuit ();
+      try {
+        final Conduit < Integer > sink = circuit.conduit ( Integer.class );
+        final List < Integer > seen = new ArrayList <> ();
+        sink.subscribe ( circuit.subscriber ( cortex.name ( "sub" ),
+            ( subj, reg ) -> reg.register ( (Substrates.Receptor < Integer >) seen::add ) ) );
+        // Flow<Integer, Integer> = identity-typed but the map bucketizes.
+        final var output = sink.get ( cortex.name ( "p" ) );
+        final var input = cortex.flow ( Integer.class )
+            .map ( (Integer v) -> v / 10 )
+            .fiber ( cortex.fiber ( Integer.class ).diff () )
+            .pipe ( output );
+        input.emit ( 25 );
+        input.emit ( 28 );   // same bucket 2 — should be suppressed
+        input.emit ( 34 );   // bucket 3 — passes
+        input.emit ( 36 );   // bucket 3 — suppressed
+        circuit.await ();
+        assertEquals ( List.of ( 2, 3 ), seen );
+      } finally {
+        circuit.close ();
+      }
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
   // Helpers
   // ═══════════════════════════════════════════════════════════════════════════
 
