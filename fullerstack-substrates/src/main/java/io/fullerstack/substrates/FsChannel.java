@@ -154,9 +154,17 @@ final class FsChannel < E > implements Receptor < E >, Consumer < Object > {
 
     // Build receptor-only dispatch — used by ingress receive() and by
     // dispatchStem when walking ancestors.
+    //
+    // Iterate via `currentSubs` (the snapshot taken from FsHub.subscribersList,
+    // which is an ArrayList preserving subscription order) — NOT via
+    // `subscriberReceptors.values()`. `subscriberReceptors` is an
+    // IdentityHashMap whose iteration order depends on System.identityHashCode,
+    // which is randomized per JVM start. Iterating in registration order keeps
+    // dispatch deterministic across runs.
     List < Consumer < Object > > all = new ArrayList <> ();
-    for ( List < Consumer < Object > > list : subscriberReceptors.values () ) {
-      all.addAll ( list );
+    for ( FsSubscriber < E > sub : currentSubs ) {
+      List < Consumer < Object > > list = subscriberReceptors.get ( sub );
+      if ( list != null ) all.addAll ( list );
     }
 
     if ( all.isEmpty () ) {
@@ -169,8 +177,7 @@ final class FsChannel < E > implements Receptor < E >, Consumer < Object > {
       // does not block siblings on the same channel from receiving.
       dispatch = v -> {
         for ( int i = 0, len = arr.length; i < len; i++ ) {
-          try { arr[i].accept ( v ); }
-          catch ( Throwable ignored ) { /* §15.4 — continue with next sibling */ }
+          try { arr[i].accept ( v ); } catch ( Throwable ignored ) { /* §15.4 — continue with next sibling */ }
         }
       };
     }
