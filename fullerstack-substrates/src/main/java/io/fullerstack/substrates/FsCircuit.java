@@ -638,16 +638,14 @@ public final class FsCircuit implements Circuit {
     return newPipe ( receptor );
   }
 
-  /// 2.7: named receptor pipe.
-  /// TODO: properly thread the name through pipe identity / subject; for now
-  /// delegates to the anonymous variant (functional but not name-distinct).
+  /// 2.7: named receptor pipe. Pipe subject reflects the caller-supplied name.
   @New
   @NotNull
   @Override
   public < E > Pipe < E > pipe ( @NotNull Name name, @NotNull Receptor < ? super E > receptor ) {
     requireNonNull ( name );
     requireNonNull ( receptor );
-    return newPipe ( receptor );
+    return new FsPipe <> ( new ReceptorAdapter <> ( receptor ), this, name, (FsSubject < ? >) subject );
   }
 
   /// 2.7: cell factories. Both create a circuit-owned cell — empty or seeded.

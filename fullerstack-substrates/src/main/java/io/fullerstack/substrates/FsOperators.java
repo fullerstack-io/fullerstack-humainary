@@ -315,6 +315,28 @@ final class FsOperators {
     public void accept ( E v ) { if ( ++count % n == 0 ) d.accept ( v ); }
   }
 
+  /// Time-based rate limit (2.7) — emit when at least `durationNanos`
+  /// has elapsed since the last emit. First emission always passes.
+  static final class EveryTime < E > implements Consumer < E > {
+    final long           durationNanos;
+    final Consumer < E > d;
+    long lastEmitNanos = Long.MIN_VALUE;
+
+    EveryTime ( long durationNanos, Consumer < E > d ) {
+      this.durationNanos = durationNanos;
+      this.d             = d;
+    }
+
+    @Override
+    public void accept ( E v ) {
+      final long now = System.nanoTime ();
+      if ( lastEmitNanos == Long.MIN_VALUE || now - lastEmitNanos >= durationNanos ) {
+        lastEmitNanos = now;
+        d.accept ( v );
+      }
+    }
+  }
+
   /// Two-state hysteresis: enters passing state when `enter` matches; exits
   /// (drops emissions) when `exit` matches.
   static final class Hysteresis < E > implements Consumer < E > {

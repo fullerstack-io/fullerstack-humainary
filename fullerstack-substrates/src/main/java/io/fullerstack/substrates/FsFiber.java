@@ -369,11 +369,17 @@ public final class FsFiber < E > implements Fiber < E > {
     return append ( d -> new FsOperators.Every <> ( interval, d ) );
   }
 
-  /// 2.7: time-based `every`. TODO: real implementation.
+  /// 2.7: time-based `every`. Emits when at least `duration` has elapsed
+  /// since the last emit (per materialization). First emission always passes.
   @NotNull
   @Override
   public Fiber < E > every ( @NotNull java.time.Duration duration ) {
-    throw new UnsupportedOperationException ( "FsFiber.every(Duration) — not yet implemented in fullerstack-substrates 2.7" );
+    Objects.requireNonNull ( duration, "duration" );
+    if ( duration.isZero () || duration.isNegative () ) {
+      throw new IllegalArgumentException ( "duration must be > 0" );
+    }
+    final long nanos = duration.toNanos ();
+    return append ( d -> new FsOperators.EveryTime <> ( nanos, d ) );
   }
 
   @NotNull

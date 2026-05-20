@@ -1,5 +1,6 @@
 package io.fullerstack.substrates;
 
+import io.humainary.substrates.api.Substrates.Name;
 import io.humainary.substrates.api.Substrates.NotNull;
 import io.humainary.substrates.api.Substrates.Pipe;
 import io.humainary.substrates.api.Substrates.Provided;
@@ -37,6 +38,16 @@ public final class FsPipe < E > implements Pipe < E > {
   FsPipe ( Consumer < Object > receiver, FsCircuit circuit ) {
     this.receiver = receiver;
     this.circuit = circuit;
+  }
+
+  /// 2.7: named-pipe constructor. Pre-seeds the subject with the given
+  /// name + circuit-subject parent so diagnostic surfaces (logs, dumps,
+  /// observatories) can identify this pipe by its caller-supplied name.
+  @SuppressWarnings ( "unchecked" )
+  FsPipe ( Consumer < Object > receiver, FsCircuit circuit, Name name, FsSubject < ? > parent ) {
+    this.receiver = receiver;
+    this.circuit = circuit;
+    this.subject = (Subject < Pipe < E > >) (Subject < ? >) new FsSubject <> ( name, parent, Pipe.class );
   }
 
   @Override

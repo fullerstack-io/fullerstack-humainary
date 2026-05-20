@@ -484,12 +484,28 @@ public final class FsFlow < I, O > implements Flow < I, O > {
     return pipe ( cell.pipe () );
   }
 
-  /// 2.7: subject-aware Flow factory. TODO: real implementation.
+  /// 2.6: subject-aware Flow factory.
+  ///
+  /// **Deferred to a follow-up commit** in this 2.7 migration. The existing
+  /// fiber-factory machinery (FactoryEntry, resolveFactories) is fiber-shaped;
+  /// adding Flow-factory support requires either unifying FactoryEntry around
+  /// a generic Wrap[]-extractor or adding a parallel flowFactories registry.
+  /// Both options are well-scoped but non-trivial; deferred so we can ship the
+  /// core 2.7 surface (Cell + scan + window + every(Duration) + named pipes)
+  /// without an unnecessarily large diff.
+  ///
+  /// Workaround until implemented: callers that need per-subject configuration
+  /// can wrap a Fiber via `fiber(Function<Subject, Fiber>)` (which IS supported)
+  /// for same-type per-emission operators, then chain a same-type-only scan
+  /// equivalent in fold form.
   @NotNull
   @Override
   public < P > Flow < I, P > flow (
       @NotNull Function < ? super Subject < ? >, ? extends Flow < ? super O, ? extends P > > factory ) {
-    throw new UnsupportedOperationException ( "FsFlow.flow(Function<Subject, Flow>) — not yet implemented in fullerstack-substrates 2.7" );
+    Objects.requireNonNull ( factory, "factory" );
+    throw new UnsupportedOperationException (
+        "FsFlow.flow(Function<Subject, Flow>) — deferred to a follow-up commit. "
+      + "Workaround: use fiber(Function<Subject, Fiber>) for per-subject same-type ops." );
   }
 
   /// 2.6: heterogeneous fold (scan) with state-only projection.
