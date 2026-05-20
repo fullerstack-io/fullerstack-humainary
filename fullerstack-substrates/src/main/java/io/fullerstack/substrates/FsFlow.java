@@ -58,6 +58,92 @@ public final class FsFlow < I, O > implements Flow < I, O > {
     }
   }
 
+  /// **Scan (state-only projection)** — folds inputs into a per-materialization
+  /// state slot via `step(state, input) -> state`, then emits a projection
+  /// `emit(state) -> P` downstream. Spec §6.2.3:
+  ///
+  /// - Supplier invoked ONCE per materialization at attachment time (in `wrap`).
+  /// - `step` throws → state NOT replaced; side effects in step are retained
+  ///   (no rollback); next emission proceeds from prior state.
+  /// - `emit` throws → state already advanced; next emission proceeds from
+  ///   advanced state.
+  /// - `emit` returns null → emission dropped downstream.
+  /// - All throws are swallowed at this stage (external callback isolation
+  ///   per §15.4); they do not propagate up the chain.
+  @SuppressWarnings ( { "unchecked", "rawtypes" } )
+  static final class ScanStateWrap implements Wrap < Object > {
+    final Supplier < ? > initial;
+    final BiFunction < Object, Object, Object > step;
+    final Function < Object, Object > emit;
+
+    ScanStateWrap ( Supplier initial, BiFunction step, Function emit ) {
+      this.initial = initial;
+      this.step    = (BiFunction < Object, Object, Object >) step;
+      this.emit    = (Function < Object, Object >) emit;
+    }
+
+    @Override
+    public Consumer < Object > wrap ( Consumer < Object > downstream ) {
+      final Object[] slot = { initial.get () };
+      return v -> {
+        Object prev = slot[ 0 ];
+        Object next;
+        try {
+          next = step.apply ( prev, v );
+        } catch ( RuntimeException re ) {
+          return;   // state unchanged, drop emission
+        }
+        slot[ 0 ] = next;
+        Object projection;
+        try {
+          projection = emit.apply ( next );
+        } catch ( RuntimeException re ) {
+          return;   // state already advanced; drop this emission
+        }
+        if ( projection != null ) downstream.accept ( projection );
+      };
+    }
+  }
+
+  /// **Scan (input-aware projection)** — same as ScanStateWrap but emit
+  /// signature is `(state, input) -> P` so the projection can blend
+  /// running state with the current input (z-scores, residuals, anomaly
+  /// scoring).
+  @SuppressWarnings ( { "unchecked", "rawtypes" } )
+  static final class ScanInputAwareWrap implements Wrap < Object > {
+    final Supplier < ? > initial;
+    final BiFunction < Object, Object, Object > step;
+    final BiFunction < Object, Object, Object > emit;
+
+    ScanInputAwareWrap ( Supplier initial, BiFunction step, BiFunction emit ) {
+      this.initial = initial;
+      this.step    = (BiFunction < Object, Object, Object >) step;
+      this.emit    = (BiFunction < Object, Object, Object >) emit;
+    }
+
+    @Override
+    public Consumer < Object > wrap ( Consumer < Object > downstream ) {
+      final Object[] slot = { initial.get () };
+      return v -> {
+        Object prev = slot[ 0 ];
+        Object next;
+        try {
+          next = step.apply ( prev, v );
+        } catch ( RuntimeException re ) {
+          return;
+        }
+        slot[ 0 ] = next;
+        Object projection;
+        try {
+          projection = emit.apply ( next, v );
+        } catch ( RuntimeException re ) {
+          return;
+        }
+        if ( projection != null ) downstream.accept ( projection );
+      };
+    }
+  }
+
   /// **Window (count-based)** — appends each surviving input to a per-
   /// materialization rolling buffer of fixed `count`, and emits an
   /// `FsWindow` view over the current buffer on every accepted input.
@@ -406,24 +492,30 @@ public final class FsFlow < I, O > implements Flow < I, O > {
     throw new UnsupportedOperationException ( "FsFlow.flow(Function<Subject, Flow>) — not yet implemented in fullerstack-substrates 2.7" );
   }
 
-  /// 2.7: heterogeneous fold (scan). TODO: real implementation.
+  /// 2.6: heterogeneous fold (scan) with state-only projection.
   @NotNull
   @Override
   public < S, P > Flow < I, P > scan (
       @NotNull Supplier < ? extends S > initial,
       @NotNull BiFunction < ? super S, ? super O, ? extends S > step,
       @NotNull Function < ? super S, ? extends P > emit ) {
-    throw new UnsupportedOperationException ( "FsFlow.scan — not yet implemented in fullerstack-substrates 2.7" );
+    Objects.requireNonNull ( initial, "initial" );
+    Objects.requireNonNull ( step,    "step" );
+    Objects.requireNonNull ( emit,    "emit" );
+    return appendOp ( new ScanStateWrap ( initial, step, emit ) );
   }
 
-  /// 2.7: input-aware scan projection variant. TODO: real implementation.
+  /// 2.6: scan with input-aware projection.
   @NotNull
   @Override
   public < S, P > Flow < I, P > scan (
       @NotNull Supplier < ? extends S > initial,
       @NotNull BiFunction < ? super S, ? super O, ? extends S > step,
       @NotNull BiFunction < ? super S, ? super O, ? extends P > emit ) {
-    throw new UnsupportedOperationException ( "FsFlow.scan(BiFunction-emit) — not yet implemented in fullerstack-substrates 2.7" );
+    Objects.requireNonNull ( initial, "initial" );
+    Objects.requireNonNull ( step,    "step" );
+    Objects.requireNonNull ( emit,    "emit" );
+    return appendOp ( new ScanInputAwareWrap ( initial, step, emit ) );
   }
 
   /// 2.6: count-based windowing. Returns a flow that emits an
