@@ -4,6 +4,7 @@ import io.fullerstack.substrates.FsOperators.Wrap;
 import io.humainary.substrates.api.Substrates.Fiber;
 import io.humainary.substrates.api.Substrates.New;
 import io.humainary.substrates.api.Substrates.NotNull;
+import io.humainary.substrates.api.Substrates.Cell;
 import io.humainary.substrates.api.Substrates.Pipe;
 import io.humainary.substrates.api.Substrates.Provided;
 import io.humainary.substrates.api.Substrates.Receptor;
@@ -97,6 +98,15 @@ public final class FsFiber < E > implements Fiber < E > {
   ///
   /// For non-channel receivers, submit the receiver directly.
   @New
+  /// 2.7: attach this fiber's operator chain in front of a Cell's update pipe.
+  /// Delegates to the standard `pipe(Pipe)` form with `cell.pipe()` as target.
+  @NotNull
+  @Override
+  public Pipe < E > pipe ( @NotNull Cell < E > cell ) {
+    Objects.requireNonNull ( cell, "cell must not be null" );
+    return pipe ( cell.pipe () );
+  }
+
   @NotNull
   @Override
   @SuppressWarnings ( "unchecked" )
@@ -357,6 +367,13 @@ public final class FsFiber < E > implements Fiber < E > {
   public Fiber < E > every ( int interval ) {
     if ( interval <= 0 ) throw new IllegalArgumentException ( "interval must be positive" );
     return append ( d -> new FsOperators.Every <> ( interval, d ) );
+  }
+
+  /// 2.7: time-based `every`. TODO: real implementation.
+  @NotNull
+  @Override
+  public Fiber < E > every ( @NotNull java.time.Duration duration ) {
+    throw new UnsupportedOperationException ( "FsFiber.every(Duration) — not yet implemented in fullerstack-substrates 2.7" );
   }
 
   @NotNull

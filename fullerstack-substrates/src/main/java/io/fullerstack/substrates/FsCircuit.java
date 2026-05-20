@@ -4,6 +4,7 @@ import static io.humainary.substrates.api.Substrates.cortex;
 import static java.util.Objects.requireNonNull;
 
 import io.humainary.substrates.api.Substrates.Bank;
+import io.humainary.substrates.api.Substrates.Cell;
 import io.humainary.substrates.api.Substrates.Circuit;
 import io.humainary.substrates.api.Substrates.Conduit;
 import io.humainary.substrates.api.Substrates.Fault;
@@ -635,6 +636,34 @@ public final class FsCircuit implements Circuit {
   public < E > Pipe < E > pipe ( @NotNull Receptor < ? super E > receptor ) {
     requireNonNull ( receptor );
     return newPipe ( receptor );
+  }
+
+  /// 2.7: named receptor pipe.
+  /// TODO: properly thread the name through pipe identity / subject; for now
+  /// delegates to the anonymous variant (functional but not name-distinct).
+  @New
+  @NotNull
+  @Override
+  public < E > Pipe < E > pipe ( @NotNull Name name, @NotNull Receptor < ? super E > receptor ) {
+    requireNonNull ( name );
+    requireNonNull ( receptor );
+    return newPipe ( receptor );
+  }
+
+  /// 2.7: cell factories. Both create a circuit-owned cell — empty or seeded.
+  @New
+  @NotNull
+  @Override
+  public < E > Cell < E > cell () {
+    return new FsCell <> ( (FsSubject < ? >) subject, cortex ().name ( "cell" ), this, null );
+  }
+
+  @New
+  @NotNull
+  @Override
+  public < E > Cell < E > cell ( @NotNull E initial ) {
+    requireNonNull ( initial );
+    return new FsCell <> ( (FsSubject < ? >) subject, cortex ().name ( "cell" ), this, initial );
   }
 
   // ===================================================================================

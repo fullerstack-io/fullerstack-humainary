@@ -144,7 +144,7 @@ class NotNullAnnotationContractTest {
       var circuit = cortex.circuit ();
       try {
         var fiber = cortex.fiber ( Integer.class );
-        assertThrows ( NullPointerException.class, () -> fiber.pipe ( null ) );
+        assertThrows ( NullPointerException.class, () -> fiber.pipe ( (io.humainary.substrates.api.Substrates.Pipe<Integer>) null ) );
       } finally {
         circuit.close ();
       }
@@ -157,7 +157,7 @@ class NotNullAnnotationContractTest {
       var circuit = cortex.circuit ();
       try {
         var flow = cortex.flow ( Integer.class );
-        assertThrows ( NullPointerException.class, () -> flow.pipe ( null ) );
+        assertThrows ( NullPointerException.class, () -> flow.pipe ( (io.humainary.substrates.api.Substrates.Pipe<Integer>) null ) );
       } finally {
         circuit.close ();
       }

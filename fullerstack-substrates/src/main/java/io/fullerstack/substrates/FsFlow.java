@@ -1,6 +1,7 @@
 package io.fullerstack.substrates;
 
 import io.fullerstack.substrates.FsOperators.Wrap;
+import io.humainary.substrates.api.Substrates.Cell;
 import io.humainary.substrates.api.Substrates.Fiber;
 import io.humainary.substrates.api.Substrates.Flow;
 import io.humainary.substrates.api.Substrates.New;
@@ -8,10 +9,14 @@ import io.humainary.substrates.api.Substrates.NotNull;
 import io.humainary.substrates.api.Substrates.Pipe;
 import io.humainary.substrates.api.Substrates.Provided;
 import io.humainary.substrates.api.Substrates.Subject;
+import io.humainary.substrates.api.Substrates.Window;
 
+import java.time.Duration;
 import java.util.Objects;
+import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.function.Supplier;
 
 /// Immutable Flow<I,O> implementation for Substrates 2.3.
 ///
@@ -295,5 +300,55 @@ public final class FsFlow < I, O > implements Flow < I, O > {
         return s;
       }
     };
+  }
+
+  /// 2.7: attach this flow's pipeline before a Cell's update pipe.
+  @NotNull
+  @Override
+  public Pipe < I > pipe ( @NotNull Cell < O > cell ) {
+    Objects.requireNonNull ( cell, "cell must not be null" );
+    return pipe ( cell.pipe () );
+  }
+
+  /// 2.7: subject-aware Flow factory. TODO: real implementation.
+  @NotNull
+  @Override
+  public < P > Flow < I, P > flow (
+      @NotNull Function < ? super Subject < ? >, ? extends Flow < ? super O, ? extends P > > factory ) {
+    throw new UnsupportedOperationException ( "FsFlow.flow(Function<Subject, Flow>) — not yet implemented in fullerstack-substrates 2.7" );
+  }
+
+  /// 2.7: heterogeneous fold (scan). TODO: real implementation.
+  @NotNull
+  @Override
+  public < S, P > Flow < I, P > scan (
+      @NotNull Supplier < ? extends S > initial,
+      @NotNull BiFunction < ? super S, ? super O, ? extends S > step,
+      @NotNull Function < ? super S, ? extends P > emit ) {
+    throw new UnsupportedOperationException ( "FsFlow.scan — not yet implemented in fullerstack-substrates 2.7" );
+  }
+
+  /// 2.7: input-aware scan projection variant. TODO: real implementation.
+  @NotNull
+  @Override
+  public < S, P > Flow < I, P > scan (
+      @NotNull Supplier < ? extends S > initial,
+      @NotNull BiFunction < ? super S, ? super O, ? extends S > step,
+      @NotNull BiFunction < ? super S, ? super O, ? extends P > emit ) {
+    throw new UnsupportedOperationException ( "FsFlow.scan(BiFunction-emit) — not yet implemented in fullerstack-substrates 2.7" );
+  }
+
+  /// 2.7: count-based windowing. TODO: real implementation.
+  @NotNull
+  @Override
+  public Flow < I, Window < O > > window ( int size ) {
+    throw new UnsupportedOperationException ( "FsFlow.window(int) — not yet implemented in fullerstack-substrates 2.7" );
+  }
+
+  /// 2.7: time-based windowing. TODO: real implementation.
+  @NotNull
+  @Override
+  public Flow < I, Window < O > > window ( @NotNull Duration duration, int maxSize ) {
+    throw new UnsupportedOperationException ( "FsFlow.window(Duration, int) — not yet implemented in fullerstack-substrates 2.7" );
   }
 }
