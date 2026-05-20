@@ -58,6 +58,94 @@ public final class FsFlow < I, O > implements Flow < I, O > {
     }
   }
 
+  /// **Window (count-based)** — appends each surviving input to a per-
+  /// materialization rolling buffer of fixed `count`, and emits an
+  /// `FsWindow` view over the current buffer on every accepted input.
+  ///
+  /// Buffer is non-circular: when full, shift left to drop oldest. Each
+  /// emit reuses the same buffer (the Window view shares it). Per spec,
+  /// the view is callback-scoped — downstream MUST consume within the
+  /// receiving callback before the next emission mutates the buffer.
+  static final class WindowCountWrap implements Wrap < Object > {
+    final int count;
+
+    WindowCountWrap ( int count ) {
+      if ( count <= 0 ) throw new IllegalArgumentException ( "count must be > 0" );
+      this.count = count;
+    }
+
+    @Override
+    public Consumer < Object > wrap ( Consumer < Object > downstream ) {
+      final Object[] buffer = new Object[ count ];
+      final int[]    sizeRef = { 0 };   // current valid length
+      return v -> {
+        int len = sizeRef[ 0 ];
+        if ( len < count ) {
+          buffer[ len ] = v;
+          sizeRef[ 0 ] = len + 1;
+        } else {
+          // Shift left and append (drop oldest).
+          System.arraycopy ( buffer, 1, buffer, 0, count - 1 );
+          buffer[ count - 1 ] = v;
+        }
+        downstream.accept ( new FsWindow <> ( buffer, 0, sizeRef[ 0 ], false ) );
+      };
+    }
+  }
+
+  /// **Window (duration + capacity)** — same as count-based but also
+  /// evicts entries whose capture timestamp is older than `duration`
+  /// relative to the current processing time. Two parallel arrays:
+  /// values + capture timestamps in nanoseconds.
+  static final class WindowDurationWrap implements Wrap < Object > {
+    final long durationNanos;
+    final int  capacity;
+
+    WindowDurationWrap ( Duration duration, int capacity ) {
+      if ( duration == null || duration.isZero () || duration.isNegative () ) {
+        throw new IllegalArgumentException ( "duration must be > 0" );
+      }
+      if ( capacity <= 0 ) throw new IllegalArgumentException ( "capacity must be > 0" );
+      this.durationNanos = duration.toNanos ();
+      this.capacity      = capacity;
+    }
+
+    @Override
+    public Consumer < Object > wrap ( Consumer < Object > downstream ) {
+      final Object[] values = new Object[ capacity ];
+      final long[]   times  = new long[ capacity ];
+      // tracked as a contiguous [0..length) range
+      final int[]    sizeRef = { 0 };
+      return v -> {
+        final long now = System.nanoTime ();
+        // Evict entries older than (now - durationNanos).
+        int newStart = 0;
+        final int len = sizeRef[ 0 ];
+        while ( newStart < len && now - times[ newStart ] > durationNanos ) {
+          newStart++;
+        }
+        int newLen = len - newStart;
+        if ( newStart > 0 ) {
+          System.arraycopy ( values, newStart, values, 0, newLen );
+          System.arraycopy ( times,  newStart, times,  0, newLen );
+        }
+        if ( newLen < capacity ) {
+          values[ newLen ] = v;
+          times [ newLen ] = now;
+          newLen++;
+        } else {
+          // Capacity-bound eviction: drop oldest.
+          System.arraycopy ( values, 1, values, 0, capacity - 1 );
+          System.arraycopy ( times,  1, times,  0, capacity - 1 );
+          values[ capacity - 1 ] = v;
+          times [ capacity - 1 ] = now;
+        }
+        sizeRef[ 0 ] = newLen;
+        downstream.accept ( new FsWindow <> ( values, 0, newLen, false ) );
+      };
+    }
+  }
+
   // ═══════════════════════════════════════════════════════════════════════════
   // Immutable state
   // ═══════════════════════════════════════════════════════════════════════════
@@ -338,17 +426,34 @@ public final class FsFlow < I, O > implements Flow < I, O > {
     throw new UnsupportedOperationException ( "FsFlow.scan(BiFunction-emit) — not yet implemented in fullerstack-substrates 2.7" );
   }
 
-  /// 2.7: count-based windowing. TODO: real implementation.
+  /// 2.6: count-based windowing. Returns a flow that emits an
+  /// FsWindow view of the most-recent `size` upstream values on every
+  /// accepted input. The view is callback-scoped per spec §6.2.3.
   @NotNull
   @Override
   public Flow < I, Window < O > > window ( int size ) {
-    throw new UnsupportedOperationException ( "FsFlow.window(int) — not yet implemented in fullerstack-substrates 2.7" );
+    if ( size <= 0 ) throw new IllegalArgumentException ( "size must be > 0" );
+    return appendOp ( new WindowCountWrap ( size ) );
   }
 
-  /// 2.7: time-based windowing. TODO: real implementation.
+  /// 2.7: time-based windowing with capacity bound.
   @NotNull
   @Override
   public Flow < I, Window < O > > window ( @NotNull Duration duration, int maxSize ) {
-    throw new UnsupportedOperationException ( "FsFlow.window(Duration, int) — not yet implemented in fullerstack-substrates 2.7" );
+    Objects.requireNonNull ( duration, "duration" );
+    if ( maxSize <= 0 ) throw new IllegalArgumentException ( "maxSize must be > 0" );
+    return appendOp ( new WindowDurationWrap ( duration, maxSize ) );
+  }
+
+  /// Internal helper: returns a new FsFlow with the given op appended.
+  /// The output type changes from O to whatever the op produces — at the
+  /// type level we erase to Object since operators travel as Wrap[].
+  @SuppressWarnings ( { "unchecked", "rawtypes" } )
+  private < P > Flow < I, P > appendOp ( Wrap < ? > op ) {
+    final int newCount = count + 1;
+    final Wrap < ? >[] newOps = new Wrap < ? >[ newCount ];
+    System.arraycopy ( operators, 0, newOps, 0, count );
+    newOps[ count ] = op;
+    return (Flow < I, P >) (Flow) new FsFlow <> ( newOps, newCount, factories );
   }
 }
