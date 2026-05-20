@@ -236,17 +236,23 @@ public final class FsFlow < I, O > implements Flow < I, O > {
   // Immutable state
   // ═══════════════════════════════════════════════════════════════════════════
 
-  private static final Wrap < ? >[]    EMPTY        = new Wrap < ? >[0];
-  private static final FactoryEntry[]  NO_FACTORIES = null;
+  private static final Wrap < ? >[]        EMPTY             = new Wrap < ? >[0];
+  private static final FactoryEntry[]      NO_FACTORIES      = null;
+  private static final FlowFactoryEntry[]  NO_FLOW_FACTORIES = null;
 
-  private final Wrap < ? >[]    operators;
-  private final int             count;
+  private final Wrap < ? >[]           operators;
+  private final int                    count;
   /// 2.4 per-attachment fiber factories. Null in common case (no
   /// `fiber(Function)` call). Each entry records the value of `count` at
   /// the time the factory was added; at `pipe(target)` time the factory is
   /// invoked once with `target.subject()` and the resulting fiber's
   /// operators are inlined at that recorded position.
-  private final FactoryEntry[]  factories;
+  private final FactoryEntry[]         factories;
+  /// 2.6 per-attachment flow factories. Same idea as factories but the
+  /// produced value is a Flow (which itself has operators and may have
+  /// its own factories — these are recursively resolved against the same
+  /// target subject when this flow is materialised).
+  private final FlowFactoryEntry[]     flowFactories;
 
   /// Records a per-attachment fiber factory and its insertion position.
   private record FactoryEntry(
@@ -254,17 +260,32 @@ public final class FsFlow < I, O > implements Flow < I, O > {
     Function < ? super Subject < ? >, ? extends Fiber < ? > > factory
   ) { }
 
+  /// Records a per-attachment flow factory and its insertion position.
+  private record FlowFactoryEntry(
+    int position,
+    Function < ? super Subject < ? >, ? extends Flow < ?, ? > > factory
+  ) { }
+
   /// Identity flow — no operators.
   public FsFlow () {
-    this.operators = EMPTY;
-    this.count     = 0;
-    this.factories = NO_FACTORIES;
+    this.operators     = EMPTY;
+    this.count         = 0;
+    this.factories     = NO_FACTORIES;
+    this.flowFactories = NO_FLOW_FACTORIES;
   }
 
+  private FsFlow ( Wrap < ? >[] operators, int count,
+                   FactoryEntry[] factories,
+                   FlowFactoryEntry[] flowFactories ) {
+    this.operators     = operators;
+    this.count         = count;
+    this.factories     = factories;
+    this.flowFactories = flowFactories;
+  }
+
+  /// Backwards-compatible constructor (no flow factories).
   private FsFlow ( Wrap < ? >[] operators, int count, FactoryEntry[] factories ) {
-    this.operators = operators;
-    this.count     = count;
-    this.factories = factories;
+    this ( operators, count, factories, NO_FLOW_FACTORIES );
   }
 
   /// Returns a new FsFlow with the given operator appended.
@@ -273,7 +294,7 @@ public final class FsFlow < I, O > implements Flow < I, O > {
     Wrap < ? >[] newOps = new Wrap < ? >[count + 1];
     System.arraycopy ( operators, 0, newOps, 0, count );
     newOps[count] = op;
-    return new FsFlow <> ( newOps, count + 1, factories );
+    return new FsFlow <> ( newOps, count + 1, factories, flowFactories );
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -306,32 +327,69 @@ public final class FsFlow < I, O > implements Flow < I, O > {
     return c;
   }
 
-  /// Resolves all per-attachment factories against `targetSubject` and
-  /// builds the effective Wrap[] for materialisation.
+  /// Resolves all per-attachment factories (fiber + flow) against
+  /// `targetSubject` and builds the effective Wrap[] for materialisation.
+  /// Flow factories may have their own nested factories; those are
+  /// recursively resolved against the same subject.
   private Wrap < ? >[] resolveFactories ( Subject < ? > targetSubject ) {
-    // Resolve each factory and compute total size
-    Wrap < ? >[][] resolved = new Wrap < ? >[factories.length][];
+    final int nFiberFactories = factories == null ? 0 : factories.length;
+    final int nFlowFactories  = flowFactories == null ? 0 : flowFactories.length;
+
+    // Resolve fiber factories (each produces a Wrap[] of fiber operators)
+    Wrap < ? >[][] resolvedFiber = new Wrap < ? >[nFiberFactories][];
     int totalExtra = 0;
-    for ( int i = 0; i < factories.length; i++ ) {
+    for ( int i = 0; i < nFiberFactories; i++ ) {
       Fiber < ? > f = factories[i].factory.apply ( targetSubject );
-      Objects.requireNonNull ( f, "factory must not return null" );
+      Objects.requireNonNull ( f, "fiber factory must not return null" );
       if ( !( f instanceof FsFiber < ? > fsFiber ) ) {
-        throw new IllegalArgumentException ( "factory must produce an FsFiber instance" );
+        throw new IllegalArgumentException ( "fiber factory must produce an FsFiber instance" );
       }
       Wrap < ? >[] ops = fsFiber.operators ();
       int fc = fsFiber.operatorCount ();
       Wrap < ? >[] copy = new Wrap < ? >[fc];
       System.arraycopy ( ops, 0, copy, 0, fc );
-      resolved[i] = copy;
+      resolvedFiber[i] = copy;
       totalExtra += fc;
     }
-    // Build merged array: walk positions 0..count, inline factories at each position
+
+    // Resolve flow factories (each produces a Wrap[] of flow operators —
+    // recursively resolved if the inner flow has its own factories)
+    Wrap < ? >[][] resolvedFlow = new Wrap < ? >[nFlowFactories][];
+    for ( int i = 0; i < nFlowFactories; i++ ) {
+      Flow < ?, ? > f = flowFactories[i].factory.apply ( targetSubject );
+      Objects.requireNonNull ( f, "flow factory must not return null" );
+      if ( !( f instanceof FsFlow < ?, ? > fsFlow ) ) {
+        throw new IllegalArgumentException ( "flow factory must produce an FsFlow instance" );
+      }
+      // Recursive resolve: if the inner flow has its own factories, resolve
+      // them too; otherwise use its operators directly.
+      Wrap < ? >[] innerEffective;
+      if ( fsFlow.factories == null && fsFlow.flowFactories == null ) {
+        innerEffective = new Wrap < ? >[fsFlow.count];
+        System.arraycopy ( fsFlow.operators, 0, innerEffective, 0, fsFlow.count );
+      } else {
+        innerEffective = fsFlow.resolveFactories ( targetSubject );
+      }
+      resolvedFlow[i] = innerEffective;
+      totalExtra += innerEffective.length;
+    }
+
+    // Build merged array: walk positions 0..count, inline factories at each
+    // position. For positions with both fiber and flow factories at the same
+    // index, fiber factories go first (preserves prior behaviour).
     Wrap < ? >[] merged = new Wrap < ? >[count + totalExtra];
     int w = 0;
     for ( int p = 0; p <= count; p++ ) {
-      for ( int i = 0; i < factories.length; i++ ) {
+      for ( int i = 0; i < nFiberFactories; i++ ) {
         if ( factories[i].position == p ) {
-          Wrap < ? >[] r = resolved[i];
+          Wrap < ? >[] r = resolvedFiber[i];
+          System.arraycopy ( r, 0, merged, w, r.length );
+          w += r.length;
+        }
+      }
+      for ( int i = 0; i < nFlowFactories; i++ ) {
+        if ( flowFactories[i].position == p ) {
+          Wrap < ? >[] r = resolvedFlow[i];
           System.arraycopy ( r, 0, merged, w, r.length );
           w += r.length;
         }
@@ -367,7 +425,7 @@ public final class FsFlow < I, O > implements Flow < I, O > {
     Wrap < ? >[] merged = new Wrap < ? >[count + fc];
     System.arraycopy ( operators, 0, merged, 0, count );
     System.arraycopy ( fsFiber.operators (), 0, merged, count, fc );
-    return new FsFlow <> ( merged, count + fc, factories );
+    return new FsFlow <> ( merged, count + fc, factories, flowFactories );
   }
 
   /// 2.4: Per-attachment fiber factory. The factory is invoked once per
@@ -386,7 +444,7 @@ public final class FsFlow < I, O > implements Flow < I, O > {
       System.arraycopy ( factories, 0, newFactories, 0, factories.length );
       newFactories[factories.length] = entry;
     }
-    return new FsFlow <> ( operators, count, newFactories );
+    return new FsFlow <> ( operators, count, newFactories, flowFactories );
   }
 
   @NotNull
@@ -397,13 +455,16 @@ public final class FsFlow < I, O > implements Flow < I, O > {
     if ( !( next instanceof FsFlow < ?, ? > nextFlow ) ) {
       throw new IllegalArgumentException ( "next flow must be an FsFlow instance" );
     }
-    if ( nextFlow.count == 0 && nextFlow.factories == null ) return (Flow < I, P >) (Flow < ?, ? >) this;
+    if ( nextFlow.count == 0 && nextFlow.factories == null && nextFlow.flowFactories == null ) {
+      return (Flow < I, P >) (Flow < ?, ? >) this;
+    }
     Wrap < ? >[] merged = new Wrap < ? >[count + nextFlow.count];
     // operators[0..count) of `this` — innermost at index 0 — must remain innermost.
     // next's operators run after `this`, so they wrap further out (higher indices).
     System.arraycopy ( operators, 0, merged, 0, count );
     System.arraycopy ( nextFlow.operators, 0, merged, count, nextFlow.count );
-    // Translate next's factories: each next factory at position p shifts to position count+p.
+
+    // Translate next's fiber factories: each next factory at position p shifts to position count+p.
     FactoryEntry[] mergedFactories = factories;
     if ( nextFlow.factories != null ) {
       int existing = factories == null ? 0 : factories.length;
@@ -414,7 +475,41 @@ public final class FsFlow < I, O > implements Flow < I, O > {
         mergedFactories[existing + i] = new FactoryEntry ( count + fe.position, fe.factory );
       }
     }
-    return new FsFlow <> ( merged, count + nextFlow.count, mergedFactories );
+
+    // Translate next's flow factories: same position shift.
+    FlowFactoryEntry[] mergedFlowFactories = flowFactories;
+    if ( nextFlow.flowFactories != null ) {
+      int existing = flowFactories == null ? 0 : flowFactories.length;
+      mergedFlowFactories = new FlowFactoryEntry[existing + nextFlow.flowFactories.length];
+      if ( existing > 0 ) System.arraycopy ( flowFactories, 0, mergedFlowFactories, 0, existing );
+      for ( int i = 0; i < nextFlow.flowFactories.length; i++ ) {
+        FlowFactoryEntry fe = nextFlow.flowFactories[i];
+        mergedFlowFactories[existing + i] = new FlowFactoryEntry ( count + fe.position, fe.factory );
+      }
+    }
+
+    return new FsFlow <> ( merged, count + nextFlow.count, mergedFactories, mergedFlowFactories );
+  }
+
+  /// 2.6: Per-attachment Flow factory. Same as fiber-factory but produces
+  /// a Flow (which is type-changing). Recursively resolves the inner Flow's
+  /// own factories at materialisation.
+  @NotNull
+  @Override
+  @SuppressWarnings ( "unchecked" )
+  public < P > Flow < I, P > flow (
+      @NotNull Function < ? super Subject < ? >, ? extends Flow < ? super O, ? extends P > > factory ) {
+    Objects.requireNonNull ( factory, "factory" );
+    FlowFactoryEntry entry = new FlowFactoryEntry ( count, factory );
+    FlowFactoryEntry[] newFlowFactories;
+    if ( flowFactories == null ) {
+      newFlowFactories = new FlowFactoryEntry[]{entry};
+    } else {
+      newFlowFactories = new FlowFactoryEntry[flowFactories.length + 1];
+      System.arraycopy ( flowFactories, 0, newFlowFactories, 0, flowFactories.length );
+      newFlowFactories[flowFactories.length] = entry;
+    }
+    return (Flow < I, P >) (Flow) new FsFlow <> ( operators, count, factories, newFlowFactories );
   }
 
   /// When target is a same-circuit FsPipe, the flow's terminal submits to
@@ -429,13 +524,13 @@ public final class FsFlow < I, O > implements Flow < I, O > {
   public Pipe < I > pipe ( @NotNull Pipe < O > target ) {
     Objects.requireNonNull ( target );
     // Empty flow elision — no operators AND no pending factories means I == O.
-    if ( count == 0 && factories == null ) return (Pipe < I >) (Pipe < ? >) target;
+    if ( count == 0 && factories == null && flowFactories == null ) return (Pipe < I >) (Pipe < ? >) target;
 
     // Resolve per-attachment factories (if any) against target.subject(). Each
-    // factory is invoked once at attachment time per spec §6.2 / 2.4.
+    // factory is invoked once at attachment time per spec §6.2 / 2.4 / 2.6.
     final Wrap < ? >[] effective;
     final int          effectiveCount;
-    if ( factories == null ) {
+    if ( factories == null && flowFactories == null ) {
       effective      = operators;
       effectiveCount = count;
     } else {
@@ -484,29 +579,6 @@ public final class FsFlow < I, O > implements Flow < I, O > {
     return pipe ( cell.pipe () );
   }
 
-  /// 2.6: subject-aware Flow factory.
-  ///
-  /// **Deferred to a follow-up commit** in this 2.7 migration. The existing
-  /// fiber-factory machinery (FactoryEntry, resolveFactories) is fiber-shaped;
-  /// adding Flow-factory support requires either unifying FactoryEntry around
-  /// a generic Wrap[]-extractor or adding a parallel flowFactories registry.
-  /// Both options are well-scoped but non-trivial; deferred so we can ship the
-  /// core 2.7 surface (Cell + scan + window + every(Duration) + named pipes)
-  /// without an unnecessarily large diff.
-  ///
-  /// Workaround until implemented: callers that need per-subject configuration
-  /// can wrap a Fiber via `fiber(Function<Subject, Fiber>)` (which IS supported)
-  /// for same-type per-emission operators, then chain a same-type-only scan
-  /// equivalent in fold form.
-  @NotNull
-  @Override
-  public < P > Flow < I, P > flow (
-      @NotNull Function < ? super Subject < ? >, ? extends Flow < ? super O, ? extends P > > factory ) {
-    Objects.requireNonNull ( factory, "factory" );
-    throw new UnsupportedOperationException (
-        "FsFlow.flow(Function<Subject, Flow>) — deferred to a follow-up commit. "
-      + "Workaround: use fiber(Function<Subject, Fiber>) for per-subject same-type ops." );
-  }
 
   /// 2.6: heterogeneous fold (scan) with state-only projection.
   @NotNull
@@ -562,6 +634,6 @@ public final class FsFlow < I, O > implements Flow < I, O > {
     final Wrap < ? >[] newOps = new Wrap < ? >[ newCount ];
     System.arraycopy ( operators, 0, newOps, 0, count );
     newOps[ count ] = op;
-    return (Flow < I, P >) (Flow) new FsFlow <> ( newOps, newCount, factories );
+    return (Flow < I, P >) (Flow) new FsFlow <> ( newOps, newCount, factories, flowFactories );
   }
 }
