@@ -651,11 +651,13 @@ public final class FsCircuit implements Circuit {
   }
 
   /// 2.7: cell factories. Both create a circuit-owned cell — empty or seeded.
+  /// 2.7: cell factories. Each call auto-generates a unique name so multiple
+  /// cells on the same circuit don't collide on conduit identity.
   @New
   @NotNull
   @Override
   public < E > Cell < E > cell () {
-    return new FsCell <> ( (FsSubject < ? >) subject, cortex ().name ( "cell" ), this, null );
+    return new FsCell <> ( (FsSubject < ? >) subject, nextCellName (), this, null );
   }
 
   @New
@@ -663,7 +665,14 @@ public final class FsCircuit implements Circuit {
   @Override
   public < E > Cell < E > cell ( @NotNull E initial ) {
     requireNonNull ( initial );
-    return new FsCell <> ( (FsSubject < ? >) subject, cortex ().name ( "cell" ), this, initial );
+    return new FsCell <> ( (FsSubject < ? >) subject, nextCellName (), this, initial );
+  }
+
+  private final java.util.concurrent.atomic.AtomicLong cellSeq =
+      new java.util.concurrent.atomic.AtomicLong ();
+
+  private Name nextCellName () {
+    return cortex ().name ( "cell." + cellSeq.getAndIncrement () );
   }
 
   // ===================================================================================
