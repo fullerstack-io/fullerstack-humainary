@@ -31,6 +31,36 @@ class FsCellSmokeTest {
   }
 
   @Test
+  void cellLazyPerSubjectInsideCascade_holonPattern() {
+    // Mimics our holon pattern: cellFor(n) is called inside outputFn of a
+    // per-subject subscriber callback, creating a Cell lazily for each new
+    // subject. The receiver then emits to that cell's pipe.
+    Cortex cortex = Substrates.cortex();
+    Circuit circuit = cortex.circuit(cortex.name("smoke3"));
+    try {
+      java.util.Map<io.humainary.substrates.api.Substrates.Name, Cell<Integer>> cells = new java.util.concurrent.ConcurrentHashMap<>();
+      Conduit<Integer> in = circuit.conduit(cortex.name("input"), Integer.class);
+      in.subscribe(circuit.subscriber(
+          cortex.name("scan-like"),
+          (subj, reg) -> {
+            final io.humainary.substrates.api.Substrates.Name n = subj.name();
+            final Cell<Integer> c = cells.computeIfAbsent(n, k -> circuit.cell(0));
+            final Pipe<Integer> out = c.pipe();
+            reg.register((Integer v) -> out.emit(v * 10));
+          }));
+
+      in.get(cortex.name("X")).emit(5);
+      in.get(cortex.name("X")).emit(7);
+      circuit.await();
+
+      assertThat(cells.get(cortex.name("X"))).isNotNull();
+      assertThat(cells.get(cortex.name("X")).get()).isEqualTo(70);
+    } finally {
+      circuit.close();
+    }
+  }
+
+  @Test
   void cellCreatedInsideCascadeStillReceivesEmits() {
     Cortex cortex = Substrates.cortex();
     Circuit circuit = cortex.circuit(cortex.name("smoke2"));

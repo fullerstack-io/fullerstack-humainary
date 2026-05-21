@@ -25,7 +25,7 @@ The spec is language-independent. These are our Java 26 projection choices:
 
 ## Class Map
 
-27 classes in `io.fullerstack.substrates`:
+29 classes in `io.fullerstack.substrates`:
 
 ```
 FsCortexProvider (SPI entry point)
@@ -40,16 +40,22 @@ FsCortexProvider (SPI entry point)
               │     │     └── FsPipe (async emission carrier — emit only)
               │     └── FsDerivedPool (derived view: pool(Function), pool(Flow), pool(Fiber))
               ├── FsBank (2.5 — closeable name-indexed conduit factory)
-              ├── FsFlow (type-changing composition: map / fiber / flow / pipe — uniform Wrap[] storage)
-              ├── FsFiber (per-emission operators: ~41 — guard, diff, limit, peek, replace, ...,
+              ├── FsCell (2.7 — circuit-owned single-slot state; receptor-pipe + volatile)
+              ├── FsFlow (type-changing composition: map / scan / window / flow / fiber / pipe —
+              │           uniform Wrap[] storage; 2.6/2.7 adds scan, window(int), window(Duration, int),
+              │           flow(Function<Subject, Flow>))
+              ├── FsFiber (per-emission operators: ~42 — guard, diff, limit, peek, replace, ...,
               │           plus chance, change, deadband, delay, edge, every,
               │           hysteresis, inhibit, pulse, rolling, steady, tumble,
-              │           plus 2.5: distinct, distinct(int), route, streak, tee, when)
-              ├── FsOperators (shared operator implementations consumed by FsFiber and FsFlow)
+              │           plus 2.5: distinct, distinct(int), route, streak, tee, when,
+              │           plus 2.7: every(Duration))
+              ├── FsOperators (shared operator implementations consumed by FsFiber and FsFlow;
+              │                includes 2.7 EveryTime for time-based rate limiting)
               ├── FsSubscriber (emission observer with lazy callback)
               │     └── FsSubscription (subscriber lifecycle handle)
               │           └── FsRegistrar (Consumer<Object> registration during callback)
               ├── FsTap (source emission transformation; tap(Function|Flow|Fiber))
+              ├── FsWindow (2.6 — strided view over a rolling buffer; restriction ops share buffer)
               └── FsReservoir (buffered emission capture)
 
 FsName (hierarchical dot-notation names with interning)

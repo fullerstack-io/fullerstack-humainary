@@ -6,12 +6,12 @@ Substrates is a runtime for observable, event-driven systems where every emissio
 
 | | |
 |---|---|
-| **API** | [Humainary Substrates 2.5.0](https://github.com/humainary-io/substrates-api-java) |
+| **API** | [Humainary Substrates 2.7.0](https://github.com/humainary-io/substrates-api-java) |
 | **Spec** | [Substrates API Specification](https://github.com/humainary-io/substrates-api-spec) |
-| **Serventis** | [Humainary Serventis 2.5.0](https://github.com/humainary-io/serventis-api-java) (semiotic observability) |
-| **Implementation** | `io.fullerstack:fullerstack-substrates:2.5.0-RC1` |
+| **Serventis** | [Humainary Serventis 2.7.0](https://github.com/humainary-io/serventis-api-java) (semiotic observability) |
+| **Implementation** | `io.fullerstack:fullerstack-substrates:2.7.0-RC1` |
 | **Java** | 26 (Virtual Threads + Preview Features) |
-| **Tests** | 519 passing (80 contract + 400 TCK + 39 Serventis) |
+| **Tests** | 572 passing (519 base + 53 new for 2.7: Cell, Window, Flow.scan/window/flow(factory), Fiber.every(Duration), Circuit.pipe(Name), Fiber/Flow.pipe(Cell)) |
 | **License** | Apache 2.0 |
 
 ## Quick Start
@@ -22,7 +22,7 @@ The artifact is published to [GitHub Packages](https://github.com/fullerstack-io
 <dependency>
     <groupId>io.fullerstack</groupId>
     <artifactId>fullerstack-substrates</artifactId>
-    <version>2.5.0-RC1</version>
+    <version>2.7.0-RC1</version>
 </dependency>
 ```
 
@@ -66,7 +66,7 @@ The artifact lives in [GitHub Packages](https://github.com/fullerstack-io/fuller
   <dependency>
     <groupId>io.fullerstack</groupId>
     <artifactId>fullerstack-substrates</artifactId>
-    <version>2.5.0-RC1</version>
+    <version>2.7.0-RC1</version>
   </dependency>
 </dependencies>
 ```
@@ -121,7 +121,7 @@ cd ../..
 ```bash
 git clone https://github.com/fullerstack-io/fullerstack-humainary.git
 cd fullerstack-humainary/fullerstack-substrates
-mvn clean install        # Build + 519 tests
+mvn clean install        # Build + 572 tests
 ```
 
 ### Benchmarks
@@ -155,13 +155,15 @@ See the [Specification](https://github.com/humainary-io/substrates-api-spec) for
 | API Interface | Implementation | Purpose |
 |--------------|---------------|---------|
 | Cortex | FsCortex | Entry point — circuits, scopes, names, flows, fibers |
-| Circuit | FsCircuit | Dual-queue sequential execution engine + `pulse()` diagnostic (2.4) + `bank()` (2.5) |
+| Circuit | FsCircuit | Dual-queue sequential execution engine + `pulse()` diagnostic (2.4) + `bank()` (2.5) + `cell()` / `cell(initial)` / `pipe(Name, Receptor)` (2.7) |
 | Conduit | FsConduit | Channel factory + subscriber management; `Pool<Pipe<E>>` |
 | Bank | FsBank | **2.5** — closeable name-indexed conduit factory; identity by name, close walks materialised |
+| Cell | FsCell | **2.7** — circuit-owned single-slot state; receptor-pipe-backed with volatile slot for safe publication |
+| Window | FsWindow | **2.6** — strided view over a rolling buffer; restriction ops share the buffer (no copies) |
 | Pipe | FsPipe | Async emission carrier |
 | Pool | FsDerivedPool | Derived pool — `pool(Function)` / `pool(Flow)` / `pool(Fiber)` with three-state lazy storage |
-| Flow | FsFlow | Type-changing composition: `map` / `fiber` / `flow` / `pipe` |
-| Fiber | FsFiber | Per-emission operators (~41: `guard`, `diff`, `limit`, `peek`, `replace`, `chance`, `change`, `deadband`, `delay`, `edge`, `every`, `hysteresis`, `inhibit`, `pulse`, `rolling`, `steady`, `tumble`, plus **2.5:** `distinct`, `distinct(int)`, `route`, `streak`, `tee`, `when`, ...) |
+| Flow | FsFlow | Type-changing composition: `map` / `fiber` / `flow` / `pipe`, plus **2.6/2.7:** `scan` ×2, `window(int)`, `window(Duration, int)`, `flow(Function<Subject, Flow>)`, `pipe(Cell)` |
+| Fiber | FsFiber | Per-emission operators (~42: `guard`, `diff`, `limit`, `peek`, `replace`, `chance`, `change`, `deadband`, `delay`, `edge`, `every`, `hysteresis`, `inhibit`, `pulse`, `rolling`, `steady`, `tumble`, plus **2.5:** `distinct`, `distinct(int)`, `route`, `streak`, `tee`, `when`, plus **2.7:** `every(Duration)`, `pipe(Cell)`, ...) |
 | Name | FsName | Hierarchical dot-notation names with interning |
 | Subject | FsSubject | Identity (Id + Name + State + Type) |
 | Scope | FsScope | Structured resource lifecycle (RAII) |
