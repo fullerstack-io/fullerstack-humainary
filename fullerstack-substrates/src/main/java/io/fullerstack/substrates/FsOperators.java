@@ -315,12 +315,19 @@ final class FsOperators {
     public void accept ( E v ) { if ( ++count % n == 0 ) d.accept ( v ); }
   }
 
-  /// Time-based rate limit (2.7) — emit when at least `durationNanos`
-  /// has elapsed since the last emit. First emission always passes.
+  /// Time-based rate limit (2.7) — per spec §6.2.3 `Fiber.every(Duration)`:
+  ///
+  ///   - The **first observed value anchors the interval and is dropped**.
+  ///   - A later value observed after at least `durationNanos` has
+  ///     elapsed is emitted.
+  ///   - If more than one interval elapsed before that value arrives,
+  ///     the internal clock advances by the elapsed interval slots rather
+  ///     than by the late-arrival time — avoiding drift after overruns.
   static final class EveryTime < E > implements Consumer < E > {
     final long           durationNanos;
     final Consumer < E > d;
-    long lastEmitNanos = Long.MIN_VALUE;
+    boolean anchored = false;
+    long    anchorNanos;   // start of current slot
 
     EveryTime ( long durationNanos, Consumer < E > d ) {
       this.durationNanos = durationNanos;
@@ -330,10 +337,20 @@ final class FsOperators {
     @Override
     public void accept ( E v ) {
       final long now = System.nanoTime ();
-      if ( lastEmitNanos == Long.MIN_VALUE || now - lastEmitNanos >= durationNanos ) {
-        lastEmitNanos = now;
-        d.accept ( v );
+      if ( !anchored ) {
+        // First value anchors the interval and is dropped.
+        anchored = true;
+        anchorNanos = now;
+        return;
       }
+      final long elapsed = now - anchorNanos;
+      if ( elapsed < durationNanos ) {
+        return;   // still within the current slot
+      }
+      // Slot-aligned advance: skip the full slots that have elapsed.
+      final long slots = elapsed / durationNanos;
+      anchorNanos += slots * durationNanos;
+      d.accept ( v );
     }
   }
 

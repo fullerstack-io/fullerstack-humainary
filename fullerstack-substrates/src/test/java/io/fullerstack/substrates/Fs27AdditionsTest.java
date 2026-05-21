@@ -28,6 +28,28 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 ///   - Flow.pipe(Cell)               — terminate Flow into Cell
 class Fs27AdditionsTest {
 
+  // ── Circuit.cell() — requireOpen contract (spec §11.3) ─────────────────
+
+  @Test
+  @DisplayName("Circuit.cell() throws Fault on closed circuit")
+  void cellOnClosedCircuitThrows() {
+    Cortex cortex = Substrates.cortex();
+    Circuit circuit = cortex.circuit();
+    circuit.close();
+    assertThatThrownBy(circuit::cell)
+        .isInstanceOf(io.humainary.substrates.api.Substrates.Fault.class);
+  }
+
+  @Test
+  @DisplayName("Circuit.cell(initial) throws Fault on closed circuit")
+  void cellSeededOnClosedCircuitThrows() {
+    Cortex cortex = Substrates.cortex();
+    Circuit circuit = cortex.circuit();
+    circuit.close();
+    assertThatThrownBy(() -> circuit.cell(42))
+        .isInstanceOf(io.humainary.substrates.api.Substrates.Fault.class);
+  }
+
   // ── Circuit.pipe(Name, Receptor) ────────────────────────────────────────
 
   @Test
@@ -85,7 +107,7 @@ class Fs27AdditionsTest {
   // ── Fiber.every(Duration) ───────────────────────────────────────────────
 
   @Test
-  @DisplayName("Fiber.every(Duration) — first emit always passes; subsequent gated")
+  @DisplayName("Fiber.every(Duration) — first anchors-and-drops; later value past interval emits")
   void everyDurationGates() throws InterruptedException {
     Cortex cortex = Substrates.cortex();
     Circuit circuit = cortex.circuit();
@@ -95,18 +117,19 @@ class Fs27AdditionsTest {
       Pipe<Integer> sink = circuit.pipe((Receptor<Integer>) emitted::add);
       Pipe<Integer> in = fiber.pipe(sink);
 
-      // First always passes; the next two are within 50ms and should be gated.
-      in.emit(1);
-      in.emit(2);
-      in.emit(3);
+      // Per spec §6.2.3: the first observed value anchors the interval AND is dropped.
+      // Subsequent emits within the interval are gated.
+      in.emit(1);   // anchors interval, dropped
+      in.emit(2);   // within 50ms, gated
+      in.emit(3);   // within 50ms, gated
       circuit.await();
-      assertThat(emitted).containsExactly(1);
+      assertThat(emitted).isEmpty();   // nothing passes yet
 
-      // Wait past the gate; next emit should pass.
+      // Wait past the interval; next emit should pass and advance the slot.
       Thread.sleep(60);
       in.emit(4);
       circuit.await();
-      assertThat(emitted).containsExactly(1, 4);
+      assertThat(emitted).containsExactly(4);
     } finally {
       circuit.close();
     }
@@ -125,26 +148,33 @@ class Fs27AdditionsTest {
   }
 
   @Test
-  @DisplayName("Fiber.every(Duration) — state per materialization")
+  @DisplayName("Fiber.every(Duration) — state per materialization (each anchors independently)")
   void everyDurationStatePerMaterialization() throws InterruptedException {
     Cortex cortex = Substrates.cortex();
     Circuit circuit = cortex.circuit();
     try {
       Fiber<Integer> fiber = cortex.<Integer>fiber(Integer.class).every(Duration.ofMillis(50));
-      // Two independent materializations; each tracks its own lastEmitNanos.
+      // Two independent materializations; each anchors its own clock.
       List<Integer> outA = new ArrayList<>();
       List<Integer> outB = new ArrayList<>();
       Pipe<Integer> inA = fiber.pipe(circuit.pipe((Receptor<Integer>) outA::add));
       Pipe<Integer> inB = fiber.pipe(circuit.pipe((Receptor<Integer>) outB::add));
 
-      inA.emit(1);   // first to A — passes
-      inB.emit(10);  // first to B — passes (independent of A)
+      inA.emit(1);   // anchors A's clock; dropped
+      inB.emit(10);  // anchors B's clock; dropped (independent of A)
       inA.emit(2);   // gated
       inB.emit(20);  // gated
       circuit.await();
+      assertThat(outA).isEmpty();
+      assertThat(outB).isEmpty();
 
-      assertThat(outA).containsExactly(1);
-      assertThat(outB).containsExactly(10);
+      // Sleep past the interval; both should pass on next emit.
+      Thread.sleep(60);
+      inA.emit(3);
+      inB.emit(30);
+      circuit.await();
+      assertThat(outA).containsExactly(3);
+      assertThat(outB).containsExactly(30);
     } finally {
       circuit.close();
     }

@@ -651,10 +651,12 @@ public final class FsCircuit implements Circuit {
   /// 2.7: cell factories. Both create a circuit-owned cell — empty or seeded.
   /// 2.7: cell factories. Each call auto-generates a unique name so multiple
   /// cells on the same circuit don't collide on conduit identity.
+  /// Throws Fault if the circuit is closed (spec §11.3).
   @New
   @NotNull
   @Override
   public < E > Cell < E > cell () {
+    requireOpen ( "cell" );
     return new FsCell <> ( (FsSubject < ? >) subject, nextCellName (), this, null );
   }
 
@@ -663,6 +665,7 @@ public final class FsCircuit implements Circuit {
   @Override
   public < E > Cell < E > cell ( @NotNull E initial ) {
     requireNonNull ( initial );
+    requireOpen ( "cell" );
     return new FsCell <> ( (FsSubject < ? >) subject, nextCellName (), this, initial );
   }
 
