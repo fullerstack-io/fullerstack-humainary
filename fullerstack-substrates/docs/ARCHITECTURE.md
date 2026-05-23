@@ -25,7 +25,7 @@ The spec is language-independent. These are our Java 26 projection choices:
 
 ## Class Map
 
-29 classes in `io.fullerstack.substrates`:
+30 classes in `io.fullerstack.substrates`:
 
 ```
 FsCortexProvider (SPI entry point)
@@ -55,6 +55,10 @@ FsCortexProvider (SPI entry point)
               │     └── FsSubscription (subscriber lifecycle handle)
               │           └── FsRegistrar (Consumer<Object> registration during callback)
               ├── FsTap (source emission transformation; tap(Function|Flow|Fiber))
+              ├── FsTicker (2.8 — circuit-owned periodic emitter; grid-anchored fixed-rate
+              │             schedule, gap-free Long sequence, bounded catch-up; backed by
+              │             a lazy single-thread daemon ScheduledExecutorService shared
+              │             across all tickers on the circuit, shut down on circuit close)
               ├── FsWindow (2.6 — strided view over a rolling buffer; restriction ops share buffer)
               └── FsReservoir (buffered emission capture)
 

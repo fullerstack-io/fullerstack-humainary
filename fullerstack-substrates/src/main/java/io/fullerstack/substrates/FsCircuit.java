@@ -28,10 +28,14 @@ import io.humainary.substrates.api.Substrates.Subject;
 import io.humainary.substrates.api.Substrates.Subscriber;
 import io.humainary.substrates.api.Substrates.Subscription;
 import io.humainary.substrates.api.Substrates.Tap;
+import io.humainary.substrates.api.Substrates.Ticker;
 
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.VarHandle;
+import java.time.Duration;
 import java.util.Optional;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.locks.LockSupport;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
@@ -104,6 +108,11 @@ public final class FsCircuit implements Circuit {
   /// 2.4: lazily-initialised Current for this circuit's execution context.
   /// Must remain stable for the circuit's lifetime (spec §11.3).
   private volatile Current circuitCurrent;
+
+  /// 2.8: lazily-initialised scheduler shared by all Tickers on this circuit
+  /// (spec §11.5). Single-thread daemon — tick callbacks just submit emissions
+  /// to the target pipe (ingress queue), so we don't need parallelism here.
+  private volatile ScheduledExecutorService scheduler;
 
   // ─────────────────────────────────────────────────────────────────────────────
   // Queue infrastructure
@@ -417,10 +426,29 @@ public final class FsCircuit implements Circuit {
   }
 
   /// Whether this circuit has accepted close. Used by owned resources
-  /// (Conduit/Tap) to propagate the open-required guard through to their
-  /// own open-required ops.
+  /// (Conduit/Tap/Ticker) to propagate the open-required guard through
+  /// to their own open-required ops.
   boolean isClosed () {
     return closed;
+  }
+
+  /// 2.8: lazy shared scheduler for Tickers. Single-thread daemon — the
+  /// scheduler thread only enqueues the emission onto the circuit's
+  /// ingress queue, so it stays lightweight.
+  ScheduledExecutorService scheduler () {
+    ScheduledExecutorService s = scheduler;
+    if ( s != null ) return s;
+    synchronized ( this ) {
+      s = scheduler;
+      if ( s != null ) return s;
+      s = Executors.newSingleThreadScheduledExecutor ( r -> {
+        Thread t = new Thread ( r, "circuit-ticker-" + subject.name () );
+        t.setDaemon ( true );
+        return t;
+      } );
+      scheduler = s;
+      return s;
+    }
   }
 
   /// 2.4: Submits a no-op probe through the circuit and returns its timing
@@ -541,6 +569,11 @@ public final class FsCircuit implements Circuit {
     // Release any pending awaiters
     Thread awaiter = (Thread) AWAITER.getAndSet ( this, null );
     if ( awaiter != null ) LockSupport.unpark ( awaiter );
+
+    // 2.8: stop scheduling further ticks; in-flight ticks already submitted
+    // to the ingress queue may still be delivered (spec §11.5).
+    ScheduledExecutorService s = scheduler;
+    if ( s != null ) s.shutdownNow ();
   }
 
   @Idempotent
@@ -588,6 +621,38 @@ public final class FsCircuit implements Circuit {
     requireNonNull ( routing );
     requireOpen ( "conduit" );
     return new FsConduit <> ( (FsSubject < ? >) subject, name, this, routing );
+  }
+
+  // ===================================================================================
+  // Factory Methods - Ticker (2.8, SPEC §11.5)
+  // ===================================================================================
+
+  @New
+  @NotNull
+  @Override
+  public Ticker ticker ( @NotNull Duration interval, @NotNull Pipe < ? super Long > target ) {
+    requireNonNull ( interval );
+    requireNonNull ( target );
+    return ticker ( cortex ().name ( "ticker" ), interval, target );
+  }
+
+  @New
+  @NotNull
+  @Override
+  public Ticker ticker ( @NotNull Name name, @NotNull Duration interval,
+                         @NotNull Pipe < ? super Long > target ) {
+    requireNonNull ( name );
+    requireNonNull ( interval );
+    requireNonNull ( target );
+    requireOpen ( "ticker" );
+    if ( interval.isZero () || interval.isNegative () ) {
+      throw new IllegalArgumentException ( "interval must be strictly positive" );
+    }
+    // SPEC §15.1 provider mismatch — target pipe must come from our provider.
+    if ( ! ( target instanceof FsPipe < ? > ) ) {
+      throw new Fault ( subject, "ticker", "target pipe is not from this runtime provider" );
+    }
+    return new FsTicker ( (FsSubject < ? >) subject, name, this, interval, target );
   }
 
   // ===================================================================================

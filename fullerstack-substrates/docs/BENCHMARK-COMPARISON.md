@@ -1,15 +1,19 @@
 # Benchmark Comparison: Fullerstack vs Humainary Substrates
 
-**Substrates/Serventis 2.7.0** · `io.fullerstack:fullerstack-substrates:2.7.0-RC1`
+**Substrates/Serventis 2.8.0** · `io.fullerstack:fullerstack-substrates:2.8.0-RC1`
 
-> **2.7 status:** the tables below are post-2.4 measurements. 2.5 added new API
+> **2.8 status:** the tables below are post-2.4 measurements. 2.5 added new API
 > surface (Bank, closeAwait, 6 new Fiber operators) and tightened spec conformance with
 > §15.4 callback-isolation guards. 2.6/2.7 added more API surface (Cell, Window,
 > Flow.scan, Flow.window, Flow.flow(factory), Fiber.every(Duration), Circuit.cell,
-> Circuit.pipe(Name, Receptor)). All new code paths; existing hot paths (FsPipe.emit,
-> FsChannel.dispatch) were not modified. PipeOps spot-check on 2.7 shows no
-> regression (numbers in `docs/2.7-MIGRATION.md`). Full re-measurement of every group
-> against the post-2.7 baseline is a follow-up task.
+> Circuit.pipe(Name, Receptor)). 2.8 adds the `Ticker` primitive
+> (`Circuit.ticker(...)`, SPEC §11.5), a 2-arg `Flow.scan(initial, step)` default-method
+> overload, and a sealed `Lookup` hierarchy (`Bank`/`Pool` are the only permitted
+> subtypes). All new code paths — existing hot paths (FsPipe.emit, FsChannel.dispatch)
+> were not modified by 2.8. The Ticker scheduler runs off the circuit thread (each
+> tick enqueues onto ingress), so it doesn't compete with the cyclic dispatch loop.
+> Full re-measurement of every group against the post-2.8 baseline is a follow-up
+> task; see `docs/2.7-MIGRATION.md` and `docs/2.8-MIGRATION.md` for previous notes.
 
 Full pre-2.3 → post-2.4 comparison for every JMH benchmark. Measured on a Codespaces 2-vCPU host with `-f 1 -wi 3 -i 5 -w 2s -r 2s -tu ns -bm avgt`. Numbers vary ±10-30% iteration-to-iteration on this host — group-level patterns and large deltas are more meaningful than any single number.
 
