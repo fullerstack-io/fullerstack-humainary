@@ -1,210 +1,44 @@
-# Fullerstack Substrates
+# Fullerstack Humainary — Codespace Workspace
 
-A Java 26 implementation of the [Humainary Substrates](https://github.com/humainary-io/substrates-api-java) deterministic signal circulation infrastructure.
+This repo is the GitHub Codespaces development environment for the **`fullerstack-io`** project family. It exists to give every downstream project a pre-populated workspace with the Humainary API clones and a working Maven configuration, so a fresh Codespace boots ready to build.
 
-Substrates is a runtime for observable, event-driven systems where every emission is processed in strict enqueue order on a single virtual thread per circuit. This implementation provides the SPI provider — your code uses 100% Humainary API, our code handles the execution.
+It is intentionally public so the user's org plan permits Codespaces to launch from it.
 
-| | |
+## What lives where
+
+| Path | Purpose |
 |---|---|
-| **API** | [Humainary Substrates 2.7.0](https://github.com/humainary-io/substrates-api-java) |
-| **Spec** | [Substrates API Specification](https://github.com/humainary-io/substrates-api-spec) |
-| **Serventis** | [Humainary Serventis 2.7.0](https://github.com/humainary-io/serventis-api-java) (semiotic observability) |
-| **Implementation** | `io.fullerstack:fullerstack-substrates:2.7.0-RC1` |
-| **Java** | 26 (Virtual Threads + Preview Features) |
-| **Tests** | 572 passing (519 base + 53 new for 2.7: Cell, Window, Flow.scan/window/flow(factory), Fiber.every(Duration), Circuit.pipe(Name), Fiber/Flow.pipe(Cell)) |
-| **License** | Apache 2.0 |
+| `agent-insight/` | Agent-observability product. Pulls `fullerstack-substrates:2.9.0` from GitHub Packages. |
+| `backtest/` | Crypto backtest investigation. Pulls `fullerstack-substrates:2.9.0` from GitHub Packages. |
+| `substrates-api-java/` | Local clone of [Humainary Substrates API](https://github.com/humainary-io/substrates-api-java). Required for `mvn install` because the upstream JARs are not on a public Maven repo. |
+| `serventis-api-java/` | Local clone of [Humainary Serventis API](https://github.com/humainary-io/serventis-api-java). Same prereq. |
+| `substrates-api-spec/` | Reference clone of the [Humainary Substrates specification](https://github.com/humainary-io/substrates-api-spec). Read-only. |
 
-## Quick Start
+The Substrates implementation that used to live here has moved to its own repo at [`fullerstack-io/fullerstack-substrates`](https://github.com/fullerstack-io/fullerstack-substrates) and is published as `io.fullerstack:fullerstack-substrates:2.9.0` on GitHub Packages.
 
-The artifact is published to [GitHub Packages](https://github.com/fullerstack-io/fullerstack-humainary/packages). GitHub Packages requires authentication for all downloads — see [Consuming the artifact](#consuming-the-artifact) below for repository setup and credentials.
-
-```xml
-<dependency>
-    <groupId>io.fullerstack</groupId>
-    <artifactId>fullerstack-substrates</artifactId>
-    <version>2.7.0-RC1</version>
-</dependency>
-```
-
-```java
-import static io.humainary.substrates.api.Substrates.*;
-
-// Cortex is the entry point — our provider loaded via SPI
-var cortex  = cortex();
-var circuit = cortex.circuit(cortex.name("example"));
-
-// Create a typed conduit and subscribe
-var conduit = circuit.conduit(cortex.name("events"), String.class);
-conduit.subscribe(circuit.subscriber(
-    cortex.name("logger"),
-    (subject, registrar) -> registrar.register(System.out::println)
-));
-
-// Emit — async, deterministic, ~12 ns
-conduit.get(cortex.name("source")).emit("hello");
-circuit.await();
-circuit.close();
-```
-
-## Consuming the artifact
-
-The artifact lives in [GitHub Packages](https://github.com/fullerstack-io/fullerstack-humainary/packages). GitHub Packages requires authentication even for public packages, so you need both a repository declaration **and** credentials.
-
-**1. Add the repository and dependency to your `pom.xml`:**
-
-```xml
-<repositories>
-  <repository>
-    <id>github-fullerstack</id>
-    <url>https://maven.pkg.github.com/fullerstack-io/fullerstack-humainary</url>
-    <releases><enabled>true</enabled></releases>
-    <snapshots><enabled>false</enabled></snapshots>
-  </repository>
-</repositories>
-
-<dependencies>
-  <dependency>
-    <groupId>io.fullerstack</groupId>
-    <artifactId>fullerstack-substrates</artifactId>
-    <version>2.7.0-RC1</version>
-  </dependency>
-</dependencies>
-```
-
-**2. Configure credentials in `~/.m2/settings.xml`:**
-
-```xml
-<settings>
-  <servers>
-    <server>
-      <id>github-fullerstack</id>
-      <username>YOUR_GITHUB_USERNAME</username>
-      <password>${env.GITHUB_TOKEN}</password>
-    </server>
-  </servers>
-</settings>
-```
-
-Generate a [personal access token](https://github.com/settings/tokens) with the `read:packages` scope, export it as `GITHUB_TOKEN` in your shell, and Maven will authenticate automatically. You can also paste the token directly into `settings.xml`, but the environment-variable form is safer.
-
-The `FsCortexProvider` is then discovered automatically via Java `ServiceLoader` — no configuration code needed in your app.
-
-## Building from Source
-
-### Prerequisites
-
-**Java 26** ([SDKMAN](https://sdkman.io/)):
+## First-time Codespace setup
 
 ```bash
-sdk install java 26.ea.35-open
-sdk use java 26.ea.35-open
+# 1. Install the Humainary upstream APIs into the local Maven cache.
+#    Required because they are not on Maven Central or any public Maven repo.
+cd substrates-api-java/api && mvn clean install -DskipTests && cd ../..
+cd serventis-api-java/api  && mvn clean install -DskipTests && cd ../..
+
+# 2. Export a GitHub PAT with `read:packages` so Maven can pull
+#    io.fullerstack:fullerstack-substrates from GitHub Packages.
+export GITHUB_TOKEN=$(gh auth token -u milesfuller)   # or any read:packages PAT
+
+# 3. Build a downstream project.
+cd agent-insight && mvn -DskipTests compile
+cd backtest     && mvn -DskipTests compile
 ```
 
-**Humainary APIs** (not yet on Maven Central):
+`~/.m2/settings.xml` is preconfigured to authenticate to GitHub Packages as `milesfuller` against the `github-fullerstack` server using `${env.GITHUB_TOKEN}`.
 
-```bash
-# Substrates API
-git clone https://github.com/humainary-io/substrates-api-java.git
-cd substrates-api-java/api
-mvn clean install -DskipTests
-cd ../..
+## Working on Substrates itself
 
-# Serventis API
-git clone https://github.com/humainary-io/serventis-api-java.git
-cd serventis-api-java/api
-mvn clean install -DskipTests
-cd ../..
-```
-
-### Build & Test
-
-```bash
-git clone https://github.com/fullerstack-io/fullerstack-humainary.git
-cd fullerstack-humainary/fullerstack-substrates
-mvn clean install        # Build + 572 tests
-```
-
-### Benchmarks
-
-```bash
-./scripts/benchmark.sh              # All groups (14 Substrates + 36 Serventis instruments)
-./scripts/benchmark.sh PipeOps      # Specific group
-./scripts/benchmark.sh -l           # List available
-```
-
-## Architecture
-
-Each circuit runs on a single virtual thread with two internal queues:
-
-```
-External threads ──emit──→ Ingress Queue (MPSC, wait-free)
-                                         ↓
-                              Circuit Thread (virtual)
-                                         ↓
-Cascading emissions ─────→ Transit Queue (priority) ──→ Subscribers
-```
-
-**Deterministic ordering**: emissions processed in strict enqueue order. Transit queue has priority for causal completion — all cascading effects resolve before the next external emission.
-
-See the [Specification](https://github.com/humainary-io/substrates-api-spec) for the formal model, and [Implementation Architecture](fullerstack-substrates/docs/ARCHITECTURE.md) for our design decisions.
-
-### Implementation
-
-27 classes in `io.fullerstack.substrates`:
-
-| API Interface | Implementation | Purpose |
-|--------------|---------------|---------|
-| Cortex | FsCortex | Entry point — circuits, scopes, names, flows, fibers |
-| Circuit | FsCircuit | Dual-queue sequential execution engine + `pulse()` diagnostic (2.4) + `bank()` (2.5) + `cell()` / `cell(initial)` / `pipe(Name, Receptor)` (2.7) |
-| Conduit | FsConduit | Channel factory + subscriber management; `Pool<Pipe<E>>` |
-| Bank | FsBank | **2.5** — closeable name-indexed conduit factory; identity by name, close walks materialised |
-| Cell | FsCell | **2.7** — circuit-owned single-slot state; receptor-pipe-backed with volatile slot for safe publication |
-| Window | FsWindow | **2.6** — strided view over a rolling buffer; restriction ops share the buffer (no copies) |
-| Pipe | FsPipe | Async emission carrier |
-| Pool | FsDerivedPool | Derived pool — `pool(Function)` / `pool(Flow)` / `pool(Fiber)` with three-state lazy storage |
-| Flow | FsFlow | Type-changing composition: `map` / `fiber` / `flow` / `pipe`, plus **2.6/2.7:** `scan` ×2, `window(int)`, `window(Duration, int)`, `flow(Function<Subject, Flow>)`, `pipe(Cell)` |
-| Fiber | FsFiber | Per-emission operators (~42: `guard`, `diff`, `limit`, `peek`, `replace`, `chance`, `change`, `deadband`, `delay`, `edge`, `every`, `hysteresis`, `inhibit`, `pulse`, `rolling`, `steady`, `tumble`, plus **2.5:** `distinct`, `distinct(int)`, `route`, `streak`, `tee`, `when`, plus **2.7:** `every(Duration)`, `pipe(Cell)`, ...) |
-| Name | FsName | Hierarchical dot-notation names with interning |
-| Subject | FsSubject | Identity (Id + Name + State + Type) |
-| Scope | FsScope | Structured resource lifecycle (RAII) |
-| Subscriber | FsSubscriber | Emission observer with lazy callback |
-| Subscription | FsSubscription | Subscriber lifecycle handle (with `onClose` overload, 2.4; carries circuit ref for `closeAwait`, 2.5) |
-| Tap | FsTap | Source emission transformation; `tap(Function|Flow|Fiber)` |
-| Reservoir | FsReservoir | Buffered emission capture |
-| Closure | FsClosure | Block-scoped resource management |
-| Current | FsCurrent | Execution context identity (per circuit, 2.4) |
-| State | FsState | Slot-based state container |
-| Slot | FsSlot | Typed state value holder |
-| Registrar | FsRegistrar | Pipe registration during subscriber callback |
-| (internal) | FsChannel | Per-name dispatch — split: `dispatch` (receptors) vs `cascadeDispatch` (receptors + STEM) |
-| (internal) | FsHub | Subscriber list + version counter (per-conduit) |
-| (internal) | FsOperators | Shared operator implementations (Guard, Diff, Limit, Peek, ... — used by FsFiber and FsFlow) |
-| (Fault) | — | `Substrates.Fault` is `final` in 2.4; we throw it directly |
-
-Infrastructure: `IngressQueue` (wait-free MPSC), `TransitQueueRing` (single-threaded power-of-2 ring; cascade priority), `QChunk` (128-slot interleaved `[receiver, value]` array), `FsCortexProvider` (SPI entry point).
-
-## Documentation
-
-| Document | Audience | Description |
-|----------|----------|-------------|
-| [Kitchen Model](fullerstack-substrates/docs/KITCHEN-MODEL.md) | Everyone | Dual-queue architecture explained as a restaurant kitchen |
-| [Architecture](fullerstack-substrates/docs/ARCHITECTURE.md) | Engineers | Core design, sealed hierarchy, data flow |
-| [Circuit Design](fullerstack-substrates/docs/CIRCUIT-DESIGN.md) | Implementers | Queue internals, VarHandle, performance |
-| [Async Architecture](fullerstack-substrates/docs/ASYNC-ARCHITECTURE.md) | Test writers | Async-first design, testing patterns, await() |
-| [Developer Guide](fullerstack-substrates/docs/DEVELOPER-GUIDE.md) | Users | Patterns, best practices, Serventis integration |
-
-**Start here**: [Kitchen Model](fullerstack-substrates/docs/KITCHEN-MODEL.md) — explains the dual-queue architecture as a story. Then read [Architecture](fullerstack-substrates/docs/ARCHITECTURE.md) for the technical details.
-
-## Humainary Ecosystem
-
-| Repository | Description |
-|-----------|-------------|
-| [substrates-api-java](https://github.com/humainary-io/substrates-api-java) | Substrates API interfaces |
-| [substrates-api-spec](https://github.com/humainary-io/substrates-api-spec) | Formal specification + design rationale |
-| [serventis-api-java](https://github.com/humainary-io/serventis-api-java) | Serventis semiotic observability (~36 instrument types) |
-
-All API design, architecture, and concepts by **[William Louth](https://humainary.io/)** and the **Humainary** project. We implement the specification — we don't extend it.
+Substrates development happens in its own repo, not here. Open `fullerstack-io/fullerstack-substrates` in a separate Codespace (or locally) and develop there. Push a release; the next Codespace started from this repo will resolve the new version from GitHub Packages.
 
 ## License
 
-Apache License 2.0
+This workspace repo is configured under Apache 2.0. The downstream projects and `fullerstack-substrates` itself are independently licensed (also Apache 2.0). Humainary API design credit: **William Louth** and the **[Humainary](https://humainary.io/)** project.
