@@ -21,8 +21,8 @@ The Substrates implementation that used to live here has moved to its own repo a
 ```bash
 # 1. Install the Humainary upstream APIs into the local Maven cache.
 #    Required because they are not on Maven Central or any public Maven repo.
-cd substrates-api-java/api && mvn clean install -DskipTests && cd ../..
-cd serventis-api-java/api  && mvn clean install -DskipTests && cd ../..
+cd substrates-api-java && mvn clean install -DskipTests && cd ..
+cd serventis-api-java  && mvn clean install -DskipTests && cd ..
 
 # 2. Export a GitHub PAT with `read:packages` so Maven can pull
 #    io.fullerstack:fullerstack-substrates from GitHub Packages.
